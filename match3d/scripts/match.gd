@@ -514,6 +514,7 @@ func _physics_process(delta: float) -> void:
 	if state == State.SIMULATING or state == State.MOMENT:
 		_check_ball_escaped()
 	_update_camera(delta)
+	_camera_declutter()
 	_update_aim_zone()
 	_apply_shake(delta)
 	_update_wave(delta)
@@ -5102,6 +5103,20 @@ Cortas la jugada a base de falta"
 
 ## Simulación: vista de transmisión. Momentos clave: tercera persona detrás
 ## del jugador que controlas, mirando hacia la portería rival.
+## Lo que queda pegado a la cámara no se dibuja (antes salían cabezas gigantes o
+## manchas tapando media pantalla) y la marca "TÚ" no crece al acercarse.
+func _camera_declutter() -> void:
+	if _camera == null:
+		return
+	var cp := _camera.global_position
+	for p: SoccerPlayer in players:
+		if p._avatar != null:
+			p._avatar.visible = cp.distance_to(p.global_position + Vector3.UP * 0.9) > 1.7
+	if star != null and star.star_label != null:
+		var d := cp.distance_to(star.star_label.global_position)
+		star.star_label.scale = Vector3.ONE * clampf(d / 14.0, 0.25, 1.0)
+
+
 func _update_camera(delta: float) -> void:
 	if state == State.REPLAY:
 		return # la cámara libre de la repetición manda

@@ -179,7 +179,7 @@ const NET_SHADER := preload("res://match3d/shaders/net.gdshader")
 const CROWD_SHADER := preload("res://match3d/shaders/crowd.gdshader")
 const FLAG_SHADER := preload("res://match3d/shaders/flag.gdshader")
 const FLASH_SHADER := preload("res://match3d/shaders/flash.gdshader")
-const AD_TEXTS := ["MINI SOCCER 3D", "FOOTBALL CAREER", "¡GOOOL!", "TU CARRERA"]
+const AD_TEXTS := ["FOOTBALL LEGACY", "¡GOOOL!", "TU CARRERA", "TU LEYENDA"]
 
 
 static func _grass(stripes: bool) -> ShaderMaterial:

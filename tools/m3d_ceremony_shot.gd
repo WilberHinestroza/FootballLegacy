@@ -21,7 +21,17 @@ func _ready() -> void:
 	m._end_walkout()
 	await get_tree().create_timer(1.0).timeout
 	var shots := 0
-	if kind == "ambient" or kind == "miss":
+	if kind == "match":
+		# Partido entero tal cual (sin tocar nada): una captura por segundo real con el estado
+		var secs := int(args[2]) if args.size() > 2 else 150
+		for i in secs:
+			await get_tree().create_timer(1.0, true, false, true).timeout
+			get_viewport().get_texture().get_image().save_png("res://build/m3d_cer_%s_%03d.png" % [tag, shots])
+			print("FRAME %03d min=%d state=%s score=%s" % [shots, int(m.minute), SoccerMatch.State.keys()[m.state], str(m.score)])
+			shots += 1
+			if m.state == SoccerMatch.State.ENDED:
+				break
+	elif kind == "ambient" or kind == "miss":
 		# Gol (o fallo) de la simulación: ¿el portero se estira bien y nadie queda quieto?
 		for rep in 3:
 			if kind == "ambient":
