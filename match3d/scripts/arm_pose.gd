@@ -19,12 +19,19 @@ var body: Node3D
 var _m := Transform3D.IDENTITY   # espacio del esqueleto -> espacio del jugador
 
 var _ready_bones := false
+# Cambio de modo: las manos van de donde estaban a la nueva postura en arco (sin saltos)
+var _last_mode := ""
+var _last_targets: Array = [null, null]
+var _from: Array = [null, null]
+var _mix := 1.0
+const MIX_TIME := 0.6
 var _arm := [-1, -1]      # [izq, der] hueso del brazo
 var _fore := [-1, -1]
 var _hand := [-1, -1]
 var _len := 0.5           # brazo + antebrazo (espacio del jugador)
 var _head_y := 1.6
 var _shoulder_x := 0.18
+var _shoulder_y := 1.3
 
 
 func _setup() -> void:
@@ -48,6 +55,7 @@ func _measure(sk: Skeleton3D) -> void:
 	var c := _m * sk.get_bone_global_rest(_hand[0]).origin
 	_len = a.distance_to(b) + b.distance_to(c)
 	_shoulder_x = absf(a.x)
+	_shoulder_y = a.y
 	var head := ItemCatalog.find_bone(sk, "Head")
 	_head_y = (_m * sk.get_bone_global_rest(head).origin).y if head >= 0 else a.y + _len * 0.4
 
@@ -62,10 +70,24 @@ func _process_modification_with_delta(delta: float) -> void:
 	var ref: Node3D = body if is_instance_valid(body) else sk
 	_m = ref.global_transform.affine_inverse() * sk.global_transform
 	_measure(sk)
+	if mode != _last_mode:
+		_from = _last_targets.duplicate()
+		_mix = 0.0 if _last_mode != "" and influence > 0.05 else 1.0
+		_last_mode = mode
+	_mix = minf(1.0, _mix + delta / MIX_TIME)
 	var targets := _targets()
+	var u := smoothstep(0.0, 1.0, _mix)
 	for s in 2:
-		if targets[s] != null:
-			_solve(sk, s, targets[s])
+		if targets[s] == null:
+			continue
+		var goal: Vector3 = _reachable(s, targets[s])
+		if _mix < 1.0 and _from[s] != null:
+			var start: Vector3 = _from[s]
+			# Arco: las manos pasan por delante del cuerpo, no a través de él
+			goal = start.lerp(goal, u) + Vector3(0.0, 0.0, sin(u * PI) * 0.18 * _len)
+		goal = _clear_head(goal)
+		_last_targets[s] = goal
+		_solve(sk, s, goal)
 
 
 ## Dónde va cada mano (espacio del esqueleto: +Z delante, +X izquierda del jugador). null = libre.
@@ -75,10 +97,18 @@ func _targets() -> Array:
 	var up := smoothstep(0.0, 0.55, t) # sube los brazos al empezar
 	match mode:
 		"lift":
-			# Arriba, juntas, con empujones de alegría cada ~1,1 s
-			var pump := absf(sin(t * 2.8)) * 0.12 * L
-			var y := lerpf(top - 0.35 * L, top + 0.55 * L + pump, up)
-			return [Vector3(0.11 * L, y, 0.12 * L), Vector3(-0.11 * L, y, 0.12 * L)]
+			# Arriba con los brazos casi estirados y algo adelantados (con la cabeza
+			# grande no llegan por encima de ella), las manos separadas lo que mide la
+			# copa, con empujones de alegría cada ~1,1 s
+			# La cabeza es grande y los brazos cortos: no llegan por encima de ella, así
+			# que las manos suben por delante de la frente y la copa asoma por arriba.
+			var lift_up := smoothstep(0.0, 0.8, t)
+			var pump := (0.5 - 0.5 * cos(maxf(t - 0.8, 0.0) * 3.2)) * 0.05 * L
+			var hx := maxf(0.06, _shoulder_x * 0.42)
+			var hc := _head_center()
+			var y := lerpf(_shoulder_y - 0.3 * L, hc.y + 0.04 + pump, lift_up)
+			var z := lerpf(0.65 * L, hc.z + _head_r() + 0.13, lift_up)
+			return [Vector3(hx, y, z), Vector3(-hx, y, z)]
 		"board":
 			var sway := sin(t * 1.6) * 0.03 * L
 			var y2 := lerpf(top - 0.3 * L, top + 0.42 * L, up)
@@ -91,12 +121,51 @@ func _targets() -> Array:
 			var y4 := lerpf(top - 0.2 * L, top + 0.72 * L, smoothstep(0.0, 0.3, t))
 			return [null, Vector3(-_shoulder_x - 0.08 * L, y4, 0.18 * L)]
 		"hold":
-			return [Vector3(0.14 * L, top - 0.45 * L, 0.42 * L), Vector3(-0.14 * L, top - 0.45 * L, 0.42 * L)]
+			# Delante del pecho, separadas y adelantadas: el objeto queda a la vista
+			var hx2 := maxf(0.06, _shoulder_x * 0.42)
+			return [Vector3(hx2, _shoulder_y - 0.62 * L, 0.74 * L), Vector3(-hx2, _shoulder_y - 0.62 * L, 0.74 * L)]
 		"shake":
 			# Apretón de manos: la derecha al frente, hacia el centro, sacudiendo un poco
 			var pump2 := sin(t * 9.0) * 0.035 * L * smoothstep(0.3, 0.6, t)
 			return [null, Vector3(-0.03 * L, top - 1.0 * L + pump2, 0.78 * L)]
 	return [null, null]
+
+
+## Cabeza como esfera (espacio del jugador), con las medidas de PlayerAvatar.
+func _head_center() -> Vector3:
+	return Vector3(0.0, _head_y + PlayerAvatar.HEAD_C.y, PlayerAvatar.HEAD_C.z)
+
+
+func _head_r() -> float:
+	return PlayerAvatar.HEAD_R
+
+
+## Acerca el objetivo al hombro si el brazo no llega (con el codo casi estirado).
+func _reachable(s: int, p: Vector3) -> Vector3:
+	var sh := Vector3(_shoulder_x * (1.0 if s == 0 else -1.0), _shoulder_y, 0.0)
+	var d := p - sh
+	var reach := _len * 0.97
+	return sh + d.normalized() * reach if d.length() > reach else p
+
+
+## Saca la mano de la cabeza (y del objeto que sostiene delante): la empuja hacia
+## fuera de la esfera, sobre todo hacia delante.
+func _clear_head(p: Vector3) -> Vector3:
+	var hc := _head_center()
+	var r := _head_r() + 0.1
+	var d := p - hc
+	if d.length() >= r:
+		return p
+	var out := (d + Vector3(0.0, 0.0, 0.08)).normalized()
+	return hc + out * r
+
+
+## Punto medio entre las dos manos (espacio del jugador) según la última postura
+## resuelta; null si algún brazo va libre.
+func hands_center() -> Variant:
+	if _last_targets[0] == null or _last_targets[1] == null:
+		return null
+	return ((_last_targets[0] as Vector3) + (_last_targets[1] as Vector3)) * 0.5
 
 
 ## IK analítico de dos huesos: gira brazo y antebrazo para que la mano llegue a `target`,

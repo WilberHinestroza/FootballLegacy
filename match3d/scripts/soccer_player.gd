@@ -71,9 +71,9 @@ var _kick := {} # golpe en preparación: {vel, curl, left, release}
 ## Golpes: animación, desde qué segundo empieza, velocidad y segundo en que el pie toca el balón
 ## (medido en las animaciones de Mixamo). El tiro usa el final del penalti, que es un golpe fuerte.
 const KICKS := {
-	"shot": {"anim": "penalty", "from": 0.5, "speed": 1.45, "contact": 0.8},
+	"shot": {"anim": "shot_strike", "from": 0.16, "speed": 1.25, "contact": 0.42},
 	"penalty": {"anim": "penalty", "from": 0.15, "speed": 1.15, "contact": 0.8},
-	"pass": {"anim": "pass", "from": 0.1, "speed": 1.25, "contact": 0.32},
+	"pass": {"anim": "pass_inside", "from": 0.08, "speed": 1.25, "contact": 0.3},
 	"throw": {"anim": "keeper_throw", "from": 0.75, "speed": 1.5, "contact": 1.55},
 }
 
@@ -182,7 +182,8 @@ func _physics_process(delta: float) -> void:
 		# patinaje de salir corriendo para el lado contrario).
 		desired *= turn_speed_factor(facing.dot(desired.normalized()))
 	if is_kicking():
-		desired = Vector3.ZERO # se planta para golpear
+		# Se planta para golpear, pero conservando algo de inercia (no frena en seco)
+		desired = Vector3(velocity.x, 0.0, velocity.z) * 0.35
 		_kick.left -= delta
 		if _kick.left <= 0.0:
 			_release_kick()
@@ -197,8 +198,10 @@ func _physics_process(delta: float) -> void:
 		# el control. Al golpear o quedar aturdido se planta sin patinar.
 		var rate := Momentum.rate(flat.length(), desired.length(),
 				sprinting or move_boost > 0.01, has_ball())
-		if is_kicking() or stun_timer > 0.0:
+		if stun_timer > 0.0:
 			rate = Momentum.ACCEL
+		elif is_kicking():
+			rate = Momentum.ACCEL * 0.6
 		flat = flat.move_toward(desired, rate * delta)
 	velocity = flat
 	move_and_slide()
@@ -217,6 +220,9 @@ func _physics_process(delta: float) -> void:
 		var align_turn := clampf((facing.dot(face_dir) + 1.0) * 0.5, 0.0, 1.0)
 		var turn_rate := base_turn * lerpf(0.6, 1.0, align_turn)
 		facing = _turn_toward(face_dir, delta, turn_rate)
+	elif is_kicking() and _kick.has("face"):
+		# Encara el golpe rápido pero de forma continua mientras prepara la pierna
+		facing = _turn_toward(_kick.face, delta, 16.0)
 	elif _should_watch_ball():
 		var to_ball := SoccerMatch.flat(match_ref.ball.global_position - global_position)
 		if to_ball.length() > 1.0:
@@ -313,10 +319,12 @@ func _turn_toward(target_dir: Vector3, delta: float, rate: float) -> Vector3:
 ## velocidad y la vuelta desde una acción necesitan más mezcla para no patinar.
 func locomotion_blend(prev_speed: float, next_speed: float, action_recovering := false) -> float:
 	var change := absf(next_speed - prev_speed)
-	var blend := lerpf(0.06, 0.16, clampf(change / 4.0, 0.0, 1.0))
+	# Mezclas largas: con 0,06 s el paso de trotar a correr (o de chutar a volver
+	# a correr) se veía a saltos.
+	var blend := lerpf(0.12, 0.26, clampf(change / 4.0, 0.0, 1.0))
 	if action_recovering:
-		blend = maxf(blend, 0.18)
-	return clampf(blend, 0.05, 0.2)
+		blend = maxf(blend, 0.28)
+	return clampf(blend, 0.1, 0.32)
 
 
 # ---------- acciones ----------
@@ -645,7 +653,7 @@ func first_touch_pass(target: SoccerPlayer, point: Vector3) -> void:
 	b.kick(self, aim, 0.0, "pass")
 	b.block_pickup(self, 0.3)
 	# El balón ya salió: se reproduce el gesto de pase sin esperar el contacto.
-	play_action_from("pass", KICKS["pass"]["from"], KICKS["pass"]["speed"], 0.5)
+	play_action_from(KICKS["pass"]["anim"], KICKS["pass"]["from"], KICKS["pass"]["speed"], 0.5)
 
 
 func is_kicking() -> bool:
@@ -665,18 +673,18 @@ func kick_spot() -> Vector3:
 func _start_kick(kind: String, vel: Variant, curl: float, on_release: Callable) -> void:
 	var k: Dictionary = KICKS[kind]
 	var flat_v := SoccerMatch.flat(vel.call() if vel is Callable else vel)
-	if flat_v.length() > 0.01:
-		facing = flat_v.normalized()
+	var face := flat_v.normalized() if flat_v.length() > 0.01 else facing
 	var delay := 0.0
 	if _anim and _anim.has_animation(k.anim):
 		delay = (k.contact - k.from) / k.speed
-		_anim.play(k.anim, 0.06)
+		_anim.play(k.anim, 0.12)
 		_anim.seek(k.from, true)
 		_anim.speed_scale = k.speed
 		_action_timer = minf((_anim.get_animation(k.anim).length - k.from) / k.speed, delay + 0.45)
 	dodge_timer = maxf(dodge_timer, delay + 0.15) # no te lo roban a mitad del golpe
-	_kick = {"kind": kind, "vel": vel, "curl": curl, "left": delay, "release": on_release}
+	_kick = {"kind": kind, "vel": vel, "curl": curl, "left": delay, "release": on_release, "face": face}
 	if delay <= 0.0:
+		facing = face
 		_release_kick()
 
 
@@ -722,7 +730,7 @@ func play_action(anim_name: String, anim_speed := 1.0, max_time := 1.0) -> void:
 func play_action_from(anim_name: String, from: float, anim_speed := 1.0, max_time := 1.0) -> void:
 	if _anim == null or not _anim.has_animation(anim_name) or is_diving():
 		return
-	_anim.play(anim_name, 0.08)
+	_anim.play(anim_name, 0.14)
 	if from > 0.0:
 		_anim.seek(from, true)
 	_anim.speed_scale = anim_speed

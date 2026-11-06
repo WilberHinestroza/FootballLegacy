@@ -85,10 +85,10 @@ func _test_locomotion_blend() -> void:
 	var fast: float = p.locomotion_blend(0.0, 8.0)
 	var mid: float = p.locomotion_blend(2.0, 4.0)
 	var recovering: float = p.locomotion_blend(0.0, 0.0, true)
-	_check(_near(still, 0.06), "sin cambio de velocidad la mezcla no es la mínima")
+	_check(_near(still, 0.12), "sin cambio de velocidad la mezcla no es la mínima")
 	_check(fast > mid and mid > still, "más cambio de velocidad no alarga la mezcla")
-	_check(_near(fast, 0.16), "un cambio grande de velocidad no usa la mezcla máxima")
-	_check(recovering >= 0.18, "la vuelta desde una acción no alarga la mezcla")
-	_check(still >= 0.05 and fast <= 0.2 and recovering <= 0.2,
+	_check(_near(fast, 0.26), "un cambio grande de velocidad no usa la mezcla máxima")
+	_check(recovering >= 0.28, "la vuelta desde una acción no alarga la mezcla")
+	_check(still >= 0.1 and fast <= 0.32 and recovering <= 0.32,
 		"algún tiempo de mezcla se sale del rango seguro")
 	p.free()

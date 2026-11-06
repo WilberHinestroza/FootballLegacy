@@ -142,8 +142,8 @@ func _process(delta: float) -> void:
 			if _holder == _presenter and _phase_t > 0.7:
 				_holder = wav if wav != null else _presenter
 				if wav != null:
-					wav.pose_arms("hold", 0.3)
-				_presenter.pose_arms("", 0.3)
+					wav.pose_arms("hold", 0.45)
+				_presenter.pose_arms("", 0.5)
 				_play(_presenter.anim, "clap")
 				SoundFx.play("cheer", -4.0)
 			if _phase_t > 1.4:
@@ -163,7 +163,7 @@ func _process(delta: float) -> void:
 			_title.modulate.a = a
 			_title.outline_modulate.a = a
 			if _winner._anim != null and not _winner._anim.is_playing():
-				_play(_winner._anim, "victory_idle")
+				_play(_winner._anim, "idle")
 			if _phase_t >= LIFT_HOLD:
 				_sent = true
 				finished.emit()
@@ -182,7 +182,7 @@ func _lift() -> void:
 	_lifted = true
 	if _winner._avatar != null:
 		_winner._avatar.pose_arms("lift", 0.4)
-	_play(_winner._anim, "victory_idle")
+	_play(_winner._anim, "idle")
 	CeremonyKit.confetti(self, PLAYER_SPOT + Vector3(0.0, 1.2, 0.0), Vector3(1.6, 0.2, 1.2),
 		[GOLD, Color.WHITE, Color(1.0, 0.95, 0.7)])
 	FieldBuilder.flares(_match, -1.0, GOLD, 5.0)
@@ -231,7 +231,8 @@ func _update_camera(delta: float) -> void:
 func _place_award() -> void:
 	if _award == null or not is_instance_valid(_award) or _holder == null:
 		return
-	_award.global_position = _holder.hands_position() - Vector3.UP * _award_height * 0.3
+	# Levantado, la copa asoma por encima de la cabeza (las manos quedan en la frente)
+	_award.global_position = _holder.hands_position() - Vector3.UP * _award_height * (0.08 if _lifted else 0.3)
 	_award.global_rotation = Vector3(-0.08 if _lifted else 0.0, _holder.global_rotation.y - PI + sin(_elapsed * 0.7) * 0.08, 0.0)
 
 

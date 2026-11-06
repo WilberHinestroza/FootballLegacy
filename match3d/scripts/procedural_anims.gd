@@ -32,6 +32,8 @@ static func build_all(anim: AnimationPlayer, skel: Skeleton3D, owner: Node3D) ->
 	b._add(lib, "walk", b._walk(1.05, 1.0, 0.0))
 	b._add(lib, "walk_sad", b._walk(1.25, 0.7, 1.0))
 	b._add(lib, "jump_cheer", b._jump())
+	b._add(lib, "shot_strike", b._strike(true))
+	b._add(lib, "pass_inside", b._strike(false))
 
 
 func _add(lib: AnimationLibrary, n: String, a: Animation) -> void:
@@ -247,4 +249,74 @@ func _jump() -> Animation:
 		var bend := leg * 0.5 * ((1.0 - cos(th)) + (1.0 - cos(sh)))
 		var y: float = -bend * (1.0 - float(air.call(p))) + 0.42 * float(lift.call(p))
 		return Vector3(0.0, y, 0.06 * crouch.call(p)))
+	return a
+
+
+## Curva suave por claves [[t, valor], ...] (t en segundos), con tramos en S.
+static func curve(keys: Array, t: float) -> float:
+	if t <= float(keys[0][0]):
+		return float(keys[0][1])
+	for i in range(1, keys.size()):
+		var t1 := float(keys[i][0])
+		if t <= t1:
+			var t0 := float(keys[i - 1][0])
+			var u := smoothstep(0.0, 1.0, (t - t0) / maxf(t1 - t0, 0.0001))
+			return lerpf(float(keys[i - 1][1]), float(keys[i][1]), u)
+	return float(keys[-1][1])
+
+
+## Golpe con la derecha. `shot`: empeine fuerte (paso de apoyo, pierna atrás con el
+## talón al glúteo, latigazo, la pierna sigue hasta arriba, brazo izquierdo abierto
+## para el equilibrio). Si no, pase con el interior: pie girado hacia fuera, poco
+## recorrido y el tobillo firme. Contacto: 0,42 s (tiro) / 0,30 s (pase).
+func _strike(shot: bool) -> Animation:
+	var L := 0.95 if shot else 0.72
+	var a := _blank(L, false)
+	var k := 1.0 if shot else 0.0
+	# Pierna que golpea (derecha): muslo adelante +, rodilla, pie (+ = punta arriba)
+	var thigh := [[0.0, 0.0], [0.14, -10.0], [0.3, -32.0], [0.42, 24.0], [0.58, 62.0], [0.75, 22.0], [0.95, 0.0]] if shot 		else [[0.0, 0.0], [0.17, -24.0], [0.3, 16.0], [0.42, 30.0], [0.58, 8.0], [0.72, 0.0]]
+	var knee := [[0.0, 6.0], [0.14, 30.0], [0.3, 100.0], [0.42, 12.0], [0.58, 18.0], [0.75, 30.0], [0.95, 6.0]] if shot 		else [[0.0, 6.0], [0.17, 48.0], [0.3, 14.0], [0.42, 12.0], [0.58, 22.0], [0.72, 6.0]]
+	var foot := [[0.0, 0.0], [0.3, -25.0], [0.42, -38.0], [0.58, -20.0], [0.95, 0.0]] if shot 		else [[0.0, 0.0], [0.17, 6.0], [0.3, 10.0], [0.5, 6.0], [0.72, 0.0]]
+	var turn_out := [[0.0, 0.0], [0.15, 0.0], [0.26, 42.0], [0.45, 42.0], [0.62, 0.0]] # pase: pie de lado
+	# Pierna de apoyo (izquierda): un paso adelante y flexión al cargar
+	var sthigh := [[0.0, 0.0], [0.18, 18.0], [0.42, 10.0], [0.65, 4.0], [L, 0.0]]
+	var sknee := [[0.0, 6.0], [0.18, 14.0], [0.42, 26.0 if shot else 18.0], [0.65, 14.0], [L, 6.0]]
+	# Tronco: se abre (cadera derecha atrás) y luego gira hacia el golpe
+	var yaw := [[0.0, 0.0], [0.3, -16.0], [0.42, 6.0], [0.6, 20.0], [L, 0.0]] if shot 		else [[0.0, 0.0], [0.2, -8.0], [0.34, 10.0], [0.5, 6.0], [L, 0.0]]
+	var lean := [[0.0, 4.0], [0.3, -2.0], [0.42, 8.0], [0.6, -6.0], [L, 2.0]] if shot 		else [[0.0, 6.0], [0.3, 10.0], [0.5, 8.0], [L, 4.0]]
+	var arm_l := [[0.0, 8.0], [0.3, 55.0], [0.45, 70.0], [0.7, 40.0], [L, 8.0]] if shot 		else [[0.0, 8.0], [0.3, 30.0], [0.5, 26.0], [L, 8.0]]
+	var arm_r := [[0.0, 0.0], [0.3, -30.0], [0.45, 20.0], [0.7, 10.0], [L, 0.0]] if shot 		else [[0.0, 0.0], [0.3, -12.0], [0.5, 6.0], [L, 0.0]]
+	_key_bone(a, "RightUpLeg", func(p: float) -> Quaternion:
+		var t := p * L
+		var out := 0.0 if shot else curve(turn_out, t)
+		return ry(-out) * rx(-curve(thigh, t)))
+	_key_bone(a, "RightLeg", func(p: float) -> Quaternion: return rx(curve(knee, p * L)))
+	_key_bone(a, "RightFoot", func(p: float) -> Quaternion: return rx(-curve(foot, p * L)))
+	_key_bone(a, "LeftUpLeg", func(p: float) -> Quaternion: return rx(-curve(sthigh, p * L)))
+	_key_bone(a, "LeftLeg", func(p: float) -> Quaternion: return rx(curve(sknee, p * L)))
+	_key_bone(a, "LeftFoot", func(p: float) -> Quaternion:
+		var t := p * L
+		return rx(-(-(curve(sthigh, t) - curve(sknee, t)) * 0.85)))
+	_key_bone(a, "Hips", func(p: float) -> Quaternion: return ry(curve(yaw, p * L)) * rz(-4.0 * k * sin(PI * clampf(p * L / 0.7, 0.0, 1.0))))
+	_key_bone(a, "Spine", func(p: float) -> Quaternion: return rx(curve(lean, p * L)) * ry(-curve(yaw, p * L) * 0.4))
+	_key_bone(a, "Spine1", func(p: float) -> Quaternion: return rx(curve(lean, p * L) * 0.5) * ry(-curve(yaw, p * L) * 0.3))
+	# La cabeza mira el balón todo el golpe
+	_key_bone(a, "Head", func(p: float) -> Quaternion: return rx(14.0 + 4.0 * k) * ry(-curve(yaw, p * L) * 0.3))
+	_key_bone(a, "LeftArm", func(p: float) -> Quaternion:
+		var v := curve(arm_l, p * L)
+		return rz(v) * rx(-v * 0.15))
+	_key_bone(a, "LeftForeArm", func(p: float) -> Quaternion: return rx(-(15.0 + curve(arm_l, p * L) * 0.2)))
+	_key_bone(a, "RightArm", func(p: float) -> Quaternion:
+		var v := curve(arm_r, p * L)
+		return rx(-v) * rz(-curve(arm_l, p * L) * 0.35))
+	_key_bone(a, "RightForeArm", func(p: float) -> Quaternion: return rx(-20.0))
+	var drop := _hip_h
+	_key_hips(a, func(p: float) -> Vector3:
+		var t := p * L
+		var th := deg_to_rad(curve(sthigh, t))
+		var sh := deg_to_rad(curve(sknee, t)) - th
+		var bend := drop * 0.5 * ((1.0 - cos(th)) + (1.0 - cos(sh)))
+		# Al tirar se impulsa un poco hacia delante y arriba tras el golpe
+		var hop := 0.03 * k * smoothstep(0.42, 0.55, t) * (1.0 - smoothstep(0.6, 0.85, t))
+		return Vector3(0.0, -bend + hop, curve([[0.0, 0.0], [0.42, 0.07], [0.6, 0.08], [L, 0.0]], t)))
 	return a

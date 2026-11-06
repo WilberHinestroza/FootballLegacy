@@ -326,7 +326,15 @@ func hands_position() -> Vector3:
 		if _hands.x < 0 or _hands.y < 0:
 			return global_position + Vector3.UP
 	var mid := (skeleton.get_bone_global_pose(_hands.x).origin + skeleton.get_bone_global_pose(_hands.y).origin) * 0.5
-	return skeleton.global_transform * mid
+	var anim_hands := skeleton.global_transform * mid
+	# Con los brazos puestos por código (ArmPose), las manos están donde las lleva el
+	# IK: la pose del esqueleto fuera de su actualización es la de la animación, y el
+	# trofeo acababa a la altura de la cadera, dentro del cuerpo.
+	if _arm_pose != null and _arm_pose.influence > 0.01:
+		var ik: Variant = _arm_pose.hands_center()
+		if ik != null:
+			return anim_hands.lerp(global_transform * (ik as Vector3), _arm_pose.influence)
+	return anim_hands
 
 
 func set_faded(value: bool) -> void:

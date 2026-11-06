@@ -10,7 +10,7 @@ extends Node3D
 ## Los rivales, cabizbajos, se van caminando al túnel (algunos se quedan un rato de
 ## rodillas). SoccerMatch la crea en el pitido final y la llama en cada paso de física.
 
-const LIFT_ANIM := "victory_idle" # piernas y tronco; los brazos los pone ArmPose (copa a dos manos)
+const LIFT_ANIM := "idle" # piernas y tronco; los brazos los pone ArmPose (copa a dos manos)
 const PODIUM := Vector3(0.0, 0.0, -6.0)
 const CELEBRATE := ["fist_pump", "fist_pump_2", "clap", "dance_4", "dance_7", "victory_idle"]
 ## Segundos de toda la ceremonia (SoccerMatch espera esto para pasar a la vuelta al túnel).
@@ -87,14 +87,16 @@ func start(m: SoccerMatch, trophy_name: String) -> void:
 	for p: SoccerPlayer in m.teams[1]:
 		if not p.visible:
 			continue
-		var kneel := randf() < 0.35
+		# Los que quedaron delante del podio (en el plano) se van enseguida, sin arrodillarse
+		var in_shot := p.global_position.z > PODIUM.z - 1.0 and absf(p.global_position.x) < 11.0 				and p.global_position.z < PODIUM.z + 14.0
+		var kneel := randf() < 0.35 and not in_shot
 		if kneel:
 			p.play_action("kneel", 1.0, 2.6)
 		p.walk_normal = true
 		p.sad_gait = true
 		p.collision_layer = SoccerMatch.WALK_BODY_LAYER
 		p.collision_mask = SoccerMatch.WALK_BODY_LAYER
-		_rivals.append({"p": p, "delay": randf_range(0.5, 2.0) + (2.8 if kneel else 0.0), "via": false})
+		_rivals.append({"p": p, "delay": (randf_range(0.0, 0.3) if in_shot else randf_range(0.5, 2.0)) + (2.8 if kneel else 0.0), "via": false})
 
 	# Los árbitros también se retiran al vestuario (no cruzan por delante de la cámara)
 	var mouth_z := -SoccerMatch.FIELD_WIDTH * 0.5 - FieldBuilder.SIDE_STANDS
@@ -167,8 +169,8 @@ func _process(delta: float) -> void:
 			CeremonyKit.face(_presenter, _lifter.global_position, delta * 5.0)
 			if _holder == _presenter and _phase_t > 0.5 and _lifter._avatar:
 				_holder = _lifter._avatar
-				_lifter._avatar.pose_arms("hold", 0.3)
-				_presenter.pose_arms("", 0.3)
+				_lifter._avatar.pose_arms("hold", 0.45)
+				_presenter.pose_arms("", 0.5)
 				_presenter.anim.play("clap", 0.3)
 				SoundFx.play("cheer", -3.0)
 			if _phase_t > 1.0:
@@ -250,7 +252,15 @@ func physics_step(delta: float) -> void:
 		if float(d["delay"]) > 0.0:
 			continue
 		var target := Vector3(FieldBuilder.TUNNEL_X + 1.05, 0.0, mouth_z - 6.0)
-		if not bool(d["via"]):
+		# Los que están del lado de la cámara rodean el podio por fuera: si no, cruzan
+		# por delante de la foto de campeones.
+		if not bool(d.get("around", false)):
+			if p.global_position.z < PODIUM.z - 2.0 or absf(p.global_position.x) > 11.0:
+				d["around"] = true
+			else:
+				var sx := signf(p.global_position.x) if absf(p.global_position.x) > 0.5 else 1.0
+				target = Vector3(sx * 13.0, 0.0, p.global_position.z)
+		elif not bool(d["via"]):
 			var via := Vector3(FieldBuilder.TUNNEL_X + 0.9, 0.0, -SoccerMatch.FIELD_WIDTH * 0.5 + 1.2)
 			if SoccerMatch.flat_dist(p.global_position, via) < 2.2:
 				d["via"] = true
@@ -315,7 +325,7 @@ func _place_cup() -> void:
 	if _holder == null or _cup == null:
 		return
 	# Las manos agarran la copa por debajo de la mitad; sube un pelín inclinada hacia el público
-	_cup.global_position = _holder.hands_position() - Vector3.UP * _cup_h * 0.32
+	_cup.global_position = _holder.hands_position() - Vector3.UP * _cup_h * (0.1 if _lifted else 0.32)
 	_cup.global_rotation = Vector3(-0.08 if _lifted else 0.0, _holder.global_rotation.y + sin(_t * 0.7) * 0.12, 0.0)
 
 

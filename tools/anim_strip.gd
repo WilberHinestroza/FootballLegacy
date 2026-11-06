@@ -7,6 +7,7 @@ func _ready() -> void:
 	var an: String = args[0] if args.size() > 0 else "walk"
 	var n: int = int(args[1]) if args.size() > 1 else 8
 	var view: String = args[2] if args.size() > 2 else "lado"
+	var pose: String = args[3] if args.size() > 3 else ""
 	var env := WorldEnvironment.new()
 	env.environment = Environment.new()
 	env.environment.background_mode = Environment.BG_COLOR
@@ -36,10 +37,23 @@ func _ready() -> void:
 	get_viewport().size = Vector2i(360, 480) if false else get_viewport().size
 	av.anim.play(an)
 	av.anim.speed_scale = 0.0
+	var cup: Node3D = null
+	if pose != "":
+		av.pose_arms(pose, 0.01)
+		cup = TrophyBuilder.build("mvp", Color(1.0, 0.82, 0.28))
+		cup.scale = Vector3.ONE * 1.55
+		add_child(cup)
+		av.skeleton.skeleton_updated.connect(func() -> void:
+			cup.global_position = av.hands_position() - Vector3.UP * 0.18
+			cup.global_rotation.y = av.global_rotation.y - PI)
+		for i in 40:
+			await get_tree().process_frame
 	var length := av.anim.current_animation_length
 	var strip: Image = null
 	for i in n:
 		av.anim.seek(length * float(i) / float(n), true)
+		if cup != null:
+			await get_tree().create_timer(0.25).timeout
 		await RenderingServer.frame_post_draw
 		await RenderingServer.frame_post_draw
 		var img := get_viewport().get_texture().get_image()
@@ -51,6 +65,6 @@ func _ready() -> void:
 			strip = Image.create(cw * n, h, false, crop.get_format())
 		strip.blit_rect(crop, Rect2i(0, 0, cw, h), Vector2i(cw * i, 0))
 	strip.resize(strip.get_width() / 2, strip.get_height() / 2)
-	strip.save_png("res://build/anim_%s_%s.png" % [an, view])
+	strip.save_png("res://build/anim_%s_%s%s.png" % [an, view, pose])
 	print("STRIP ", an, " len=", length)
 	get_tree().quit(0)
