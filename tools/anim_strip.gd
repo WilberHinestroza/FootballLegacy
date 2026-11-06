@@ -42,6 +42,13 @@ func _ready() -> void:
 	add_child(cam)
 	cam.position = Vector3(5.5, 1.0, 0.0) if view == "lado" else Vector3(1.6, 1.0, 5.2)
 	cam.look_at(Vector3(0, 0.85, 0))
+	# cerca: primer plano de las piernas (revisar la ropa)
+	# cerca=<altura>: lo mismo apuntando a otra altura (1.0 puños, 1.35 cuello)
+	for a: String in OS.get_cmdline_user_args():
+		var hy := 0.45 if a == "cerca" else (float(a.substr(6)) if a.begins_with("cerca=") else -1.0)
+		if hy > 0.0:
+			cam.position = cam.position * 0.4 + Vector3(0, hy - 0.9, 0)
+			cam.look_at(Vector3(0, hy, 0))
 	cam.make_current()
 	get_viewport().size = Vector2i(360, 480) if false else get_viewport().size
 	av.anim.play(an)

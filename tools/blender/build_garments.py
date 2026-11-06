@@ -22,9 +22,9 @@ WRIST_T = 2.1
 # lo/hi: alturas del tronco que cubre; sleeve: fin de la manga (t) o None; off: separación
 GARMENTS = {
     # Chaqueta, camisa, chándal, abrigo: tronco + brazos hasta la muñeca
-    "top_long": dict(lo=0.355, hi=COLLAR_F - 0.008, sleeve=WRIST_T - 0.04, off=1.7),
+    "top_long": dict(lo=0.355, hi=COLLAR_F - 0.008, sleeve=WRIST_T - 0.04, cuff_t=WRIST_T, off=1.7),
     # Camiseta (equipación, polo): mangas cortas
-    "top_short": dict(lo=0.355, hi=COLLAR_F - 0.008, sleeve=SLEEVE_END + 0.02, off=1.4),
+    "top_short": dict(lo=0.355, hi=COLLAR_F - 0.008, sleeve=SLEEVE_END + 0.02, cuff_t=SLEEVE_END, off=1.4),
     # Pantalón largo: de la cintura al empeine
     "trousers": dict(lo=0.036, hi=0.43, sleeve=None, off=1.0, straight=True),
     # Pantaloneta
@@ -88,15 +88,16 @@ def arm_plane(vals, me, side, t_cut):
     if not near or not before or not after:
         return None
     c = sum(near, Vector()) / len(near)
-    n = (sum(after, Vector()) / len(after) - sum(before, Vector()) / len(before)).normalized()
-    return c, n
+    span = sum(after, Vector()) / len(after) - sum(before, Vector()) / len(before)
+    # n: hacia la mano; L: distancia por unidad de t (para rehacer t junto al corte)
+    return c, span.normalized(), span.length / 0.6
 
 
 def straighten(bm, nrm):
     """Pantalón de vestir: de la rodilla abajo cae recto (no se pega a la pantorrilla)
     y el vuelo de la pantaloneta modelada en el muslo desaparece."""
     for side in (1, -1):
-        legs = [v for v in bm.verts if (v.co.x > 0) == (side > 0) and v.co.y < 0.33 * H]
+        legs = [v for v in bm.verts if (v.co.x > 0) == (side > 0) and v.co.y < 0.38 * H]
         if not legs:
             continue
 
@@ -108,22 +109,28 @@ def straighten(bm, nrm):
             r = sum((Vector((v.co.x, 0, v.co.z)) - c).length for v in vs) / len(vs)
             return c, r
 
-        _, r_top = band(0.32 * H)
+        _, r_top = band(0.36 * H)
         _, r_knee = band(0.16 * H)
         r_low = max(r_knee * 0.96, r_top * 0.8)
-        centers = {}
+
+        def box_center(y, w=2.2):
+            vs = [v for v in legs if abs(v.co.y - y) < w]
+            xs = [v.co.x for v in vs]
+            zs = [v.co.z for v in vs]
+            return Vector(((min(xs) + max(xs)) / 2, 0, (min(zs) + max(zs)) / 2))
+
+        # Eje recto de la pierna (del tobillo al muslo). Con el centro de cada franja, el
+        # labio de la pantaloneta modelada (muchos vértices de un lado) desviaba el eje y
+        # la rodilla quedaba metida hacia dentro.
+        c_lo, c_hi = box_center(0.08 * H), box_center(0.33 * H)
         for v in legs:
             f = v.co.y / H
-            if f >= 0.27 or (f > 0.2 and abs(v.co.x) < 3.5):
-                continue  # la entrepierna se queda como está (si no, se estiran las caras)
-            key = round(v.co.y / 2.0)
-            if key not in centers:
-                centers[key] = band(key * 2.0)[0]
-            c = centers[key]
-            if c is None:
+            if f >= 0.36:
                 continue
+            a_ = max(0.0, min(1.0, (f - 0.08) / 0.25))
+            c = c_lo.lerp(c_hi, a_) if f <= 0.33 else c_hi
             # Perfil: del muslo (0.32) baja suave hasta la rodilla y luego recto
-            k = max(0.0, min(1.0, (f - 0.16) / 0.16))
+            k = max(0.0, min(1.0, (f - 0.16) / 0.2))
             k = k * k * (3 - 2 * k)
             target = r_low + (r_top - r_low) * k
             # Un poco de vuelo en el bajo, sobre el zapato
@@ -134,10 +141,48 @@ def straighten(bm, nrm):
                 continue
             nd = d.normalized()
             # Mezcla con la forma del cuerpo cerca del muslo (sin escalón)
-            w = 1.0 - max(0.0, min(1.0, (f - 0.21) / 0.06))
-            r = d.length + (max(target, d.length) - d.length) * w
+            # Por encima del borde de la pantaloneta modelada manda el perfil (no el
+            # bulto del borde); cerca de la cadera, mezcla con la forma del cuerpo
+            w = 1.0 - max(0.0, min(1.0, (f - 0.3) / 0.06))
+            # La entrepierna se queda casi como está (si no, se estiran las caras), pero
+            # en degradado: un corte seco dejaba un pliegue en la cara interna del muslo
+            inner = 1.0 - max(0.0, min(1.0, (abs(v.co.x) - 1.5) / 4.0))
+            w *= 1.0 - inner * max(0.0, min(1.0, (f - 0.25) / 0.06))
+            r = d.length + (target - d.length) * w
             v.co.x = c.x + nd.x * r
             v.co.z = c.z + nd.z * r
+
+
+def rebridge_hem(bm):
+    """El borde de la pantaloneta está modelado en la pierna (un labio doblado con muchos
+    vértices y una costura abierta). En el pantalón largo esa franja se borra y se rehace
+    con caras nuevas entre el muslo y la rodilla: tubo continuo, sin cresta ni raya.
+    No crea vértices, así que los pesos de hueso no cambian."""
+    lo, hi = 0.215 * H, 0.265 * H
+    kill = [f for f in bm.faces if any(lo < v.co.y < hi for v in f.verts)
+            and all(v.co.y < 0.33 * H for v in f.verts)]
+    bmesh.ops.delete(bm, geom=kill, context="FACES")
+    bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context="VERTS")
+    uvs = [bm.loops.layers.uv[i] for i in range(len(bm.loops.layers.uv))]
+    cols = [bm.loops.layers.color[i] for i in range(len(bm.loops.layers.color))]
+    for side in (1, -1):
+        edges = [e for e in bm.edges if e.is_boundary and 0.15 * H < e.verts[0].co.y < 0.33 * H
+                 and (e.verts[0].co.x > 0) == (side > 0)]
+        if not edges:
+            continue
+        res = bmesh.ops.bridge_loops(bm, edges=edges)
+        # Atributos por esquina de las caras nuevas: los de la propia esquina en otra cara
+        for f in res["faces"]:
+            f.smooth = True
+            for l in f.loops:
+                others = [o for o in l.vert.link_loops if o.face not in res["faces"]]
+                if not others:
+                    continue
+                for lay in uvs:
+                    l[lay].uv = sum((o[lay].uv for o in others), others[0][lay].uv * 0) / len(others)
+                for lay in cols:
+                    l[lay] = sum((Vector(o[lay]) for o in others), Vector((0, 0, 0, 0))) / len(others)
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
 
 
 def build(name, spec):
@@ -156,11 +201,16 @@ def build(name, spec):
                 planes.append((side, pl))
     bm = bmesh.new()
     bm.from_mesh(me)
+    # La malla del cuerpo trae vértices duplicados en las costuras (sobre todo el borde de
+    # la pantaloneta modelada, f ~0.24): sin soldarlos la prenda queda abierta ahí y cada
+    # lado se infla por su cuenta, dejando un escalón en el muslo. Las UV y los colores
+    # son por esquina, así que no se pierden.
+    bmesh.ops.remove_doubles(bm, verts=bm.verts[:], dist=0.05)
     # Cortes limpios: horizontales en el tronco (y = f * H) y perpendiculares en el brazo
     for y in (spec["lo"] * H, spec["hi"] * H):
         geom = bm.verts[:] + bm.edges[:] + bm.faces[:]
         bmesh.ops.bisect_plane(bm, geom=geom, plane_co=Vector((0, y, 0)), plane_no=Vector((0, 1, 0)))
-    for side, (c, n) in planes:
+    for side, (c, n, _L) in planes:
         faces = [f for f in bm.faces if all((v.co.x > 0) == (side > 0) for v in f.verts)]
         edges = list({e for f in faces for e in f.edges})
         verts = list({v for f in faces for v in f.verts})
@@ -186,6 +236,26 @@ def build(name, spec):
             kill.append(face)
     bmesh.ops.delete(bm, geom=kill, context="FACES")
     bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context="VERTS")
+    if spec.get("straight"):
+        rebridge_hem(bm)
+    # Puño limpio: junto al corte, t sale de la distancia exacta al plano (la malla tiene
+    # pocos polígonos y la t interpolada hacía un puño fino y en zigzag)
+    if planes:
+        s_end = spec["cuff_t"]
+        uvl2 = bm.loops.layers.uv["UVMap.001"]
+        cl = bm.loops.layers.color.get("Color")
+        for v in bm.verts:
+            for side, (c, n, L) in planes:
+                if (v.co.x > 0) != (side > 0) or L < 1e-4:
+                    continue
+                d = -(v.co - c).dot(n) / L  # en unidades de t, positivo hacia el hombro
+                if d < -0.01 or d > 0.25:
+                    continue
+                for l in v.link_loops:
+                    if cl and l[cl][0] < 0.5:
+                        continue
+                    t_new = s_end - max(0.0, d)
+                    l[uvl2].uv[1] = 1.0 - (t_new + 0.5) / 3.0
     bm.normal_update()
     # Normales suaves (las del cuerpo tienen aristas duras): media de las caras vecinas
     nrm = {}
@@ -197,20 +267,48 @@ def build(name, spec):
     if spec.get("straight"):
         straighten(bm, nrm)
         # Rodilla: suaviza la unión muslo / caída recta (quedaba un anillo marcado)
-        band = [v for v in bm.verts if 0.09 * H < v.co.y < 0.29 * H and not v.is_boundary]
-        for _ in range(6):
-            bmesh.ops.smooth_vert(bm, verts=band, factor=0.5, use_axis_x=True, use_axis_y=True, use_axis_z=True)
+        band = [v for v in bm.verts if 0.06 * H < v.co.y < 0.38 * H and not v.is_boundary]
+        # Solo en horizontal: quita anillos y escalones sin acortar la pernera
+        for _ in range(4):
+            bmesh.ops.smooth_vert(bm, verts=band, factor=0.5, use_axis_x=True, use_axis_y=False, use_axis_z=True)
+        bmesh.ops.dissolve_degenerate(bm, dist=0.15, edges=bm.edges[:])
+        # Pesos de hueso suaves en el muslo: los del labio soldado venían de la
+        # pantaloneta (todo muslo) y los de justo debajo ya seguían a la espinilla; con la
+        # rodilla un poco doblada la tela se cortaba ahí en un escalón
+        dl = bm.verts.layers.deform.active
+        if dl is not None:
+            zone = [v for v in bm.verts if 0.17 * H < v.co.y < 0.31 * H and not v.is_boundary]
+            for _ in range(8):
+                new = {}
+                for v in zone:
+                    acc = dict(v[dl])
+                    nb = [e.other_vert(v) for e in v.link_edges]
+                    for u in nb:
+                        for g, wt in u[dl].items():
+                            acc[g] = acc.get(g, 0.0) + wt
+                    tot = sum(acc.values())
+                    new[v] = {g: wt / tot for g, wt in acc.items() if wt / tot > 0.002} if tot > 0 else {}
+                for v, ws in new.items():
+                    dv = v[dl]
+                    dv.clear()
+                    for g, wt in ws.items():
+                        dv[g] = wt
+        bmesh.ops.remove_doubles(bm, verts=bm.verts[:], dist=0.15)
         bm.normal_update()
-        for v in band:
+        for v in bm.verts:
             n = Vector()
             for fc in v.link_faces:
                 n += fc.normal * fc.calc_area()
-            if n.length > 1e-6:
-                nrm[v] = n.normalized()
+            nrm[v] = n.normalized() if n.length > 1e-6 else v.normal.copy()
     for v in bm.verts:
         v.co += nrm[v] * spec["off"]
     bm.to_mesh(me)
     bm.free()
+    # Sombreado suave: fuera las normales a medida y las aristas duras heredadas del
+    # cuerpo (el borde de la pantaloneta modelada y la rodilla dejaban una raya de luz)
+    for attr in ("custom_normal", "sharp_edge", "sharp_face"):
+        if attr in me.attributes:
+            me.attributes.remove(me.attributes[attr])
     me.update()
     # Grosor en el borde (dobladillo, puños, cuello): sin él se ve el hueco de la tela.
     # Va antes del armature para que el grosor siga la pose.
