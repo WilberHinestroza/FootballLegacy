@@ -8,6 +8,7 @@ extends SkeletonModifier3D
 ##   "flag"  - bandera arriba con la derecha, agitándola (juez de línea)
 ##   "card"  - tarjeta en alto con la derecha, brazo estirado (árbitro)
 ##   "hold"  - algo delante del pecho con las dos manos (presentar el trofeo)
+##   "shake" - la derecha al frente para darse la mano (técnicos en el túnel)
 ## La entrada y la salida son suaves con `influence` (PlayerAvatar.pose_arms lo gestiona).
 
 var mode := "lift"
@@ -91,6 +92,10 @@ func _targets() -> Array:
 			return [null, Vector3(-_shoulder_x - 0.08 * L, y4, 0.18 * L)]
 		"hold":
 			return [Vector3(0.14 * L, top - 0.45 * L, 0.42 * L), Vector3(-0.14 * L, top - 0.45 * L, 0.42 * L)]
+		"shake":
+			# Apretón de manos: la derecha al frente, hacia el centro, sacudiendo un poco
+			var pump2 := sin(t * 9.0) * 0.035 * L * smoothstep(0.3, 0.6, t)
+			return [null, Vector3(-0.03 * L, top - 1.0 * L + pump2, 0.78 * L)]
 	return [null, null]
 
 

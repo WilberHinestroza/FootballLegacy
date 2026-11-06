@@ -210,6 +210,8 @@ func _physics_process(delta: float) -> void:
 		# frente el cuerpo acompaña casi al instante. Evita el "teletransporte"
 		# de orientación al cambiar de dirección (P0-11 / P1-71).
 		var base_turn := 8.0 if _jockey else 12.0
+		if walk_normal:
+			base_turn = 4.5 # caminando (túnel): el cuerpo gira con calma, no como un robot
 		var align_turn := clampf((facing.dot(face_dir) + 1.0) * 0.5, 0.0, 1.0)
 		var turn_rate := base_turn * lerpf(0.6, 1.0, align_turn)
 		facing = _turn_toward(face_dir, delta, turn_rate)
@@ -281,6 +283,13 @@ func turn_speed_factor(align: float) -> float:
 ## MOVE_BOOST_SPEED_MAX con el boost lleno.
 func move_boost_speed() -> float:
 	return lerpf(1.0, MOVE_BOOST_SPEED_MAX, clampf(move_boost, 0.0, 1.0))
+
+
+## Gira de a poco hacia `dir` (parado): para encarar la cámara o la grada sin
+## pegar el giro de golpe en un frame.
+func ease_facing(dir: Vector3, delta: float, rate := 3.5) -> void:
+	facing = _turn_toward(dir, delta, rate)
+	rotation.y = atan2(facing.x, facing.z)
 
 
 ## Gira `facing` hacia `target_dir` como máximo `rate` radianes por segundo.

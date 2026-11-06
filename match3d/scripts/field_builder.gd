@@ -456,11 +456,19 @@ static func _stands(root: Node3D) -> void:
 			led.emission_enabled = true
 			led.emission = home_color
 			led.emission_energy_multiplier = 1.6
-			var strip := MeshInstance3D.new()
-			strip.mesh = box(Vector3(side_len, 0.22, 0.06))
-			strip.material_override = led
-			strip.position = Vector3(0.0, 0.62, s * (W * 0.5 + SIDE_STANDS - ROW_DEPTH * 0.5 - 0.04))
-			root.add_child(strip)
+			# En la grada de los banquillos se corta en la boca del túnel: entera
+			# cruzaba el pasillo como una franja de color a la altura de la cintura.
+			var spans: Array = [[-side_len * 0.5, side_len * 0.5]]
+			if s < 0.0:
+				spans = [[-side_len * 0.5, TUNNEL_X - TUNNEL_GAP], [TUNNEL_X + TUNNEL_GAP, side_len * 0.5]]
+			for sp: Array in spans:
+				var a: float = sp[0]
+				var b: float = sp[1]
+				var strip := MeshInstance3D.new()
+				strip.mesh = box(Vector3(b - a, 0.22, 0.06))
+				strip.material_override = led
+				strip.position = Vector3((a + b) * 0.5, 0.62, s * (W * 0.5 + SIDE_STANDS - ROW_DEPTH * 0.5 - 0.04))
+				root.add_child(strip)
 		if stars < 2 or (stars == 2 and s > 0.0):
 			continue
 		var roof_col := Color(0.82, 0.84, 0.88) if stars < 4 else home_color.lerp(Color(0.85, 0.87, 0.9), 0.55)
@@ -1134,7 +1142,13 @@ static func flares(root: Node, end_sign: float, color: Color, seconds := 6.0) ->
 static func _scoreboard(root: Node3D) -> void:
 	var L := SoccerMatch.FIELD_LENGTH
 	var x := -(L * 0.5 + END_STANDS + END_ROWS * ROW_DEPTH) + 0.6
-	var y := 0.9 + END_ROWS * ROW_RISE + 2.5 + 4.6
+	# Por encima del techo de la grada de fondo (eroof_h en _stands + espesor e
+	# inclinación) con margen para la perspectiva de las cámaras bajas: antes el
+	# borde de abajo quedaba detrás del techo y se cortaba el minuto.
+	var roof_top := 0.9 + END_ROWS * ROW_RISE + 3.5 + 1.0
+	var y := roof_top + 3.8 + 1.4
+	var wall_top := 0.9 + END_ROWS * ROW_RISE + 2.5 # muro trasero de la grada (stars >= 3)
+	var leg_len := y - 3.8 - wall_top
 	var board := Node3D.new()
 	board.name = "Scoreboard"
 	board.position = Vector3(x, y, 0.0)
@@ -1153,7 +1167,7 @@ static func _scoreboard(root: Node3D) -> void:
 	screen.position = Vector3(0.0, 0.0, 0.0)
 	board.add_child(screen)
 	for leg: float in [-6.5, 6.5]:
-		add_mesh(board, box(Vector3(0.5, 3.4, 0.5)), Vector3(leg, -5.4, -0.4), Color(0.3, 0.32, 0.36))
+		add_mesh(board, box(Vector3(0.5, leg_len, 0.5)), Vector3(leg, -3.8 - leg_len * 0.5, -0.4), Color(0.3, 0.32, 0.36))
 	var label := Label3D.new()
 	label.name = "Text"
 	label.font_size = 200

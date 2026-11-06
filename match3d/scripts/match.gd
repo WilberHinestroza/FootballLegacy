@@ -904,26 +904,33 @@ func _start_walkout() -> void:
 			var p: SoccerPlayer = teams[t][i]
 			# Dos filas dentro del hueco del túnel, con espacio entre jugadores:
 			# antes los 22 se apilaban en sólo dos puntos y parecían teletransportarse.
-			var file_x := -1.05 if t == 0 else 1.05
-			# Cola comprimida dentro de los 4 m reales del pasillo; evitar que
-			# los últimos jugadores empiecen detrás de la pared del vestuario.
-			var row_x := float((i % 3) - 1) * 0.22
-			var queue_z := tunnel_mouth_z - 0.7 - minf(float(i) * 0.25, 2.5)
-			p.reset_to(Vector3(FieldBuilder.TUNNEL_X + file_x + row_x, 0.0, queue_z), Vector3.BACK)
+			# Salen por la puerta iluminada del vestuario, al fondo del pasillo: se
+			# les ve cruzar la luz y recorrer el túnel, no "aparecer" en la boca.
+			p.reset_to(_door_spot(t), Vector3.BACK)
 			p.visible = false
 			p.walk_normal = true
 			# Esperan en el túnel sin chocar entre ellos
 			_walk_layers[p] = [p.collision_layer, p.collision_mask]
 			p.collision_layer = 0
 			p.collision_mask = 0
-			_walk_delay[p] = 1.2 + i * 0.5 + _tifo_shot
+			_walk_delay[p] = WALK_TEAMS + i * WALK_GAP + _tifo_shot
 			_walk_via[p] = false
 	ball.reset_to(Vector3(0.0, SoccerBall.RADIUS, 0.0))
 	ball.visible = false
+	# Detrás de los titulares salen el banquillo y los técnicos, caminando a su sitio
+	staff.parade_in(WALK_TEAMS + PLAYERS_PER_TEAM * WALK_GAP + _tifo_shot + 0.8)
 	var refs: Array[Node3D] = staff.refs
 	staff.ref_targets = [Vector3(0.0, 0.0, -1.2), Vector3(-0.9, 0.0, -1.2), Vector3(0.9, 0.0, -1.2)]
+	# Los árbitros abren la salida (el central delante) y los equipos van detrás:
+	# así la fila del centro del campo queda ordenada, con ellos en medio.
+	staff.ref_delay = []
+	staff.ref_hide_z = -INF
+	staff.ref_walk_speed = SoccerPlayer.SPEED * WALK_PACE # al paso de los jugadores
 	for i in refs.size():
-		refs[i].position = exit + Vector3((i - 1) * 0.8, 0.0, 0.0)
+		refs[i].position = Vector3(FieldBuilder.TUNNEL_X + (i - 1) * 0.45, 0.0, tunnel_mouth_z - 3.6)
+		refs[i].rotation.y = 0.0
+		refs[i].visible = false
+		staff.ref_delay.append(WALK_REFS + _tifo_shot + (0.0 if i == 0 else 0.3))
 	# Primero recto hasta la banda (como los jugadores), luego a su sitio
 	staff.ref_via = []
 	for i in refs.size():
@@ -931,7 +938,8 @@ func _start_walkout() -> void:
 	_cam_pos = exit + Vector3(6.0, 3.0, 14.0)
 	_cam_look = exit
 	_hud.set_sim_visible(false)
-	_hud.show_walkout_intro(_walkout_intro_data())
+	# Las alineaciones salen con la fila formada: no tapan a los que salen del túnel
+	_hud.show_walkout_intro(_walkout_intro_data(), 0.4, false)
 	# La tribuna habla de ti (trapos con tu nombre o silbidos): la frase va en la
 	# línea de abajo, que no choca con el cartel ni las alineaciones de la tele.
 	var crowd_line := String(FieldBuilder.crowd.get("line", ""))
@@ -943,6 +951,12 @@ func _start_walkout() -> void:
 	FieldBuilder.flares(self, 1.0, _kit_shirt1, 9.0)
 	if _tifo_shot <= 0.0: # con tifo, el humo del fondo local sale después del plano
 		FieldBuilder.flares(self, -1.0, profile.shirt, 9.0)
+
+
+## Punto de salida de cada equipo: justo tras la puerta del vestuario, al fondo del pasillo.
+func _door_spot(team: int) -> Vector3:
+	var mouth_z := -FIELD_WIDTH * 0.5 - FieldBuilder.SIDE_STANDS
+	return Vector3(FieldBuilder.TUNNEL_X + (-0.45 if team == 0 else 0.45), 0.0, mouth_z - 3.6)
 
 
 ## Datos del cartel y las alineaciones que la tele enseña mientras salen los equipos.
@@ -997,28 +1011,37 @@ func _update_walkout(delta: float) -> void:
 		if _walk_t < float(_walk_delay[p]):
 			all_in = false
 			continue
-		p.visible = true
+		if not p.visible:
+			# Cruza la puerta: desde aquí choca con los demás (no se atraviesan) pero
+			# no con los muros del estadio, que cierran la grada donde está el túnel.
+			p.visible = true
+			p.collision_layer = WALK_BODY_LAYER
+			p.collision_mask = WALK_BODY_LAYER
 		# Primero recto hasta la banda (las dos filas juntas), luego a su sitio en la fila
 		var target := _walk_slot(p)
 		if not bool(_walk_via[p]):
 			target = Vector3(FieldBuilder.TUNNEL_X + (-0.8 if p.team == 0 else 0.8), 0.0, -FIELD_WIDTH * 0.5 + 3.0)
-			if flat_dist(p.global_position, target) < 0.6:
+			# Cambia de rumbo antes de pisar el punto: abre la curva hacia su sitio
+			# en vez de clavar un giro de 90° encima de él. Sin choques hasta el
+			# saque: con la física puesta, en la fila apretada se empujaban.
+			if flat_dist(p.global_position, target) < 2.2:
 				_walk_via[p] = true
-				_walk_release(p) # ya en el césped: vuelve a chocar con los demás
 		AiBrain.move_to(p, target, 0.25)
-		p.move_input *= 0.45
+		p.move_input *= _walk_pace(p)
+		_keep_spacing(p)
 		p.sprinting = false
 		if bool(_walk_via[p]) and flat_dist(p.global_position, target) < 0.3:
 			p.move_input = Vector3.ZERO
-			p.facing = Vector3.BACK
+			p.ease_facing(Vector3.BACK, delta) # se da la vuelta hacia la cámara, sin pegar el giro
 		else:
 			all_in = false
 	# Chorros de CO2 a los lados de la manga cuando asoman los primeros
-	var first_out := 1.2 + _tifo_shot
+	var first_out := WALK_REFS + 1.1 + _tifo_shot # los árbitros asoman a la boca
 	if _walk_t - delta < first_out and _walk_t >= first_out:
 		_tunnel_jets()
 	if all_in:
 		if _walk_done_t == 0.0:
+			_hud.show_walkout_lineups(WALK_LINE_PAN - 1.0)
 			# Ya en fila: aplauden a la grada (cada uno a su ritmo) y saludan con la mano
 			for p: SoccerPlayer in players:
 				var d := randf_range(0.0, 1.4)
@@ -1031,8 +1054,72 @@ func _update_walkout(delta: float) -> void:
 			_end_walkout()
 
 
+## Ya dentro del vestuario: invisible y sin cuerpo. Antes seguía siendo sólido y
+## taponaba el pasillo: los de atrás se quedaban apretados empujando en la manga.
+func _vanish(p: SoccerPlayer) -> void:
+	p.move_input = Vector3.ZERO
+	p.sprinting = false
+	p.visible = false
+	p.collision_layer = 0
+	p.collision_mask = 0
+
+
+## Paso de la procesión: todos igual (sin el extra del atributo de velocidad), al
+## mismo ritmo que los árbitros; si no, los rápidos los alcanzaban y se mezclaban.
+func _walk_pace(p: SoccerPlayer) -> float:
+	return WALK_PACE / lerpf(0.86, 1.14, p.stat("speed"))
+
+
+## Andando en grupo (túnel): si alguien va justo delante, afloja el paso; si hay
+## alguien pegado, se abre un poco hacia un lado. Así no se atraviesan ni se empujan.
+func _keep_spacing(p: SoccerPlayer) -> void:
+	var mv := p.move_input
+	if mv.length() < 0.05:
+		return
+	var dir := mv.normalized()
+	var slow := 1.0
+	var push := Vector3.ZERO
+	for o: SoccerPlayer in players:
+		if o == p or not o.visible:
+			continue
+		var off := flat(p.global_position - o.global_position)
+		var d := off.length()
+		if d < 0.001 or d > 1.2:
+			continue
+		var ahead := (-off / d).dot(dir)
+		if ahead > 0.55:
+			slow = minf(slow, clampf((d - 0.55) / 0.6, 0.0, 1.0))
+		push += off / d * (1.2 - d) * 0.9
+	var side := push - dir * push.dot(dir) # solo de lado: no lo frena ni lo acelera
+	p.move_input = (mv * maxf(slow, 0.12) + side * mv.length()).limit_length(mv.length())
+
+
 const WALK_LINE_PAN := 5.5 # segundos de travelling a lo largo de la fila formada
-const TUNNEL_SHOT := 4.2    # segundos de plano desde el césped mirando a la boca del túnel
+const WALK_BODY_LAYER := 2   # capa de los jugadores (ver reset de la segunda parte)
+const WALK_REFS := 1.0      # los árbitros cruzan la puerta del vestuario
+const WALK_TEAMS := 3.0     # y detrás de ellos (unos metros), los equipos
+const WALK_GAP := 0.36      # segundos entre un jugador y el siguiente al salir del túnel
+const WALK_PACE := 0.6      # paso de la salida (fracción de la carrera)
+const OUTRO_PACE := 0.38    # paso de la vuelta al túnel (caminando, no al trote)
+const TUNNEL_SHOT := 5.6    # segundos de plano desde el césped mirando a la boca del túnel
+
+
+## Textura de bocanada de humo: círculo blanco que se desvanece hacia el borde.
+static var _puff_tex: Texture2D = null
+static func _soft_puff() -> Texture2D:
+	if _puff_tex == null:
+		var g := Gradient.new()
+		g.set_color(0, Color(1, 1, 1, 1))
+		g.set_color(1, Color(1, 1, 1, 0))
+		var t := GradientTexture2D.new()
+		t.gradient = g
+		t.fill = GradientTexture2D.FILL_RADIAL
+		t.fill_from = Vector2(0.5, 0.5)
+		t.fill_to = Vector2(0.5, 0.0)
+		t.width = 64
+		t.height = 64
+		_puff_tex = t
+	return _puff_tex
 
 
 ## Dos columnas de humo blanco (CO2) a los lados de la salida de la manga.
@@ -1043,8 +1130,15 @@ func _tunnel_jets() -> void:
 	smoke.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	smoke.vertex_color_use_as_albedo = true
 	smoke.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+	# Bocanada redonda y difusa: sin textura cada partícula era un cuadrado blanco
+	# (los "bloques" que tapaban la salida del túnel).
+	smoke.albedo_texture = _soft_puff()
+	# Aditivo: el humo solo aclara. Con mezcla normal algunas bocanadas pegadas a
+	# la cámara salían como manchas negras.
+	smoke.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	smoke.albedo_color = Color(0.85, 0.85, 0.85)
 	var quad := QuadMesh.new()
-	quad.size = Vector2(0.9, 0.9)
+	quad.size = Vector2(1.2, 1.2)
 	quad.material = smoke
 	var fade := Gradient.new()
 	fade.set_color(0, Color(1, 1, 1, 0.75))
@@ -1093,11 +1187,18 @@ func _end_walkout() -> void:
 	if state != State.WALKOUT:
 		return
 	_hud.hide_walkout_intro()
+	# Si se saltó la salida (o empiezas en el banco y va el plano tuyo sentado), el
+	# banquillo ya está en su sitio; si no, los últimos terminan de llegar con el balón en juego.
+	if _walk_done_t <= 0.0 or _bench_until > 0.0:
+		staff.parade_finish()
 	for p in players:
 		_walk_release(p)
 		p.walk_normal = false
 	ball.visible = true
 	staff.ref_targets = []
+	staff.ref_delay = []
+	for r: Node3D in staff.refs:
+		r.visible = true # si se saltó la salida con alguno aún en el vestuario
 	var tw := create_tween() # el tifo se recoge al empezar
 	tw.tween_method(func(v: float) -> void: FieldBuilder.set_tifo(self, v), 1.0, 0.0, 1.5)
 	FieldBuilder.set_crowd_excitement(self, 0.0)
@@ -1535,27 +1636,58 @@ func _start_outro() -> void:
 		_trophy.queue_free()
 		_trophy = null
 	_camera.make_current()
+	_outro_via.clear()
+	_outro_pace.clear()
+	# Entran primero los que están más cerca del túnel (antes iban por dorsal y se
+	# cruzaban todos); antes de irse aplauden a la grada.
+	var mouth_v := Vector3(FieldBuilder.TUNNEL_X, 0.0, -FIELD_WIDTH * 0.5)
+	var order: Array[SoccerPlayer] = []
 	for p: SoccerPlayer in players:
-		p.set_physics_process(true)
-		if not p.visible:
-			continue
+		if p.visible:
+			order.append(p)
+	order.sort_custom(func(a: SoccerPlayer, b: SoccerPlayer) -> bool:
+		return flat_dist(a.global_position, mouth_v) < flat_dist(b.global_position, mouth_v))
+	var deep := FieldBuilder.TUNNEL_ROWS * FieldBuilder.ROW_DEPTH + 1.5
+	for rank in order.size():
+		var p: SoccerPlayer = order[rank]
 		var col := -1.05 if p.team == 0 else 1.05
+		# Destino al fondo del pasillo: desaparecen ya dentro, sin "pop" en la boca
 		_outro_target[p] = Vector3(FieldBuilder.TUNNEL_X + col, 0.0,
-				-FIELD_WIDTH * 0.5 - FieldBuilder.SIDE_STANDS - 0.7 - float(p.index) * 0.72)
-		_outro_delay[p] = 0.35 + float(p.index) * 0.11
+				-FIELD_WIDTH * 0.5 - FieldBuilder.SIDE_STANDS - deep)
+		_outro_via[p] = false
+		# Se van de a poco, caminando: los más cercanos primero pero con huecos
+		# irregulares, y unos cuantos se quedan un rato aplaudiendo a la grada.
+		var lingers := randf() < 0.35
+		_outro_delay[p] = 1.2 + float(rank) * 0.45 + randf_range(0.0, 0.9) + (1.6 if lingers else 0.0)
+		_outro_pace[p] = OUTRO_PACE * randf_range(0.85, 1.15)
+		var clap_d := randf_range(0.0, 0.5) + (float(_outro_delay[p]) - 1.8 if lingers else 0.0)
+		get_tree().create_timer(maxf(clap_d, 0.0), false).timeout.connect(func() -> void:
+			if is_instance_valid(p) and state == State.OUTRO:
+				p.play_action("clap", 1.0, 1.0)) # el giro a la grada lo hace _update_outro, de a poco
 		p.stun_timer = 0.0
 		p.walk_normal = true
-		p.collision_layer = 0
-		p.collision_mask = 0
+		# Entre ellos sí chocan (no se atraviesan en la manga); los muros no, para
+		# poder meterse en el túnel.
+		p.collision_layer = WALK_BODY_LAYER
+		p.collision_mask = WALK_BODY_LAYER
 	ball.freeze = true
 	ball.owner_player = null
 	ball.visible = false
 	ball.global_position = Vector3(FieldBuilder.TUNNEL_X, 0.0, -FIELD_WIDTH * 0.5 - 12.0)
 	var mouth_z := -FIELD_WIDTH * 0.5 - FieldBuilder.SIDE_STANDS
+	# El banquillo y los técnicos también se van al vestuario, de a poco
+	staff.parade_out(0.8)
+	# Los árbitros se van juntos al vestuario: hasta el fondo del pasillo y ahí
+	# desaparecen tras la puerta (antes se quedaban plantados en la boca).
+	staff.ref_delay = []
+	staff.ref_via = []
+	for i in staff.refs.size():
+		staff.ref_via.append(Vector3(FieldBuilder.TUNNEL_X + (i - 1) * 0.7, 0.0, -FIELD_WIDTH * 0.5 + 1.5))
+	staff.ref_hide_z = mouth_z - 3.4
 	staff.ref_targets = [
-		Vector3(FieldBuilder.TUNNEL_X, 0.0, mouth_z - 0.7),
-		Vector3(FieldBuilder.TUNNEL_X - 0.9, 0.0, mouth_z - 0.7),
-		Vector3(FieldBuilder.TUNNEL_X + 0.9, 0.0, mouth_z - 0.7),
+		Vector3(FieldBuilder.TUNNEL_X, 0.0, mouth_z - 4.2),
+		Vector3(FieldBuilder.TUNNEL_X - 0.4, 0.0, mouth_z - 4.2),
+		Vector3(FieldBuilder.TUNNEL_X + 0.4, 0.0, mouth_z - 4.2),
 	]
 
 
@@ -1569,24 +1701,33 @@ func _update_outro(delta: float) -> void:
 		if _outro_t < float(_outro_delay.get(p, 0.0)):
 			p.move_input = Vector3.ZERO
 			p.sprinting = false
+			# Mientras esperan, se van girando hacia la grada del túnel (a aplaudir)
+			if _outro_t > 0.6:
+				p.ease_facing(Vector3.FORWARD, delta, 2.5)
 			pending += 1
 			continue
 		var target: Vector3 = _outro_target[p]
+		# Primero a la banda frente a la manga (en fila, por equipo), luego adentro
+		if not bool(_outro_via.get(p, true)):
+			var via := Vector3(target.x * 0.7 + FieldBuilder.TUNNEL_X * 0.3, 0.0, -FIELD_WIDTH * 0.5 + 1.2)
+			if flat_dist(p.global_position, via) < 2.2: # curva abierta hacia la manga
+				_outro_via[p] = true
+			else:
+				target = via
 		var tunnel_depth := FieldBuilder.TUNNEL_ROWS * FieldBuilder.ROW_DEPTH - 0.35
 		if mouth_z - p.global_position.z >= tunnel_depth:
-			p.move_input = Vector3.ZERO
-			p.sprinting = false
-			p.visible = false
+			_vanish(p)
 			continue
 		if flat_dist(p.global_position, target) < 0.9:
-			p.move_input = Vector3.ZERO
-			p.sprinting = false
-			p.visible = false # desaparece al entrar al túnel, no al acabar el plano
+			_vanish(p) # desaparece al entrar al túnel, no al acabar el plano
 			continue
 		AiBrain.move_to(p, target, 0.3, false)
-		p.move_input *= 0.4
+		# Desde lejos vienen trotando y el último tramo, ya cerca de la manga, caminando
+		var far := clampf((flat_dist(p.global_position, Vector3(FieldBuilder.TUNNEL_X, 0.0, mouth_z)) - 14.0) / 22.0, 0.0, 1.0)
+		p.move_input *= float(_outro_pace.get(p, OUTRO_PACE)) * lerpf(1.0, 1.6, far) * _walk_pace(p) / WALK_PACE
+		_keep_spacing(p)
 		pending += 1
-	if pending == 0 or _outro_t > 22.0:
+	if pending == 0 or _outro_t > 34.0:
 		_finish_outro()
 
 
@@ -1647,6 +1788,8 @@ var _tactic_rates := [1.0, 1.0]
 var _outro_t := 0.0
 var _outro_delay: Dictionary = {}
 var _outro_target: Dictionary = {}
+var _outro_via: Dictionary = {} # punto en la banda, frente a la manga (ya pasó = true)
+var _outro_pace: Dictionary = {} # paso de cada uno: caminan, cada cual a su ritmo
 var _outro_sent := false
 var _finished_sent := false
 var _hud_key := ""
@@ -4887,11 +5030,14 @@ func _update_camera(delta: float) -> void:
 		return
 	if state == State.OUTRO:
 		var mouth := Vector3(FieldBuilder.TUNNEL_X, 0.0, -FIELD_WIDTH * 0.5 - FieldBuilder.SIDE_STANDS)
-		var push := clampf(_outro_t / 9.0, 0.0, 1.0)
+		var push := clampf(_outro_t / 16.0, 0.0, 1.0)
 		# Cámara en el césped mirando hacia la boca: desde el plano anterior,
 		# los jugadores venían por detrás de cámara y casi no se veía la salida.
-		target_pos = mouth + Vector3(lerpf(10.0, 6.0, push), lerpf(4.0, 2.5, push), lerpf(26.0, 16.0, push))
-		target_look = mouth + Vector3(0.0, lerpf(1.4, 1.0, push), 0.0)
+		# Alta y abierta al principio (se ve a todos yendo al túnel, sin que nadie
+		# pase por delante de la lente); después baja y se acerca a la boca.
+		var e := smoothstep(0.0, 1.0, push)
+		target_pos = mouth + Vector3(lerpf(15.0, 7.5, e), lerpf(10.0, 3.6, e), lerpf(34.0, 13.0, e))
+		target_look = mouth + Vector3(0.0, lerpf(0.0, 1.0, e), lerpf(14.0, 0.0, e))
 		var ko := minf(1.0, 1.8 * delta)
 		_cam_pos = _cam_pos.lerp(target_pos, ko)
 		_cam_look = _cam_look.lerp(target_look, ko)
@@ -4919,7 +5065,7 @@ func _update_camera(delta: float) -> void:
 			_cam_pos = _camera.global_position
 			_cam_look = Vector3(FieldBuilder.TUNNEL_X, 0.0, -FIELD_WIDTH * 0.5 - FieldBuilder.SIDE_STANDS - 2.5)
 			return
-		var t0 := 1.2 + _tifo_shot # asoma el primero
+		var t0 := WALK_REFS + _tifo_shot # cruzan la puerta los árbitros
 		if _walk_done_t <= 0.0 and _walk_t < t0 + TUNNEL_SHOT:
 			# Desde el césped, a la altura de los ojos y mirando dentro de la manga: los
 			# equipos salen hacia la cámara, que retrocede despacio y los sigue
@@ -4929,12 +5075,17 @@ func _update_camera(delta: float) -> void:
 			for p in players:
 				if p.visible and p.global_position.z > lead.z:
 					lead = p.global_position
-			target_pos = Vector3(FieldBuilder.TUNNEL_X + lerpf(1.3, 2.6, k), lerpf(1.3, 1.7, k),
-					-FIELD_WIDTH * 0.5 + lerpf(-1.0, 2.5, k))
+			for r: Node3D in staff.refs:
+				if r.visible and r.global_position.z > lead.z:
+					lead = r.global_position
+			# A un costado del recorrido (los jugadores giran hacia la banda delante de
+			# la manga): ni atraviesan la lente ni se cuelan las mamparas de los bancos.
+			target_pos = Vector3(FieldBuilder.TUNNEL_X + lerpf(2.0, 3.0, k), lerpf(1.3, 1.7, k),
+					-FIELD_WIDTH * 0.5 + lerpf(0.0, 2.0, k))
 			# Pequeño vaivén de cámara al hombro
 			target_pos += Vector3(sin(_walk_t * 1.7) * 0.06, sin(_walk_t * 2.3) * 0.04, 0.0)
 			target_look = Vector3(FieldBuilder.TUNNEL_X, 1.35, lerpf(mouth_z - 1.0, lead.z, 0.7))
-			target_fov = lerpf(40.0, 50.0, k)
+			target_fov = lerpf(38.0, 48.0, k)
 			if _walk_t < t0 - 0.9:
 				_cam_pos = target_pos # corte limpio desde el plano del tifo / la intro
 				_cam_look = target_look

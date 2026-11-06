@@ -977,7 +977,12 @@ func _label(size: int, parent: Node) -> Label:
 var _intro: Control
 
 
-func show_walkout_intro(data: Dictionary, delay := 0.4) -> void:
+## Alineaciones de la salida, a la espera de show_walkout_lineups().
+var _intro_lu: Control = null
+
+## `auto_lineups` = false: las alineaciones esperan a show_walkout_lineups() (la
+## salida las muestra con la fila ya formada, no tapando a los que salen del túnel).
+func show_walkout_intro(data: Dictionary, delay := 0.4, auto_lineups := true) -> void:
 	hide_walkout_intro()
 	_intro = Control.new()
 	_intro.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -995,11 +1000,22 @@ func show_walkout_intro(data: Dictionary, delay := 0.4) -> void:
 			.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	tw.tween_interval(3.4)
 	tw.tween_property(card, "modulate:a", 0.0, 0.3)
-	tw.tween_property(lineups, "modulate:a", 1.0, 0.35)
-	tw.parallel().tween_property(lineups, "scale", Vector2.ONE, 0.4).from(Vector2(0.92, 0.92)) \
+	_intro_lu = lineups
+	if auto_lineups:
+		tw.tween_callback(show_walkout_lineups)
+
+
+## Muestra las alineaciones de la salida (una sola vez) y las retira solas.
+func show_walkout_lineups(hold := 6.0) -> void:
+	if not is_instance_valid(_intro_lu) or _intro_lu.has_meta("shown"):
+		return
+	_intro_lu.set_meta("shown", true)
+	var tw := _intro_lu.create_tween()
+	tw.tween_property(_intro_lu, "modulate:a", 1.0, 0.35)
+	tw.parallel().tween_property(_intro_lu, "scale", Vector2.ONE, 0.4).from(Vector2(0.92, 0.92)) \
 			.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	tw.tween_interval(6.0)
-	tw.tween_property(lineups, "modulate:a", 0.0, 0.4)
+	tw.tween_interval(hold)
+	tw.tween_property(_intro_lu, "modulate:a", 0.0, 0.4)
 
 
 func hide_walkout_intro() -> void:

@@ -25,6 +25,10 @@ var _kits: Array = [{}, {}]
 var _followers: Array[Node3D] = []   # giran hacia el balón (cámaras, fotógrafos, banquillo)
 var _coaches: Array[Node3D] = []
 var _coach_home: Array[Vector3] = []
+var _assistants: Array[Node3D] = []
+## Desfile por el túnel (banquillo y técnicos): cada uno con su espera y su ruta.
+## Mientras desfila, nadie más lo mueve (ni el DT sigue la jugada ni el ayudante gira).
+var _parade: Array = [] # [{n, delay, steps: [{to}|{shake, t}|{clap, t}], end: "sit"|"coach"|"stand"|"hide"}]
 var _bench_people: Array = [[], []]  # suplentes sentados de cada equipo
 var _celebrate := [0.0, 0.0]
 ## DT haciendo un gesto (gritar, señalar, celebrar…): segundos que le quedan; mientras, no camina.
@@ -48,6 +52,12 @@ var refs: Array[Node3D] = []
 var ref_targets: Array = []
 ## Punto de paso de cada árbitro en la salida (la banda, frente al túnel); se borra al pisarlo.
 var ref_via: Array = []
+## Segundos que espera cada árbitro (oculto, tras la puerta del vestuario) antes de salir.
+var ref_delay: Array = []
+## Al volver al vestuario: pasada esta z (dentro del pasillo) el árbitro desaparece.
+var ref_hide_z := -INF # -INF = nunca
+## Paso de los árbitros en la salida y la vuelta (el partido lo iguala al de los jugadores).
+var ref_walk_speed := 3.6
 ## Tarjeta: el central va hacia el infractor y se la enseña (ver show_card).
 var _card: MeshInstance3D
 var _card_mat: StandardMaterial3D
@@ -84,6 +94,7 @@ func build(m: SoccerMatch, shirts: Array, coach_names: Array, kits: Array = [{},
 				"long_sleeves": true, "long_pants": true, "shorts_color": STAFF_SHIRT})
 		assistant.position = Vector3(cx + (-3.6 if t == 0 else 3.6), 0.0, line_z - 2.6)
 		_followers.append(assistant)
+		_assistants.append(assistant)
 
 	# Cuarto árbitro entre los banquillos, con su cartel de cambios
 	_official = _person({"shirt_color": OFFICIAL, "long_sleeves": true, "long_pants": true,
@@ -140,6 +151,8 @@ func on_goal(team: int) -> void:
 	for i in _coaches.size():
 		_coach_gesture(i, ["victory", "fist_pump", "fist_pump_2"].pick_random() if i == team else ["argue", "argue_2", "yell"].pick_random(), 3.0)
 	for p: Node3D in _bench_people[team]:
+		if p.has_meta("parade"):
+			continue
 		var av: PlayerAvatar = p.get_meta("avatar")
 		if av.anim.has_animation("sit_clap"):
 			av.anim.play("sit_clap", 0.3)
@@ -188,6 +201,7 @@ func substitution(team: int, num_off: int, num_on: int, person: Node3D = null) -
 		bench.append(person)
 	if not bench.is_empty():
 		var p: Node3D = bench.pop_back()
+		_parade_finish_node(p) # si aún iba camino del banquillo, ya está sentado
 		var av: PlayerAvatar = p.get_meta("avatar")
 		av.position.y = 0.0
 		av.anim.play("idle", 0.3)
@@ -200,11 +214,15 @@ func _process(delta: float) -> void:
 		return
 	_t += delta
 	var b := _match.ball.global_position
+	_update_parade(delta)
 	for f in _followers:
-		_face(f, b, delta * 3.0)
+		if not f.has_meta("parade"):
+			_face(f, b, delta * 3.0)
 	# DT: caminan por su área técnica siguiendo el juego, y saltan con los goles
 	for i in _coaches.size():
 		var c := _coaches[i]
+		if c.has_meta("parade") or not c.visible:
+			continue
 		var home := _coach_home[i]
 		var tx := home.x + clampf((b.x - home.x) * 0.12, -2.5, 2.5) + sin(_t * 0.35 + i * 2.0) * 1.2
 		var av: PlayerAvatar = c.get_meta("avatar")
@@ -228,6 +246,8 @@ func _process(delta: float) -> void:
 		if _celebrate[t] > 0.0:
 			_celebrate[t] -= delta
 		for p: Node3D in _bench_people[t]:
+			if p.has_meta("parade"):
+				continue
 			if p.has_meta("clap_t"):
 				var left: float = float(p.get_meta("clap_t")) - delta
 				if left <= 0.0:
@@ -263,6 +283,13 @@ func _update_refs(b: Vector3, delta: float) -> void:
 		_update_card(delta)
 	if not ref_targets.is_empty():
 		for i in refs.size():
+			if i < ref_delay.size() and float(ref_delay[i]) > 0.0:
+				ref_delay[i] = float(ref_delay[i]) - delta
+				refs[i].visible = float(ref_delay[i]) <= 0.0
+				continue
+			if refs[i].visible and refs[i].position.z < ref_hide_z:
+				refs[i].visible = false # ya dentro del túnel
+				continue
 			if i < ref_targets.size() and refs[i].visible:
 				var goal: Vector3 = ref_targets[i]
 				if i < ref_via.size() and ref_via[i] != null:
@@ -270,7 +297,7 @@ func _update_refs(b: Vector3, delta: float) -> void:
 					if Vector2(goal.x - refs[i].position.x, goal.z - refs[i].position.z).length() < 1.5:
 						ref_via[i] = null
 				# Al paso de los jugadores (~3.4 m/s), sin frenar en el punto de paso
-				var spd := 3.6 if goal != ref_targets[i] else 3.4
+				var spd := ref_walk_speed
 				if not _walk(refs[i], goal, spd, delta):
 					_face(refs[i], refs[i].position + Vector3.BACK, delta * 5.0)
 		return
@@ -372,20 +399,37 @@ func _update_sub(delta: float) -> void:
 
 
 ## Lleva a una persona hacia `target` andando o corriendo; devuelve si se está moviendo.
-func _walk(n: Node3D, target: Vector3, max_speed: float, delta: float) -> bool:
+## `brake` = false para puntos de paso: no frena encima (arranca-para-arranca robótico)
+## y da por pasado el punto a ~0,9 m, de modo que la esquina sale en curva.
+func _walk(n: Node3D, target: Vector3, max_speed: float, delta: float, brake := true) -> bool:
 	var to := Vector3(target.x - n.position.x, 0.0, target.z - n.position.z)
 	var d := to.length()
-	var moving := d > 0.25
+	var moving := d > (0.25 if brake else 0.9)
 	var spd := 0.0
 	if moving:
-		spd = minf(max_speed, d * 1.5)
-		n.position += to / d * minf(spd * delta, d)
-		_face(n, n.global_position + to, delta * 6.0)
+		spd = minf(max_speed, d * 1.5) if brake else max_speed
+		# Avanza hacia donde mira (que gira de a poco hacia el punto): la ruta se curva
+		# en vez de quebrarse en ángulos rectos.
+		_face(n, n.global_position + to, delta * (6.0 if max_speed > 2.5 else 3.5))
+		var fwd := Vector3(sin(n.rotation.y), 0.0, cos(n.rotation.y))
+		var dir := to / d
+		var blend := 0.6 if (not brake or d > 1.0) and fwd.dot(dir) > 0.3 else 0.0
+		var step_dir := dir.lerp(fwd, blend).normalized()
+		n.position += step_dir * minf(spd * delta, d)
 	var av: PlayerAvatar = n.get_meta("avatar")
 	var want := "run" if spd > 0.6 else "idle"
+	# A paso de calle (desfile por el túnel), caminando de verdad: "run" a cámara
+	# lenta parecía gente corriendo en el sitio.
+	if want == "run" and spd < 2.2 and av.anim.has_animation("walk"):
+		want = "walk"
 	if av.anim.current_animation != want:
 		av.anim.play(want, 0.25)
-	av.anim.speed_scale = clampf(spd / 5.0, 0.4, 1.2) if want == "run" else 1.0
+	if want == "run":
+		av.anim.speed_scale = clampf(spd / 5.0, 0.4, 1.2)
+	elif want == "walk":
+		av.anim.speed_scale = clampf(spd / 1.4, 0.7, 1.4)
+	else:
+		av.anim.speed_scale = 1.0
 	return moving
 
 
@@ -394,6 +438,249 @@ func _face(n: Node3D, target: Vector3, k: float) -> void:
 	if Vector2(d.x, d.z).length() < 0.1:
 		return
 	n.rotation.y = lerp_angle(n.rotation.y, atan2(d.x, d.z), minf(1.0, k))
+
+
+# ---------- desfile del banquillo por el túnel ----------
+
+const PARADE_VIA_X := 4.5 # punto de paso a cada lado: rodea al cuarto árbitro y las mamparas
+
+
+func _lane_x(team: int) -> float:
+	return FieldBuilder.TUNNEL_X + (-0.7 if team == 0 else 0.7)
+
+
+func _mouth_z() -> float:
+	return -SoccerMatch.FIELD_WIDTH * 0.5 - FieldBuilder.SIDE_STANDS
+
+
+## Salida: tras los titulares salen los suplentes (alternando equipos), los ayudantes y
+## al final los dos técnicos. A veces se esperan y se dan la mano en la banda; otras
+## sale uno antes, saluda a su grada y se va a su área sin mirar al otro.
+func parade_in(t0: float) -> void:
+	_parade.clear()
+	var mz := _mouth_z()
+	var line_z := -SoccerMatch.FIELD_WIDTH * 0.5
+	var order := 0
+	for k in 7:
+		for t in 2:
+			var bench: Array = _bench_people[t]
+			if k >= bench.size():
+				continue
+			var p: Node3D = bench[k]
+			var seat: Vector3 = p.get_meta("seat", p.position)
+			var sx := signf(seat.x)
+			var lx := _lane_x(t)
+			_stand_up(p)
+			p.position = Vector3(lx, 0.0, mz - 3.6)
+			_parade_add(p, t0 + order * 0.5 + randf_range(0.0, 0.25), randf_range(1.6, 1.9), [
+				{"to": Vector3(lx, 0.0, mz + 0.4)}, {"to": Vector3(lx, 0.0, line_z - 2.6)},
+				{"to": Vector3(sx * PARADE_VIA_X, 0.0, line_z - 2.5)}, {"to": Vector3(seat.x, 0.0, line_z - 1.8)},
+				{"to": seat}], "sit", true)
+			order += 1
+	var after := t0 + order * 0.5 + 0.6
+	for t in _assistants.size():
+		var a := _assistants[t]
+		var home := a.position
+		var lx := _lane_x(t)
+		a.position = Vector3(lx, 0.0, mz - 3.6)
+		_parade_add(a, after + t * 0.4 + randf_range(0.0, 0.3), 1.6, [
+			{"to": Vector3(lx, 0.0, mz + 0.4)}, {"to": Vector3(lx, 0.0, line_z - 2.6)},
+			{"to": Vector3(signf(home.x) * PARADE_VIA_X, 0.0, line_z - 2.5)}, {"to": home}], "stand", true)
+	_coach_parade(after + 1.4, true)
+
+
+## Vuelta al vestuario al final: el banquillo se levanta y entra de a poco; los
+## técnicos se dan la mano (o uno se va enseguida) y se meten detrás.
+func parade_out(t0: float) -> void:
+	_parade_finish_all() # por si alguien no había llegado aún a su sitio
+	var mz := _mouth_z()
+	var line_z := -SoccerMatch.FIELD_WIDTH * 0.5
+	_coach_parade(t0, false)
+	for t in _assistants.size():
+		var a := _assistants[t]
+		var lx := _lane_x(t)
+		_parade_add(a, t0 + 2.0 + randf_range(0.0, 1.5), 1.5, [
+			{"to": Vector3(signf(a.position.x) * PARADE_VIA_X, 0.0, line_z - 2.5)},
+			{"to": Vector3(lx, 0.0, line_z - 2.8)}, {"to": Vector3(lx, 0.0, mz - 0.4)},
+			{"to": Vector3(lx, 0.0, mz - 4.4)}], "hide", false)
+	var order := 0
+	for k in 7:
+		for t in 2:
+			var bench: Array = _bench_people[t]
+			if k >= bench.size():
+				continue
+			var p: Node3D = bench[k]
+			var lx := _lane_x(t)
+			var seat := p.position
+			_parade_add(p, t0 + 1.0 + order * 0.55 + randf_range(0.0, 0.5), randf_range(1.3, 1.6), [
+				{"stand": true}, {"to": Vector3(seat.x, 0.0, line_z - 1.8)},
+				{"to": Vector3(signf(seat.x) * PARADE_VIA_X, 0.0, line_z - 2.5)},
+				{"to": Vector3(lx, 0.0, line_z - 2.8)}, {"to": Vector3(lx, 0.0, mz - 0.4)},
+				{"to": Vector3(lx, 0.0, mz - 4.4)}], "hide", false)
+			order += 1
+
+
+## Los dos técnicos: 65% se esperan y se dan la mano frente a la manga; si no, uno
+## sale (o se va) antes y el otro unos segundos después, cada uno a lo suyo.
+func _coach_parade(t0: float, entering: bool) -> void:
+	if _coaches.size() < 2:
+		return
+	var mz := _mouth_z()
+	var line_z := -SoccerMatch.FIELD_WIDTH * 0.5
+	var shake := randf() < 0.65
+	var first := randi() % 2
+	for t in 2:
+		var c := _coaches[t]
+		var lx := _lane_x(t)
+		var meet := Vector3(FieldBuilder.TUNNEL_X + (-0.48 if t == 0 else 0.48), 0.0, line_z - 2.4)
+		var partner := _coaches[1 - t]
+		var late := 0.0 if t == first else (0.4 if shake else randf_range(2.5, 4.0))
+		var steps: Array = []
+		if entering:
+			var home := _coach_home[t]
+			c.position = Vector3(lx, 0.0, mz - 3.6)
+			steps.append({"to": Vector3(lx, 0.0, mz + 0.4)})
+			if shake:
+				steps.append_array([{"to": meet}, {"shake": partner, "t": 1.8}])
+			else:
+				steps.append({"to": Vector3(lx, 0.0, line_z - 2.6)})
+				if t == first:
+					steps.append({"clap": 1.6, "look": Vector3(lx, 0.0, mz)}) # saluda a la grada
+			steps.append_array([{"to": Vector3(signf(home.x) * PARADE_VIA_X, 0.0, line_z - 2.5)}, {"to": home}])
+			_parade_add(c, t0 + late, 1.4, steps, "coach", true)
+		else:
+			if shake:
+				steps.append_array([{"to": meet}, {"shake": partner, "t": 1.8}])
+			else:
+				steps.append({"to": Vector3(signf(c.position.x) * PARADE_VIA_X, 0.0, line_z - 2.5)})
+			steps.append_array([{"to": Vector3(lx, 0.0, line_z - 2.8)}, {"to": Vector3(lx, 0.0, mz - 0.4)},
+					{"to": Vector3(lx, 0.0, mz - 4.4)}])
+			_parade_add(c, t0 + late, 1.5 if shake or t == first else 1.9, steps, "hide", false)
+
+
+func _parade_add(n: Node3D, delay: float, speed: float, steps: Array, end: String, hidden: bool) -> void:
+	_parade_finish_node(n)
+	n.set_meta("parade", true)
+	if hidden:
+		n.visible = false
+	_parade.append({"n": n, "delay": delay, "speed": speed, "steps": steps, "i": 0, "end": end})
+
+
+func _stand_up(p: Node3D) -> void:
+	var av: PlayerAvatar = p.get_meta("avatar")
+	av.position.y = 0.0
+	av.anim.play("idle", 0.3)
+	av.anim.speed_scale = 1.0
+
+
+func _parade_entry(n: Node3D) -> Dictionary:
+	for e: Dictionary in _parade:
+		if e["n"] == n:
+			return e
+	return {}
+
+
+func _update_parade(delta: float) -> void:
+	var i := 0
+	while i < _parade.size():
+		var e: Dictionary = _parade[i]
+		var n: Node3D = e["n"]
+		if not is_instance_valid(n):
+			_parade.remove_at(i)
+			continue
+		if float(e["delay"]) > 0.0:
+			e["delay"] = float(e["delay"]) - delta
+			i += 1
+			continue
+		n.visible = true
+		var steps: Array = e["steps"]
+		if int(e["i"]) >= steps.size():
+			_parade_end(e)
+			_parade.remove_at(i)
+			continue
+		var st: Dictionary = steps[int(e["i"])]
+		var av: PlayerAvatar = n.get_meta("avatar")
+		if st.has("to"):
+			# Frena solo al final de un tramo (antes de sentarse, saludar o quedarse)
+			var nxt: int = int(e["i"]) + 1
+			var brake: bool = nxt >= steps.size() or not (steps[nxt] as Dictionary).has("to")
+			if not _walk(n, st["to"], float(e["speed"]), delta, brake):
+				e["i"] = nxt
+		elif st.has("stand"):
+			_stand_up(n)
+			e["i"] = int(e["i"]) + 1
+		elif st.has("clap"):
+			if not st.has("on"):
+				st["on"] = true
+				if av.anim.has_animation("clap"):
+					av.anim.play("clap", 0.25)
+			_face(n, st["look"], delta * 6.0)
+			st["clap"] = float(st["clap"]) - delta
+			if float(st["clap"]) <= 0.0:
+				e["i"] = int(e["i"]) + 1
+		elif st.has("shake"):
+			var partner: Node3D = st["shake"]
+			var pe := _parade_entry(partner)
+			_face(n, partner.position, delta * 6.0)
+			# Espera a que el otro llegue a su punto; si no aparece, sigue solo
+			var ready: bool = not pe.is_empty() and int(pe["i"]) < (pe["steps"] as Array).size() \
+					and (pe["steps"] as Array)[int(pe["i"])].has("shake")
+			st["wait"] = float(st.get("wait", 0.0)) + delta
+			if ready or st.has("on"):
+				if not st.has("on"):
+					st["on"] = true
+					av.pose_arms("shake", 0.3)
+				st["t"] = float(st["t"]) - delta
+				if float(st["t"]) <= 0.0:
+					av.pose_arms("", 0.3)
+					e["i"] = int(e["i"]) + 1
+			elif float(st["wait"]) > 6.0 or pe.is_empty():
+				e["i"] = int(e["i"]) + 1
+		i += 1
+
+
+## Deja a la persona donde termina su ruta, en su postura final.
+func _parade_end(e: Dictionary) -> void:
+	var n: Node3D = e["n"]
+	var av: PlayerAvatar = n.get_meta("avatar")
+	av.pose_arms("", 0.2)
+	match String(e["end"]):
+		"sit":
+			n.position = n.get_meta("seat", n.position)
+			n.rotation.y = 0.0 # de cara al campo
+			_pose(av, "sit")
+			n.remove_meta("parade")
+		"hide":
+			n.visible = false # sigue marcado: nadie lo vuelve a mover
+		_:
+			av.anim.play("idle", 0.3)
+			av.anim.speed_scale = 1.0
+			n.rotation.y = 0.0
+			n.remove_meta("parade")
+
+
+func _parade_finish_node(n: Node3D) -> void:
+	var e := _parade_entry(n)
+	if e.is_empty():
+		return
+	_parade.erase(e)
+	var steps: Array = e["steps"]
+	for k in range(steps.size() - 1, -1, -1):
+		if (steps[k] as Dictionary).has("to"):
+			n.position = (steps[k] as Dictionary)["to"]
+			break
+	n.visible = true
+	_parade_end(e)
+
+
+## Todos a su sitio ya (p. ej. al empezar desde el banquillo o al cerrar el partido).
+func parade_finish() -> void:
+	_parade_finish_all()
+
+
+func _parade_finish_all() -> void:
+	while not _parade.is_empty():
+		_parade_finish_node((_parade[0] as Dictionary)["n"])
 
 
 # ---------- piezas ----------
@@ -433,6 +720,7 @@ func _dugout(center: Vector3, color: Color, team: int) -> void:
 			var sub := _person(look, "sit")
 			sub.position = Vector3(x, 0.0, center.z - 0.3)
 			sub.set_meta("seat_y", 0.0)
+			sub.set_meta("seat", sub.position)
 			_bench_people[team].append(sub)
 
 
