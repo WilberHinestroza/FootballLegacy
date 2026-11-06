@@ -1,0 +1,113 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://ui/common/TopBar.gd" id="1"]
+
+[node name="TopBar" type="Node"]
+script = ExtResource("1")
+
+[node name="BgLayer" type="CanvasLayer" parent="."]
+layer = -100
+
+[node name="Layer" type="CanvasLayer" parent="."]
+layer = 15
+
+[node name="Bar" type="PanelContainer" parent="Layer"]
+anchors_preset = 10
+anchor_right = 1.0
+offset_bottom = 100.0
+grow_horizontal = 2
+
+[node name="HeaderMargin" type="MarginContainer" parent="Layer/Bar"]
+layout_mode = 2
+theme_override_constants/margin_left = 20
+theme_override_constants/margin_top = 20
+theme_override_constants/margin_right = 20
+theme_override_constants/margin_bottom = 20
+
+[node name="HeaderHBox" type="HBoxContainer" parent="Layer/Bar/HeaderMargin"]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="MenuButton" type="Button" parent="Layer/Bar/HeaderMargin/HeaderHBox"]
+custom_minimum_size = Vector2(40, 40)
+layout_mode = 2
+size_flags_vertical = 4
+flat = true
+
+[node name="BadgePanel" type="PanelContainer" parent="Layer/Bar/HeaderMargin/HeaderHBox"]
+custom_minimum_size = Vector2(52, 52)
+layout_mode = 2
+size_flags_vertical = 4
+
+[node name="BadgeLabel" type="Label" parent="Layer/Bar/HeaderMargin/HeaderHBox/BadgePanel"]
+layout_mode = 2
+horizontal_alignment = 1
+vertical_alignment = 1
+theme_override_font_sizes/font_size = 16
+text = "?"
+
+[node name="NamesVBox" type="VBoxContainer" parent="Layer/Bar/HeaderMargin/HeaderHBox"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+theme_override_constants/separation = 0
+
+[node name="ClubNameLabel" type="Label" parent="Layer/Bar/HeaderMargin/HeaderHBox/NamesVBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "Sin club"
+clip_text = true
+
+[node name="PlayerNameLabel" type="Label" parent="Layer/Bar/HeaderMargin/HeaderHBox/NamesVBox"]
+layout_mode = 2
+theme_override_color_overrides/font_color = Color(1, 1, 1, 0.75)
+clip_text = true
+
+[node name="MoneyVBox" type="VBoxContainer" parent="Layer/Bar/HeaderMargin/HeaderHBox"]
+layout_mode = 2
+size_flags_vertical = 4
+theme_override_constants/separation = 0
+
+[node name="MoneyLabel" type="Label" parent="Layer/Bar/HeaderMargin/HeaderHBox/MoneyVBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+horizontal_alignment = 2
+text = "€ 0"
+
+[node name="DayLabel" type="Label" parent="Layer/Bar/HeaderMargin/HeaderHBox/MoneyVBox"]
+layout_mode = 2
+theme_override_color_overrides/font_color = Color(1, 1, 1, 0.75)
+horizontal_alignment = 2
+text = "Día 0"
+
+[node name="DrawerScrim" type="ColorRect" parent="Layer"]
+visible = false
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0, 0, 0.55)
+
+[node name="DrawerPanel" type="PanelContainer" parent="Layer"]
+visible = false
+anchors_preset = 9
+anchor_bottom = 1.0
+offset_left = -280.0
+grow_vertical = 2
+
+[node name="DrawerMargin" type="MarginContainer" parent="Layer/DrawerPanel"]
+layout_mode = 2
+theme_override_constants/margin_left = 18
+theme_override_constants/margin_top = 60
+theme_override_constants/margin_right = 18
+theme_override_constants/margin_bottom = 18
+
+[node name="DrawerVBox" type="VBoxContainer" parent="Layer/DrawerPanel/DrawerMargin"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="DrawerTitle" type="Label" parent="Layer/DrawerPanel/DrawerMargin/DrawerVBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "Menú"

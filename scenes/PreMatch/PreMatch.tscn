@@ -1,0 +1,99 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scenes/PreMatch/PreMatch.gd" id="1"]
+
+[node name="PreMatch" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+script = ExtResource("1")
+
+[node name="Scroll" type="ScrollContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+horizontal_scroll_mode = 0
+
+[node name="Margin" type="MarginContainer" parent="Scroll"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+theme_override_constants/margin_left = 32
+theme_override_constants/margin_top = 70
+theme_override_constants/margin_right = 32
+theme_override_constants/margin_bottom = 40
+
+[node name="VBox" type="VBoxContainer" parent="Scroll/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="TitleLabel" type="Label" parent="Scroll/Margin/VBox"]
+layout_mode = 2
+horizontal_alignment = 1
+text = "Alineaciones"
+
+[node name="CompareLabel" type="Label" parent="Scroll/Margin/VBox"]
+layout_mode = 2
+horizontal_alignment = 1
+autowrap_mode = 3
+
+[node name="TeamsRow" type="HBoxContainer" parent="Scroll/Margin/VBox"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 16
+
+[node name="HomeColumn" type="VBoxContainer" parent="Scroll/Margin/VBox/TeamsRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 6
+
+[node name="HomeNameLabel" type="Label" parent="Scroll/Margin/VBox/TeamsRow/HomeColumn"]
+layout_mode = 2
+horizontal_alignment = 1
+autowrap_mode = 3
+
+[node name="HomeStrengthLabel" type="Label" parent="Scroll/Margin/VBox/TeamsRow/HomeColumn"]
+layout_mode = 2
+horizontal_alignment = 1
+
+[node name="HomeScroll" type="ScrollContainer" parent="Scroll/Margin/VBox/TeamsRow/HomeColumn"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="HomeLineupBox" type="VBoxContainer" parent="Scroll/Margin/VBox/TeamsRow/HomeColumn/HomeScroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 2
+
+[node name="AwayColumn" type="VBoxContainer" parent="Scroll/Margin/VBox/TeamsRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 6
+
+[node name="AwayNameLabel" type="Label" parent="Scroll/Margin/VBox/TeamsRow/AwayColumn"]
+layout_mode = 2
+horizontal_alignment = 1
+autowrap_mode = 3
+
+[node name="AwayStrengthLabel" type="Label" parent="Scroll/Margin/VBox/TeamsRow/AwayColumn"]
+layout_mode = 2
+horizontal_alignment = 1
+
+[node name="AwayScroll" type="ScrollContainer" parent="Scroll/Margin/VBox/TeamsRow/AwayColumn"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="AwayLineupBox" type="VBoxContainer" parent="Scroll/Margin/VBox/TeamsRow/AwayColumn/AwayScroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 2
+
+[node name="StartMatchButton" type="Button" parent="Scroll/Margin/VBox"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 76)
+text = "Empezar partido"

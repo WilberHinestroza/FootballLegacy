@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://b5s0sim5yrsim"]
+
+[ext_resource type="Script" path="res://tools/five_season_sim.gd" id="1_sim"]
+
+[node name="FiveSeasonSim" type="Node"]
+script = ExtResource("1_sim")

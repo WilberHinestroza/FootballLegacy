@@ -1,0 +1,16 @@
+# Godot
+.godot/
+*.translation
+export_credentials.cfg
+
+# Builds y firmas
+build/
+*.apk
+*.aab
+*.idsig
+*.keystore
+*.jks
+
+# Local
+.claude/
+.env*

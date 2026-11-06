@@ -1,0 +1,34 @@
+Start: 
+Hub: 
+Calendar: 
+Standings: SCROLL Standings extra=247
+PlayerProfile: SCROLL PlayerProfile extra=372
+Agent: SCROLL Agent extra=443
+Awards: 
+CareerMenu: SCROLL CareerMenu extra=1066
+ClubInfo: SCROLL ClubInfo extra=991
+Coleccion: SCROLL Coleccion extra=319
+CupBracket: SCROLL CupBracket extra=2428
+Lifestyle: SCROLL Lifestyle extra=3250
+News: SCROLL News extra=213
+Offers: SCROLL Offers extra=214
+Planner: 
+PlayerSearch: SCROLL PlayerSearch extra=530
+Selections: SCROLL Selections extra=1398
+Settings: SCROLL Settings extra=124
+Shop: SCROLL Shop extra=690
+Social: SCROLL Social extra=267
+Sponsors: SCROLL Sponsors extra=297
+Squad: 
+Training: SCROLL Training extra=575
+Transfers: SCROLL Transfers extra=285
+WorldExplorer: SCROLL WorldExplorer extra=418
+ImportWorld: 
+Retirement: SCROLL Retirement extra=268
+SeasonCeremony: SCROLL SeasonCeremony extra=107
+SeasonEvent: 
+SponsorOffer: 
+WageOffer: 
+NationalCallUp: 
+ContractDecision: 
+SCROLL PreMatch extra=337

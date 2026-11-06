@@ -1,0 +1,114 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scenes/SeasonCeremony/SeasonCeremony.gd" id="1"]
+
+[node name="SeasonCeremony" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+script = ExtResource("1")
+
+[node name="Scroll" type="ScrollContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="Margin" type="MarginContainer" parent="Scroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/margin_left = 32
+theme_override_constants/margin_top = 60
+theme_override_constants/margin_right = 32
+theme_override_constants/margin_bottom = 40
+
+[node name="VBox" type="VBoxContainer" parent="Scroll/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="TitleLabel" type="Label" parent="Scroll/Margin/VBox"]
+layout_mode = 2
+horizontal_alignment = 1
+theme_override_font_sizes/font_size = 15
+text = "FIN DE TEMPORADA"
+
+[node name="SeasonLabel" type="Label" parent="Scroll/Margin/VBox"]
+layout_mode = 2
+horizontal_alignment = 1
+theme_override_font_sizes/font_size = 26
+text = "Temporada 2026/2027"
+
+[node name="RatingCard" type="PanelContainer" parent="Scroll/Margin/VBox"]
+layout_mode = 2
+
+[node name="RatingMargin" type="MarginContainer" parent="Scroll/Margin/VBox/RatingCard"]
+layout_mode = 2
+theme_override_constants/margin_left = 20
+theme_override_constants/margin_top = 20
+theme_override_constants/margin_right = 20
+theme_override_constants/margin_bottom = 20
+
+[node name="RatingVBox" type="VBoxContainer" parent="Scroll/Margin/VBox/RatingCard/RatingMargin"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="RatingHeaderLabel" type="Label" parent="Scroll/Margin/VBox/RatingCard/RatingMargin/RatingVBox"]
+layout_mode = 2
+horizontal_alignment = 1
+theme_override_font_sizes/font_size = 12
+text = "TU TEMPORADA"
+
+[node name="RatingLabel" type="Label" parent="Scroll/Margin/VBox/RatingCard/RatingMargin/RatingVBox"]
+layout_mode = 2
+horizontal_alignment = 1
+theme_override_font_sizes/font_size = 48
+text = "0.0"
+
+[node name="PlayerSummaryLabel" type="Label" parent="Scroll/Margin/VBox/RatingCard/RatingMargin/RatingVBox"]
+layout_mode = 2
+horizontal_alignment = 1
+autowrap_mode = 3
+
+[node name="ClubCard" type="PanelContainer" parent="Scroll/Margin/VBox"]
+layout_mode = 2
+
+[node name="ClubMargin" type="MarginContainer" parent="Scroll/Margin/VBox/ClubCard"]
+layout_mode = 2
+theme_override_constants/margin_left = 16
+theme_override_constants/margin_top = 14
+theme_override_constants/margin_right = 16
+theme_override_constants/margin_bottom = 14
+
+[node name="ClubVBox" type="VBoxContainer" parent="Scroll/Margin/VBox/ClubCard/ClubMargin"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="ClubNameLabel" type="Label" parent="Scroll/Margin/VBox/ClubCard/ClubMargin/ClubVBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = "TU CLUB"
+
+[node name="ClubSummaryLabel" type="Label" parent="Scroll/Margin/VBox/ClubCard/ClubMargin/ClubVBox"]
+layout_mode = 2
+autowrap_mode = 3
+
+[node name="BallonDorHeaderLabel" type="Label" parent="Scroll/Margin/VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = "BALÓN DE ORO DEL MUNDO"
+
+[node name="BallonDorBox" type="VBoxContainer" parent="Scroll/Margin/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="NextHintLabel" type="Label" parent="Scroll/Margin/VBox"]
+layout_mode = 2
+horizontal_alignment = 1
+autowrap_mode = 3
+theme_override_font_sizes/font_size = 12
+
+[node name="ContinueButton" type="Button" parent="Scroll/Margin/VBox"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 68)
+text = "Continuar"

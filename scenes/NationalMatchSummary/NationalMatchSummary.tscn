@@ -1,0 +1,97 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scenes/NationalMatchSummary/NationalMatchSummary.gd" id="1"]
+
+[node name="NationalMatchSummary" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+script = ExtResource("1")
+
+[node name="Bg" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0.06, 0.07, 0.09, 1)
+
+[node name="Root" type="MarginContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+theme_override_constants/margin_left = 18
+theme_override_constants/margin_top = 40
+theme_override_constants/margin_right = 18
+theme_override_constants/margin_bottom = 20
+
+[node name="VBox" type="VBoxContainer" parent="Root"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="ScoreCard" type="PanelContainer" parent="Root/VBox"]
+layout_mode = 2
+
+[node name="ScoreMargin" type="MarginContainer" parent="Root/VBox/ScoreCard"]
+layout_mode = 2
+theme_override_constants/margin_left = 16
+theme_override_constants/margin_top = 16
+theme_override_constants/margin_right = 16
+theme_override_constants/margin_bottom = 16
+
+[node name="ScoreVBox" type="VBoxContainer" parent="Root/VBox/ScoreCard/ScoreMargin"]
+layout_mode = 2
+theme_override_constants/separation = 6
+alignment = 1
+
+[node name="ResultBannerLabel" type="Label" parent="Root/VBox/ScoreCard/ScoreMargin/ScoreVBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 26
+horizontal_alignment = 1
+
+[node name="ScoreLabel" type="Label" parent="Root/VBox/ScoreCard/ScoreMargin/ScoreVBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+horizontal_alignment = 1
+
+[node name="NarrativeLabel" type="Label" parent="Root/VBox/ScoreCard/ScoreMargin/ScoreVBox"]
+layout_mode = 2
+horizontal_alignment = 1
+autowrap_mode = 3
+
+[node name="TabsRow" type="HBoxContainer" parent="Root/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="StatsTabButton" type="Button" parent="Root/VBox/TabsRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+custom_minimum_size = Vector2(0, 44)
+text = "Estadísticas"
+
+[node name="RatingsTabButton" type="Button" parent="Root/VBox/TabsRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+custom_minimum_size = Vector2(0, 44)
+text = "Valoraciones"
+
+[node name="Scroll" type="ScrollContainer" parent="Root/VBox"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="DetailBox" type="VBoxContainer" parent="Root/VBox/Scroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 10
+
+[node name="InterviewButton" type="Button" parent="Root/VBox"]
+visible = false
+layout_mode = 2
+custom_minimum_size = Vector2(0, 60)
+text = "Zona mixta — dar entrevista"
+
+[node name="ContinueButton" type="Button" parent="Root/VBox"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 60)
+text = "Continuar"

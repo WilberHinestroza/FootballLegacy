@@ -1,0 +1,55 @@
+; Engine configuration file.
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
+;
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
+
+config_version=5
+
+[animation]
+
+compatibility/default_parent_skeleton_in_mesh_instance_3d=true
+
+[application]
+
+config/name="FootballLegacy H"
+run/main_scene="res://scenes/Start/Start.tscn"
+config/features=PackedStringArray("4.7", "Mobile")
+boot_splash/bg_color=Color(0.09, 0.13, 0.09, 1)
+config/icon="res://app_icon.png"
+config/quit_on_go_back=false
+
+[autoload]
+
+SaveManager="*res://autoloads/SaveManager.gd"
+WorldTickEngine="*res://autoloads/WorldTickEngine.gd"
+MatchState="*res://autoloads/MatchState.gd"
+Preferences="*res://autoloads/Preferences.gd"
+Audio="*res://autoloads/Audio.gd"
+CharacterDraft="*res://autoloads/CharacterDraft.gd"
+Nav="*res://autoloads/Nav.gd"
+Haptics="*res://autoloads/Haptics.gd"
+
+[debug]
+
+gdscript/warnings/treat_warnings_as_errors=false
+
+[display]
+
+window/size/viewport_width=1024
+window/size/viewport_height=576
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+window/handheld/orientation=4
+
+[gui]
+
+theme/custom_font="res://ui/fonts/Poppins-Regular.ttf"
+
+[rendering]
+
+renderer/rendering_method="mobile"
+textures/vram_compression/import_etc2_astc=true
+environment/defaults/default_clear_color=Color(0.043, 0.043, 0.043, 1)

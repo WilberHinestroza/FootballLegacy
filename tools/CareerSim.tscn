@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://c4reersim10ysim"]
+
+[ext_resource type="Script" path="res://tools/career_sim.gd" id="1_csim"]
+
+[node name="CareerSim" type="Node"]
+script = ExtResource("1_csim")

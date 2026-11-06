@@ -1,0 +1,80 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scenes/ImportWorld/ImportWorld.gd" id="1"]
+
+[node name="ImportWorld" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+script = ExtResource("1")
+
+[node name="Root" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+theme_override_constants/separation = 0
+
+[node name="Margin" type="MarginContainer" parent="Root"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/margin_left = 28
+theme_override_constants/margin_top = 50
+theme_override_constants/margin_right = 28
+theme_override_constants/margin_bottom = 24
+
+[node name="VBox" type="VBoxContainer" parent="Root/Margin"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 16
+
+[node name="TitleLabel" type="Label" parent="Root/Margin/VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "Importar mundo"
+horizontal_alignment = 1
+
+[node name="HintLabel" type="Label" parent="Root/Margin/VBox"]
+layout_mode = 2
+autowrap_mode = 3
+text = "Elegí un archivo .json con tus propias ligas, clubes, jugadores y entrenadores. Reemplaza al mundo generado por el juego para toda carrera NUEVA que arranques."
+theme_override_colors/font_color = Color(0.7, 0.7, 0.7, 1)
+
+[node name="StatusLabel" type="Label" parent="Root/Margin/VBox"]
+layout_mode = 2
+autowrap_mode = 3
+text = ""
+
+[node name="PickButton" type="Button" parent="Root/Margin/VBox"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 56)
+text = "Elegir archivo .json"
+
+[node name="ClearButton" type="Button" parent="Root/Margin/VBox"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 48)
+text = "Quitar mundo importado"
+
+[node name="Spacer" type="Control" parent="Root/Margin/VBox"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="BackButton" type="Button" parent="Root/Margin/VBox"]
+layout_mode = 2
+text = "Volver"
+
+[node name="FileDialog" type="FileDialog" parent="."]
+title = "Elegir mundo (.json)"
+size = Vector2i(760, 560)
+ok_button_text = "Abrir"
+file_mode = 0
+access = 2
+filters = PackedStringArray("*.json ; Mundo (JSON)", "*.txt ; Texto", "* ; Todos los archivos")
+use_native_dialog = true
+
+[node name="ClearConfirmDialog" type="ConfirmationDialog" parent="."]
+title = "Quitar mundo importado"
+size = Vector2i(460, 180)
+ok_button_text = "Quitar"
+cancel_button_text = "Cancelar"

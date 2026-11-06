@@ -1,0 +1,101 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scenes/MatchSummary/MatchSummary.gd" id="1"]
+
+[node name="MatchSummary" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+script = ExtResource("1")
+
+[node name="Bg" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0.06, 0.07, 0.09, 1)
+
+[node name="Root" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 18.0
+offset_top = 44.0
+offset_right = -18.0
+offset_bottom = -18.0
+theme_override_constants/separation = 12
+
+[node name="ScoreCard" type="PanelContainer" parent="Root"]
+layout_mode = 2
+
+[node name="ScoreMargin" type="MarginContainer" parent="Root/ScoreCard"]
+layout_mode = 2
+theme_override_constants/margin_left = 18
+theme_override_constants/margin_top = 16
+theme_override_constants/margin_right = 18
+theme_override_constants/margin_bottom = 16
+
+[node name="ScoreVBox" type="VBoxContainer" parent="Root/ScoreCard/ScoreMargin"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="ResultBannerLabel" type="Label" parent="Root/ScoreCard/ScoreMargin/ScoreVBox"]
+layout_mode = 2
+horizontal_alignment = 1
+theme_override_font_sizes/font_size = 15
+text = "FINAL DEL PARTIDO"
+
+[node name="ScoreLabel" type="Label" parent="Root/ScoreCard/ScoreMargin/ScoreVBox"]
+layout_mode = 2
+horizontal_alignment = 1
+theme_override_font_sizes/font_size = 40
+text = "0 - 0"
+
+[node name="NarrativeLabel" type="Label" parent="Root/ScoreCard/ScoreMargin/ScoreVBox"]
+layout_mode = 2
+horizontal_alignment = 1
+autowrap_mode = 3
+
+[node name="TabsRow" type="HBoxContainer" parent="Root"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="StatsTabButton" type="Button" parent="Root/TabsRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+custom_minimum_size = Vector2(0, 44)
+text = "Estadísticas"
+
+[node name="OthersTabButton" type="Button" parent="Root/TabsRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+custom_minimum_size = Vector2(0, 44)
+text = "Otros partidos"
+
+[node name="RatingsTabButton" type="Button" parent="Root/TabsRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+custom_minimum_size = Vector2(0, 44)
+text = "Valoraciones"
+
+[node name="Scroll" type="ScrollContainer" parent="Root"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="DetailBox" type="VBoxContainer" parent="Root/Scroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 10
+
+[node name="InterviewButton" type="Button" parent="Root"]
+visible = false
+layout_mode = 2
+custom_minimum_size = Vector2(0, 60)
+text = "Zona mixta — dar entrevista"
+
+[node name="ContinueButton" type="Button" parent="Root"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 64)
+text = "Continuar"

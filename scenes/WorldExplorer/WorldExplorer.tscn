@@ -1,0 +1,261 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scenes/WorldExplorer/WorldExplorer.gd" id="1"]
+[ext_resource type="PackedScene" path="res://ui/common/BottomNav.tscn" id="2"]
+[ext_resource type="PackedScene" path="res://ui/common/TopBar.tscn" id="3"]
+
+[node name="WorldExplorer" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+script = ExtResource("1")
+
+
+[node name="TopBar" parent="." instance=ExtResource("3")]
+[node name="Root" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+theme_override_constants/separation = 0
+
+[node name="Margin" type="MarginContainer" parent="Root"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/margin_left = 28
+theme_override_constants/margin_top = 116
+theme_override_constants/margin_right = 28
+theme_override_constants/margin_bottom = 16
+
+[node name="VBox" type="VBoxContainer" parent="Root/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="TitleLabel" type="Label" parent="Root/Margin/VBox"]
+layout_mode = 2
+horizontal_alignment = 1
+text = "Explorar el mundo"
+
+[node name="PickerPanel" type="VBoxContainer" parent="Root/Margin/VBox"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 10
+
+[node name="ModeRow" type="HBoxContainer" parent="Root/Margin/VBox/PickerPanel"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="LeaguesModeButton" type="Button" parent="Root/Margin/VBox/PickerPanel/ModeRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+custom_minimum_size = Vector2(0, 48)
+text = "Nacional"
+
+[node name="ContinentalModeButton" type="Button" parent="Root/Margin/VBox/PickerPanel/ModeRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+custom_minimum_size = Vector2(0, 48)
+text = "Continental"
+
+[node name="RankingModeButton" type="Button" parent="Root/Margin/VBox/PickerPanel/ModeRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+custom_minimum_size = Vector2(0, 48)
+text = "Ranking"
+
+[node name="PickerLabel" type="Label" parent="Root/Margin/VBox/PickerPanel"]
+layout_mode = 2
+text = "Elige una liga:"
+
+[node name="TierBackButton" type="Button" parent="Root/Margin/VBox/PickerPanel"]
+visible = false
+layout_mode = 2
+text = "< Continentes"
+
+[node name="Scroll" type="ScrollContainer" parent="Root/Margin/VBox/PickerPanel"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="LeagueListBox" type="VBoxContainer" parent="Root/Margin/VBox/PickerPanel/Scroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 6
+
+[node name="DetailPanel" type="VBoxContainer" parent="Root/Margin/VBox"]
+visible = false
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 10
+
+[node name="LeagueNameLabel" type="Label" parent="Root/Margin/VBox/DetailPanel"]
+layout_mode = 2
+horizontal_alignment = 1
+autowrap_mode = 3
+
+[node name="SectionRow" type="HBoxContainer" parent="Root/Margin/VBox/DetailPanel"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="LeagueSectionButton" type="Button" parent="Root/Margin/VBox/DetailPanel/SectionRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+custom_minimum_size = Vector2(0, 44)
+text = "Liga"
+
+[node name="CupSectionButton" type="Button" parent="Root/Margin/VBox/DetailPanel/SectionRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+custom_minimum_size = Vector2(0, 44)
+text = "Copa"
+
+[node name="LeagueTabsRow" type="HBoxContainer" parent="Root/Margin/VBox/DetailPanel"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="TableTabButton" type="Button" parent="Root/Margin/VBox/DetailPanel/LeagueTabsRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Tabla"
+
+[node name="ScorersTabButton" type="Button" parent="Root/Margin/VBox/DetailPanel/LeagueTabsRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Goleadores"
+
+[node name="AssistsTabButton" type="Button" parent="Root/Margin/VBox/DetailPanel/LeagueTabsRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Asistencias"
+
+[node name="PlayoffTabButton" type="Button" parent="Root/Margin/VBox/DetailPanel/LeagueTabsRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Playoffs"
+
+[node name="DisciplineTabButton" type="Button" parent="Root/Margin/VBox/DetailPanel/LeagueTabsRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Disciplina"
+
+[node name="CupTabsRow" type="HBoxContainer" parent="Root/Margin/VBox/DetailPanel"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="CupBracketTabButton" type="Button" parent="Root/Margin/VBox/DetailPanel/CupTabsRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Cuadro"
+
+[node name="CupScorersTabButton" type="Button" parent="Root/Margin/VBox/DetailPanel/CupTabsRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Goleadores"
+
+[node name="CupAssistsTabButton" type="Button" parent="Root/Margin/VBox/DetailPanel/CupTabsRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Asistencias"
+
+[node name="Scroll" type="ScrollContainer" parent="Root/Margin/VBox/DetailPanel"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="DetailBox" type="VBoxContainer" parent="Root/Margin/VBox/DetailPanel/Scroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 4
+
+[node name="ChangeLeagueButton" type="Button" parent="Root/Margin/VBox/DetailPanel"]
+layout_mode = 2
+text = "Cambiar de liga"
+
+[node name="BackButton" type="Button" parent="Root/Margin/VBox"]
+layout_mode = 2
+text = "Volver al Hub"
+
+[node name="BottomNav" parent="Root" instance=ExtResource("2")]
+layout_mode = 2
+
+[node name="RosterOverlay" type="ColorRect" parent="."]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0.043, 0.043, 0.043, 1)
+
+[node name="Margin" type="MarginContainer" parent="RosterOverlay"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+theme_override_constants/margin_left = 28
+theme_override_constants/margin_top = 116
+theme_override_constants/margin_right = 28
+theme_override_constants/margin_bottom = 24
+
+[node name="VBox" type="VBoxContainer" parent="RosterOverlay/Margin"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 12
+
+[node name="RosterTitleLabel" type="Label" parent="RosterOverlay/Margin/VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 22
+horizontal_alignment = 1
+autowrap_mode = 3
+
+[node name="RosterHintLabel" type="Label" parent="RosterOverlay/Margin/VBox"]
+layout_mode = 2
+text = "Tocá un jugador para ver su carta."
+theme_override_colors/font_color = Color(0.7, 0.7, 0.7, 1)
+
+[node name="Scroll" type="ScrollContainer" parent="RosterOverlay/Margin/VBox"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="RosterListBox" type="VBoxContainer" parent="RosterOverlay/Margin/VBox/Scroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 6
+
+[node name="RosterBackButton" type="Button" parent="RosterOverlay/Margin/VBox"]
+layout_mode = 2
+text = "Cerrar"
+
+[node name="PlayerCardOverlay" type="ColorRect" parent="."]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0.043, 0.043, 0.043, 1)
+
+[node name="Margin" type="MarginContainer" parent="PlayerCardOverlay"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+theme_override_constants/margin_left = 28
+theme_override_constants/margin_top = 116
+theme_override_constants/margin_right = 28
+theme_override_constants/margin_bottom = 24
+
+[node name="VBox" type="VBoxContainer" parent="PlayerCardOverlay/Margin"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 10
+
+[node name="Scroll" type="ScrollContainer" parent="PlayerCardOverlay/Margin/VBox"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="PlayerCardBox" type="VBoxContainer" parent="PlayerCardOverlay/Margin/VBox/Scroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 8
+
+[node name="PlayerCardBackButton" type="Button" parent="PlayerCardOverlay/Margin/VBox"]
+layout_mode = 2
+text = "Cerrar"
