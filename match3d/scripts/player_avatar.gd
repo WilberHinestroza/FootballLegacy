@@ -29,7 +29,6 @@ var _hair_mat := StandardMaterial3D.new()
 var _hair_node: Node3D
 var _hair_style := ""
 var _arm_pose: ArmPose
-var _pants: MeshInstance3D
 var _arm_tween: Tween
 
 
@@ -258,17 +257,6 @@ func set_colors(colors: Dictionary) -> void:
 		_mat_fade.set_shader_parameter(key, colors[key])
 	if colors.has("hair_color"):
 		_hair_mat.albedo_color = Color(colors.hair_color, _hair_mat.albedo_color.a)
-	# Pantalón largo: malla aparte por encima (la del jugador trae la pantaloneta modelada)
-	if colors.has("long_pants") or (colors.has("shorts_color") and _pants != null):
-		var want: bool = bool(colors.get("long_pants", _pants != null))
-		var col: Color = colors.get("shorts_color", _mat.get_shader_parameter("shorts_color"))
-		if want and _pants == null:
-			_pants = PantsBuilder.build(skeleton, col)
-		elif not want and _pants != null:
-			_pants.queue_free()
-			_pants = null
-		if _pants != null:
-			(_pants.material_override as StandardMaterial3D).albedo_color = PantsBuilder.tone(col)
 
 
 ## Copia el aspecto de otro avatar (colores, equipación, peinado y tamaño): para sacar a
