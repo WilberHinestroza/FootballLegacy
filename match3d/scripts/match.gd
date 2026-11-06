@@ -700,6 +700,8 @@ func _start_ambient_goal(team: int, at_minute: int, scorer_name: String) -> void
 	_ambient_goal_scored = false
 	_ambient_keeper_dived = false
 	_ambient_goal_timer = 6.0
+	_ambient_is_miss = false
+	_ambient_dive_wrong = randf() < 0.3
 	_ambient_goal_shot_side = 1.0 if randf() < 0.5 else -1.0
 	_ambient_goal_shot_height = randf_range(0.45, 0.95)
 	_ambient_goal_shot_taken = false
@@ -724,10 +726,12 @@ func _start_ambient_goal(team: int, at_minute: int, scorer_name: String) -> void
 	shooter.move_input = Vector3.ZERO
 	shooter.sprinting = false
 	if _ambient_goal_keeper != null:
-		var keeper_pos := goal - Vector3(dir * 0.8, 0.0, _ambient_goal_shot_side * 1.0)
+		# Bien colocado, en la bisectriz entre el balón y la portería (el tiro va al otro palo)
+		var keeper_pos := goal - Vector3(dir * 1.1, 0.0, 0.0)
+		keeper_pos.z = lerpf(goal.z, shoot_spot.z, 0.2)
 		_ambient_goal_keeper.set_physics_process(true)
 		_ambient_goal_keeper.visible = true
-		_ambient_goal_keeper.reset_to(keeper_pos, flat(start - keeper_pos).normalized())
+		_ambient_goal_keeper.reset_to(keeper_pos, flat(shoot_spot - keeper_pos).normalized())
 	if assist != null:
 		_ambient_goal_assist = assist
 		assist.set_physics_process(true)
@@ -765,6 +769,8 @@ func _start_ambient_miss(team: int, at_minute: int, shooter_name: String) -> voi
 	_ambient_goal_scored = false
 	_ambient_keeper_dived = false
 	_ambient_goal_timer = 4.0
+	_ambient_is_miss = true
+	_ambient_dive_wrong = randf() < 0.2
 	_ambient_goal_shot_side = 1.0 if randf() < 0.5 else -1.0
 	_ambient_goal_shot_height = randf_range(0.6, 1.4)
 	_ambient_goal_shot_taken = true
@@ -786,25 +792,34 @@ func _start_ambient_miss(team: int, at_minute: int, shooter_name: String) -> voi
 	shooter.move_input = Vector3.ZERO
 	shooter.sprinting = false
 	if _ambient_goal_keeper != null:
-		var keeper_pos := goal - Vector3(dir * 0.8, 0.0, _ambient_goal_shot_side * 1.0)
+		var keeper_pos := goal - Vector3(dir * 1.1, 0.0, 0.0)
+		keeper_pos.z = lerpf(goal.z, start.z, 0.2)
 		_ambient_goal_keeper.set_physics_process(true)
 		_ambient_goal_keeper.visible = true
 		_ambient_goal_keeper.reset_to(keeper_pos, flat(start - keeper_pos).normalized())
 	_give_ball_now(shooter)
-	shooter.shoot_at(target, 0.72)
+	shooter.shoot_exact(target, 0.72) # sin desvío: el fallo es fallo
 	_hud.add_feed("%d'  %s prueba el disparo" % [at_minute, _ambient_goal_name if _ambient_goal_name != "" else TEAM_NAMES[team]])
 	SoundFx.set_crowd(-9.0)
 
 
 func _update_ambient_goal(delta: float) -> void:
 	_ambient_goal_timer -= delta
-	if not _ambient_keeper_dived and _ambient_goal_keeper != null \
+	if not _ambient_keeper_dived and _ambient_goal_keeper != null and _ambient_goal_shot_taken \
 			and ball.owner_player == null and ball.linear_velocity.length() > 5.0:
-		_ambient_keeper_dived = true
-		var goal := opponent_goal_center(_ambient_goal_team)
-		# El arquero lee tarde la trayectoria y se lanza al lado contrario.
-		_ambient_goal_keeper.start_dive(goal + Vector3(0.0, 0.8, -_ambient_goal_shot_side * 2.2), 0.72)
+		_ambient_keeper_dive()
+	_ambient_support_run()
 	if not _ambient_goal_scored and not _ambient_goal_shot_taken and _ambient_goal_assist != null:
+		# En esta fase nadie más toca el balón: el goleador sale a por el pase y lo controla
+		# él (antes el pase le pasaba de largo y se quedaba quieto viéndolo rodar).
+		var sh := _ambient_goal_shooter
+		if ball.owner_player == null and ball.last_touch == _ambient_goal_assist:
+			if flat_dist(sh.global_position, ball.global_position) < 0.9 and ball.global_position.y < 1.0:
+				ball.trap(sh)
+				_give_ball(sh)
+			else:
+				var meet := ball.global_position + flat(ball.linear_velocity) * 0.35
+				AiBrain.move_to(sh, meet, 0.2, true)
 		if ball.owner_player == _ambient_goal_shooter:
 			var goal := opponent_goal_center(_ambient_goal_team)
 			_ambient_goal_shooter.shoot_exact(goal + Vector3(0.0, _ambient_goal_shot_height, _ambient_goal_shot_side * (GOAL_WIDTH * 0.5 - randf_range(0.4, 0.9))), 0.68)
@@ -831,6 +846,65 @@ func _update_ambient_goal(delta: float) -> void:
 		_hud.add_feed("%d'  Ocasión de %s, el balón se va" % [_ambient_goal_minute,
 				_ambient_goal_name if _ambient_goal_name != "" else TEAM_NAMES[_ambient_goal_team]])
 		_finish_ambient_goal()
+
+
+## El portero de la jugada de fondo se estira al ver venir el balón: casi siempre hacia
+## él pero sin llegar (el tiro va lejos de sus manos), a veces engañado al otro lado.
+## Si va por encima del larguero, solo lo mira. Nunca queda en la trayectoria.
+func _ambient_keeper_dive() -> void:
+	var k := _ambient_goal_keeper
+	var dir := attack_dir(_ambient_goal_team)
+	var v := ball.linear_velocity
+	var vx := v.x * dir
+	var gap := (k.global_position.x - ball.global_position.x) * dir
+	if gap < 0.0:
+		_ambient_keeper_dived = true # ya pasó
+		return
+	if vx < 1.0:
+		return
+	var t := gap / vx
+	# Engañado se tira antes (adivina); bien leído, en el último momento
+	if t > SoccerPlayer.DIVE_LEAD + (0.3 if _ambient_dive_wrong else 0.1):
+		return
+	_ambient_keeper_dived = true
+	var zp := ball.global_position.z + v.z * t
+	var yp := clampf(ball.global_position.y + v.y * t - 4.9 * t * t, 0.3, 2.0)
+	if yp > GOAL_HEIGHT + 0.1:
+		return # se va por arriba: lo sigue con la mirada
+	var kz := k.global_position.z
+	var side := signf(zp - kz) if absf(zp - kz) > 0.05 else 1.0
+	var tz: float
+	if _ambient_dive_wrong:
+		tz = kz - side * 2.0
+	else:
+		# Hacia el balón, pero las manos se quedan cortas (es gol / se va fuera)
+		tz = zp - side * (1.2 if not _ambient_is_miss else 0.7)
+		if (tz - kz) * side < 0.7:
+			tz = kz + side * 0.7
+	k.start_dive(Vector3(k.global_position.x, yp, tz), 1.0)
+
+
+## El resto no se queda de estatua: los atacantes acompañan la jugada hacia el área
+## y los defensores cierran hacia su portería.
+func _ambient_support_run() -> void:
+	var goal := opponent_goal_center(_ambient_goal_team)
+	var dir := attack_dir(_ambient_goal_team)
+	for p: SoccerPlayer in players:
+		if not p.visible or p.is_keeper or p == _ambient_goal_shooter or p == _ambient_goal_assist:
+			continue
+		if flat_dist(p.global_position, goal) > 45.0:
+			continue
+		var target: Vector3
+		if p.team == _ambient_goal_team:
+			target = goal - Vector3(dir * (11.0 + (p.index % 4) * 3.0), 0.0, 0.0)
+			target.z = clampf(p.global_position.z * 0.7, -18.0, 18.0)
+		else:
+			# Cierran por el lado del palo cercano, nunca en la línea del tiro (que va
+			# al palo largo): si no, el balón les atravesaría
+			var sh_z := _ambient_goal_shooter.global_position.z if _ambient_goal_shooter != null else 0.0
+			target = goal - Vector3(dir * (4.0 + (p.index % 3) * 2.5), 0.0, 0.0)
+			target.z = clampf(sh_z - _ambient_goal_shot_side * (2.5 + (p.index % 2) * 2.0), -14.0, 14.0)
+		AiBrain.move_to(p, target, 1.5)
 
 
 func _finish_ambient_goal() -> void:
@@ -1845,6 +1919,8 @@ var _ambient_goal_keeper: SoccerPlayer
 var _ambient_goal_timer := 0.0
 var _ambient_goal_scored := false
 var _ambient_keeper_dived := false
+var _ambient_is_miss := false
+var _ambient_dive_wrong := false
 var _ambient_goal_shot_side := 1.0
 var _ambient_goal_shot_height := 0.7
 var _ambient_goal_shot_taken := false
@@ -3563,7 +3639,9 @@ func _on_goal_area_entered(body: Node3D, scoring_team: int) -> void:
 		ball.owner_player = null
 		_shootout_ball_entered = true
 		return
-	if state == State.AMBIENT_GOAL and (scoring_team != _ambient_goal_team or _ambient_goal_scored):
+	# Un tiro que la simulación decidió fallado no puede acabar sumando un gol que no
+	# existe en el resultado (pasaba si el desvío aleatorio lo metía entre los palos).
+	if state == State.AMBIENT_GOAL and (scoring_team != _ambient_goal_team or _ambient_goal_scored or _ambient_is_miss):
 		return
 	shake(0.9)
 	FieldBuilder.net_hit(_goal_areas[scoring_team], ball.global_position)
@@ -4849,6 +4927,10 @@ func _try_receive(p: SoccerPlayer, body_control := false) -> void:
 		var lateral := absf(ball.global_position.z - p.global_position.z)
 		var beaten := clampf((spd - 16.0) / 14.0 * 0.35 + lateral * 0.25, 0.0, 0.6)
 		beaten = clampf(beaten * lerpf(1.4, 0.6, p.keeper_skill()), 0.0, 0.75)
+		# Al cuerpo no le supera nunca: el balón le da y lo para o rebota
+		# (antes seguía de largo y se veía atravesándole).
+		if flat_dist(ball.global_position, p.global_position) < 0.6 and ball.global_position.y < 1.85:
+			beaten = 0.0
 		var r := randf()
 		if r < beaten:
 			ball.block_pickup(p, 0.4)

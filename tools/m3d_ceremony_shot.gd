@@ -21,7 +21,21 @@ func _ready() -> void:
 	m._end_walkout()
 	await get_tree().create_timer(1.0).timeout
 	var shots := 0
-	if kind == "final":
+	if kind == "ambient" or kind == "miss":
+		# Gol (o fallo) de la simulación: ¿el portero se estira bien y nadie queda quieto?
+		for rep in 3:
+			if kind == "ambient":
+				m._start_ambient_goal(rep % 2, 30 + rep, "")
+			else:
+				m._start_ambient_miss(rep % 2, 30 + rep, "")
+			for i in 8:
+				await get_tree().create_timer(0.22).timeout
+				get_viewport().get_texture().get_image().save_png("res://build/m3d_cer_%s_%02d.png" % [tag, shots])
+				shots += 1
+			while m.state != SoccerMatch.State.SIMULATING:
+				await get_tree().create_timer(0.3).timeout
+			await get_tree().create_timer(0.5).timeout
+	elif kind == "final":
 		m.score = [3, 2]
 		m._log_goal(0, 12, m.profile.player_name, false, true)
 		m._log_goal(1, 34, "Marco Ruiz", false)
