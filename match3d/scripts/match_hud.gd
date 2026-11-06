@@ -1024,6 +1024,182 @@ func hide_walkout_intro() -> void:
 	_intro = null
 
 
+# ---------- marcador final (estilo tele) ----------
+
+var _final_card: Control
+
+
+## Marcador final en el centro: competición arriba, los dos escudos con el resultado
+## grande en medio (el que pierde, apagado) y debajo los goleadores de cada lado con
+## sus minutos. Entra con un golpe de escala y los goles aparecen uno a uno.
+## data = {names, colors, colors2, crests, score: [a, b], winner: -1|0|1,
+##         goals: [{team, minute, name, star}], footer: "PENALES 4 - 3", competition}
+func show_final_card(data: Dictionary, hold := 6.0) -> void:
+	hide_final_card()
+	hide_message()
+	var vp := get_viewport().get_visible_rect().size
+	var w := minf(860.0, vp.x - 32.0)
+	var goals: Array = data.get("goals", [])
+	# Una línea por goleador y equipo: "PÉREZ  12'  67'"
+	var lines: Array = [[], []]
+	var order: Array = [{}, {}]
+	for g: Dictionary in goals:
+		var t := clampi(int(g.get("team", 0)), 0, 1)
+		var who := String(g.get("name", "")).to_upper()
+		if who == "":
+			who = "GOL"
+		if not (order[t] as Dictionary).has(who):
+			order[t][who] = (lines[t] as Array).size()
+			lines[t].append({"name": who, "mins": [], "star": bool(g.get("star", false))})
+		lines[t][order[t][who]].mins.append("%d'" % int(g.get("minute", 0)))
+	var rows := maxi((lines[0] as Array).size(), (lines[1] as Array).size())
+	var bar_h := 128.0
+	var list_h := 0.0 if rows == 0 else 22.0 + rows * 30.0
+	var footer := String(data.get("footer", ""))
+	var h := 34.0 + bar_h + list_h + (36.0 if footer != "" else 0.0) + 10.0
+
+	var root := Control.new()
+	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.size = Vector2(w, h)
+	root.position = Vector2((vp.x - w) * 0.5, maxf(12.0, (vp.y - h) * 0.42))
+	root.pivot_offset = root.size * 0.5
+	add_child(root)
+	_final_card = root
+	var accent := Color(String(_style.get("accent", "#f2c230")))
+	var gold := Color(1.0, 0.86, 0.4)
+
+	# Cinta: FINAL · competición
+	var top := "FINAL DEL PARTIDO"
+	if String(data.get("competition", "")) != "":
+		top += "  ·  " + String(data.competition).to_upper()
+	var tl := _label(22, root)
+	tl.text = top
+	tl.size = Vector2(w, 30.0)
+	tl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	tl.label_settings.font_color = gold
+
+	var bar := Panel.new()
+	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bar.position = Vector2(0.0, 34.0)
+	bar.size = Vector2(w, bar_h + list_h)
+	bar.clip_contents = true
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.05, 0.06, 0.09, 0.94)
+	sb.set_corner_radius_all(16)
+	sb.border_width_bottom = 5
+	sb.border_color = accent
+	bar.add_theme_stylebox_override("panel", sb)
+	root.add_child(bar)
+	var winner := int(data.get("winner", -1))
+	var score: Array = data.get("score", [0, 0])
+	var mid := 190.0 # ancho del bloque del resultado
+	for t in 2:
+		var c: Color = data.colors[t]
+		var c2: Color = data.colors2[t]
+		var lost := winner >= 0 and winner != t
+		var half := ColorRect.new()
+		half.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var hc := c.darkened(0.3 if lost else 0.08)
+		half.color = Color(hc, 0.9)
+		var ink := Color(0.06, 0.07, 0.1) if hc.get_luminance() > 0.62 else Color.WHITE
+		half.size = Vector2((w - mid) * 0.5, bar_h)
+		half.position = Vector2(0.0 if t == 0 else (w + mid) * 0.5, 0.0)
+		bar.add_child(half)
+		var crest := _crest(String(data.names[t]), c, c2, (data.get("crests", [null, null]) as Array)[t])
+		crest.position = Vector2(18.0 if t == 0 else w - 18.0 - 76.0, (bar_h - 76.0) * 0.5)
+		crest.modulate = Color(1, 1, 1, 0.55) if lost else Color.WHITE
+		bar.add_child(crest)
+		var tname := String(data.names[t]).to_upper()
+		var nw := (w - mid) * 0.5 - 116.0
+		var nl := _label(32, bar)
+		nl.text = tname
+		nl.clip_text = true
+		var nls: LabelSettings = nl.label_settings
+		var nf: Font = nls.font if nls.font else nl.get_theme_font("font")
+		while nls.font_size > 15 and nf.get_string_size(tname, HORIZONTAL_ALIGNMENT_LEFT, -1, nls.font_size).x > nw:
+			nls.font_size -= 1
+		nls.font_color = ink
+		if ink != Color.WHITE:
+			nls.outline_size = 0
+		nl.size = Vector2(nw, bar_h)
+		nl.position = Vector2(104.0 if t == 0 else (w + mid) * 0.5 + 12.0, 0.0)
+		nl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		nl.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT if t == 0 else HORIZONTAL_ALIGNMENT_RIGHT
+		if lost:
+			nl.label_settings.font_color = Color(ink, 0.7)
+		if winner == t:
+			var tag := _label(16, bar)
+			tag.text = "GANADOR"
+			tag.label_settings.font_color = gold
+			tag.size = nl.size
+			tag.position = nl.position + Vector2(0.0, 34.0)
+			tag.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+			tag.horizontal_alignment = nl.horizontal_alignment
+	var sc := _label(64, bar)
+	sc.text = "%d - %d" % [int(score[0]), int(score[1])]
+	sc.size = Vector2(mid, bar_h)
+	sc.position = Vector2((w - mid) * 0.5, 0.0)
+	sc.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	sc.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	sc.label_settings.font_color = Color.WHITE if winner < 0 else gold
+
+	# Goleadores: una columna por equipo, pegadas al centro
+	var items: Array[Control] = []
+	if rows > 0:
+		var cap := _label(13, bar)
+		cap.text = "GOLES"
+		cap.label_settings.font_color = Color(1, 1, 1, 0.5)
+		cap.size = Vector2(w, 18.0)
+		cap.position = Vector2(0.0, bar_h + 4.0)
+		cap.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		for t in 2:
+			for i in (lines[t] as Array).size():
+				var ln: Dictionary = lines[t][i]
+				var gl := _label(20, bar)
+				var mins := "  ".join(PackedStringArray(ln.mins))
+				gl.text = (String(ln.name) + "   " + mins) if t == 0 else (mins + "   " + String(ln.name))
+				gl.clip_text = true
+				gl.size = Vector2(w * 0.5 - 40.0, 28.0)
+				gl.position = Vector2(16.0 if t == 0 else w * 0.5 + 24.0, bar_h + 22.0 + i * 30.0)
+				gl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT if t == 0 else HORIZONTAL_ALIGNMENT_LEFT
+				if bool(ln.star):
+					gl.label_settings.font_color = gold
+				gl.modulate.a = 0.0
+				items.append(gl)
+		var line := ColorRect.new()
+		line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		line.color = Color(1, 1, 1, 0.18)
+		line.size = Vector2(2.0, rows * 30.0 - 4.0)
+		line.position = Vector2(w * 0.5 - 1.0, bar_h + 24.0)
+		bar.add_child(line)
+	if footer != "":
+		var fl := _label(22, root)
+		fl.text = footer
+		fl.size = Vector2(w, 30.0)
+		fl.position = Vector2(0.0, 34.0 + bar_h + list_h + 8.0)
+		fl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		fl.label_settings.font_color = gold
+
+	root.modulate.a = 0.0
+	var tw := root.create_tween()
+	tw.set_ignore_time_scale(true)
+	tw.tween_property(root, "modulate:a", 1.0, 0.3)
+	tw.parallel().tween_property(root, "scale", Vector2.ONE, 0.45).from(Vector2(1.15, 1.15)) \
+			.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	for it in items:
+		tw.tween_property(it, "modulate:a", 1.0, 0.2)
+		tw.parallel().tween_property(it, "position:y", it.position.y, 0.2).from(it.position.y + 10.0)
+	tw.tween_interval(hold)
+	tw.tween_property(root, "modulate:a", 0.0, 0.5)
+	tw.tween_callback(root.queue_free)
+
+
+func hide_final_card() -> void:
+	if is_instance_valid(_final_card):
+		_final_card.queue_free()
+	_final_card = null
+
+
 ## Franja del partido abajo en el centro: [escudo] LOCAL  VS  VISITA [escudo].
 func _intro_matchup(data: Dictionary) -> Control:
 	var vp := get_viewport().get_visible_rect().size

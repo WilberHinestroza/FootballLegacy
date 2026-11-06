@@ -37,7 +37,8 @@ var _arm_tween: Tween
 ## Para volver a la posición o acompañar la jugada sin "correr a cámara lenta".
 func _ensure_jog() -> void:
 	_derive_gait("jog", 0.55, 0.5)
-	_derive_gait("walk", 0.32, 0.2)
+	# Caminar, caminar cabizbajo y el salto de celebración: hechos por código
+	ProceduralAnims.build_all(anim, skeleton, self)
 
 
 ## Variante de "run" con menos amplitud de giro (`amp`) y de rebote de cadera (`bounce`).

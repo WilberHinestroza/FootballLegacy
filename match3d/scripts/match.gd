@@ -1628,7 +1628,7 @@ func _start_outro() -> void:
 	_hud.show_replay_button(false)
 	_hud.set_sim_visible(false)
 	_hud.set_hint("")
-	_hud.show_message("FINAL  %d - %d\n%s" % [score[0], score[1], _result_text()], 4.0)
+	_hud.show_final_card(_final_card_data(), 6.0)
 	_hud.add_feed("%d'  Final del partido" % int(minute))
 	SoundFx.play("whistle_end", -3.0)
 	Haptics.hit("whistle")
@@ -1664,9 +1664,13 @@ func _start_outro() -> void:
 		_outro_delay[p] = 1.0 + float(rank) * 0.28 + randf_range(0.0, 0.7) + (1.4 if lingers else 0.0)
 		_outro_pace[p] = OUTRO_PACE * randf_range(0.85, 1.15)
 		var clap_d := randf_range(0.0, 0.5) + (float(_outro_delay[p]) - 1.8 if lingers else 0.0)
+		# Los que ganan festejan (algún salto); los que pierden aplauden y se van cabizbajos
+		var won := _winner_team() == p.team
+		p.sad_gait = _winner_team() >= 0 and not won
+		var act: String = (["clap", "fist_pump", "jump_cheer", "clap"] if won else ["clap"]).pick_random()
 		get_tree().create_timer(maxf(clap_d, 0.0), false).timeout.connect(func() -> void:
 			if is_instance_valid(p) and state == State.OUTRO:
-				p.play_action("clap", 1.0, 1.0)) # el giro a la grada lo hace _update_outro, de a poco
+				p.play_action(act, 1.0, 1.2)) # el giro a la grada lo hace _update_outro, de a poco
 		p.stun_timer = 0.0
 		p.set_physics_process(true) # los del podio de campeones estaban quietos a mano
 		p.global_position.y = 0.0
@@ -1763,6 +1767,27 @@ func finish_and_exit() -> void:
 		(config.on_finish as Callable).call(res)
 	else:
 		get_tree().change_scene_to_file("res://scenes/editor.tscn")
+
+
+## Datos del marcador final: equipos, escudos, resultado y goleadores con minuto.
+func _final_card_data() -> Dictionary:
+	var footer := ""
+	if bool(config.get("has_tie_carry", false)):
+		var aggregate := _aggregate_score()
+		footer = "GLOBAL  %d - %d" % [aggregate[0], aggregate[1]]
+	if _shootout_scores[0] + _shootout_scores[1] > 0:
+		footer += ("   ·   " if footer != "" else "") + "PENALES  %d - %d" % [_shootout_scores[0], _shootout_scores[1]]
+	var goals: Array = []
+	for g: Dictionary in match_stats.goals_log:
+		var who := String(g.get("name", ""))
+		var words := who.split(" ", false)
+		goals.append({"team": int(g.team), "minute": int(g.minute), "star": bool(g.get("star", false)),
+			"name": words[-1] if words.size() > 0 else who})
+	return {"names": TEAM_NAMES, "colors": [profile.shirt, _kit_shirt1],
+		"colors2": [_kits[0].get("shirt_color2", Color.WHITE), _kits[1].get("shirt_color2", Color.WHITE)],
+		"crests": [config.get("home_crest"), config.get("away_crest")],
+		"score": [score[0], score[1]], "winner": _winner_team(), "goals": goals, "footer": footer,
+		"competition": String(config.get("competition", ""))}
 
 
 func _result_text() -> String:
@@ -3713,7 +3738,7 @@ func _update_celebration(delta: float) -> void:
 			_celeb_cheered[m] = true
 			m.velocity = Vector3.ZERO
 			m.facing = _celeb_face
-			m.play_action(["fist_pump", "fist_pump_2", "victory", "charge", "clap"].pick_random(), 1.0,
+			m.play_action(["fist_pump", "fist_pump_2", "victory", "charge", "clap", "jump_cheer", "jump_cheer"].pick_random(), 1.0,
 					maxf(_celeb_dance - _celeb_t, 0.5))
 
 

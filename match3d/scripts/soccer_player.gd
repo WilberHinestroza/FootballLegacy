@@ -31,6 +31,8 @@ var facing := Vector3.RIGHT
 var move_input := Vector3.ZERO
 ## El portero camina y está de pie como uno más (p. ej. en la salida de los equipos).
 var walk_normal := false
+## Al perder: vuelve al túnel cabizbajo ("walk_sad" en vez de "walk").
+var sad_gait := false
 var sprinting := false
 ## Multi-toque en el partido 3D: 0 = normal, 1 = máximo. Acelera al jugador y
 ## le gasta más energía (lo pone SoccerMatch al ordenar un punto con varios toques).
@@ -1082,6 +1084,8 @@ func _animate_model(delta: float, speed: float) -> void:
 		target = "run" if speed > (2.7 if running else 3.3) or not _anim.has_animation("jog") else "jog"
 		if target == "jog" and speed < (1.8 if _anim.current_animation == "walk" else 1.5) and _anim.has_animation("walk"):
 			target = "walk"
+			if sad_gait and _anim.has_animation("walk_sad"):
+				target = "walk_sad"
 		if _jockey:
 			# Hacia atrás o de lado según hacia dónde va respecto a donde mira
 			var v := SoccerMatch.flat(velocity).normalized()
@@ -1102,6 +1106,8 @@ func _animate_model(delta: float, speed: float) -> void:
 	_last_anim_speed = speed
 	if target == "walk":
 		_anim.speed_scale = clampf(speed / 1.6, 0.6, 1.1)
+	elif target == "walk_sad":
+		_anim.speed_scale = clampf(speed / 1.2, 0.6, 1.1)
 	elif target == "jog":
 		_anim.speed_scale = clampf(speed / 2.4, 0.75, 1.35)
 	elif target == "run":
@@ -1112,7 +1118,7 @@ func _animate_model(delta: float, speed: float) -> void:
 		_anim.speed_scale = 1.0
 	# Cansancio visible: zancada más corta y respiración más agitada con poca energía.
 	var low := clampf(energy / 0.45, 0.0, 1.0)
-	if target in ["walk", "jog", "run", "run_back", "strafe_left", "strafe_right"]:
+	if target in ["walk", "walk_sad", "jog", "run", "run_back", "strafe_left", "strafe_right"]:
 		_anim.speed_scale *= lerpf(0.84, 1.0, low)
 	elif target == "idle":
 		_anim.speed_scale = lerpf(1.22, 1.0, low)

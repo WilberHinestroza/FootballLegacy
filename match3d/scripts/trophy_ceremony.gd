@@ -91,6 +91,7 @@ func start(m: SoccerMatch, trophy_name: String) -> void:
 		if kneel:
 			p.play_action("kneel", 1.0, 2.6)
 		p.walk_normal = true
+		p.sad_gait = true
 		p.collision_layer = SoccerMatch.WALK_BODY_LAYER
 		p.collision_mask = SoccerMatch.WALK_BODY_LAYER
 		_rivals.append({"p": p, "delay": randf_range(0.5, 2.0) + (2.8 if kneel else 0.0), "via": false})
@@ -218,18 +219,21 @@ func _update_mates(delta: float) -> void:
 		var spot: Vector3 = d["spot"]
 		CeremonyKit.face(p, p.global_position + Vector3.BACK, delta * 4.0)
 		if _phase == "lift":
-			# Saltos: tres botes juntos al levantar la copa, luego alguno suelto
-			var k := _phase_t - float(d["jump"]) * 0.02
-			var h := 0.0
-			if k < 1.8:
-				h = absf(sin(k * PI / 0.6)) * 0.42
-			else:
-				var c := fmod(_t + float(d["jump"]), 3.0)
-				if c < 0.5:
-					h = absf(sin(c * PI / 0.5)) * 0.3
-			p.global_position.y = spot.y + maxf(h, 0.0)
-			if _phase_t > 0.3 and p._anim and (not p._anim.is_playing() or p._anim.current_animation == "crouch"):
-				p._anim.play(CELEBRATE.pick_random(), 0.3)
+			# Saltos de verdad (se agachan, impulsan y caen): dos seguidos al levantar la
+			# copa, casi a la vez; luego alguno suelto entre los festejos.
+			p.global_position.y = spot.y
+			var k := _phase_t - float(d["jump"]) * 0.03
+			var a: AnimationPlayer = p._anim
+			if a == null:
+				continue
+			var jumping := a.current_animation == "jump_cheer" and a.is_playing()
+			if k > 0.0 and int(d.get("jumps", 0)) < 2 and not jumping:
+				a.play("jump_cheer", 0.12)
+				a.speed_scale = randf_range(1.05, 1.2)
+				d["jumps"] = int(d.get("jumps", 0)) + 1
+			elif not jumping and (not a.is_playing() or a.current_animation == "crouch"):
+				a.play("jump_cheer" if randf() < 0.3 else CELEBRATE.pick_random(), 0.25)
+				a.speed_scale = 1.0
 		elif _phase != "turn" and p._anim and not p._anim.is_playing():
 			p._anim.play(CELEBRATE.pick_random(), 0.3)
 

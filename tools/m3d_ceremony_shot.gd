@@ -21,7 +21,19 @@ func _ready() -> void:
 	m._end_walkout()
 	await get_tree().create_timer(1.0).timeout
 	var shots := 0
-	if kind == "trophy":
+	if kind == "final":
+		m.score = [3, 2]
+		m._log_goal(0, 12, m.profile.player_name, false, true)
+		m._log_goal(1, 34, "Marco Ruiz", false)
+		m._log_goal(0, 58, "Diego Salas", true)
+		m._log_goal(1, 71, "Marco Ruiz", false)
+		m._log_goal(0, 89, m.profile.player_name, false, true)
+		m._start_outro()
+		for i in 6:
+			await get_tree().create_timer(0.6).timeout
+			get_viewport().get_texture().get_image().save_png("res://build/m3d_cer_%s_%02d.png" % [tag, shots])
+			shots += 1
+	elif kind == "trophy":
 		SoccerMatch.config["final_trophy"] = "Copa de Campeones"
 		m.score = [2, 1]
 		m._finish_match()
