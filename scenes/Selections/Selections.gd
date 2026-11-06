@@ -443,7 +443,14 @@ func _on_play_pressed(fx: Dictionary) -> void:
 	if Match3DBridge.supported():
 		get_tree().change_scene_to_file("res://scenes/Match3D/Match3D.tscn")
 		return
-	get_tree().change_scene_to_file("res://scenes/Match/Match.tscn")
+	# No juegas (sanción / fuera de la convocatoria): se simula al instante,
+	# el mismo motor que "Simular" del Inicio, y va al resumen de selección.
+	if MatchState.engine == null or MatchState.engine.instant_mode:
+		return
+	MatchState.engine.instant_mode = true
+	MatchState.apply_tie_aggregate()
+	MatchState.match_result = await MatchState.engine.run_match()
+	(Engine.get_main_loop() as SceneTree).change_scene_to_file("res://scenes/NationalMatchSummary/NationalMatchSummary.tscn")
 
 ## --- Eliminatoria al Mundial ---
 

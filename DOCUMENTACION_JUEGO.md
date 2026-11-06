@@ -502,10 +502,16 @@ Se conecta directamente con el reloj del partido 3D y con `MatchEngine`.
 interruptor "Partido 3D" de Ajustes ya no existe (`Preferences.match_3d` queda
 siempre en `true`).
 
-`scenes/Match/Match.tscn` (cancha 2D por decisiones, `ui/match/`) sigue solo
-como **respaldo** cuando no juegas: sancionado o sin convocatoria
-(`Match3DBridge.supported()` = false). Fase 2 pendiente: reemplazarlo por una
-simulación directa al resumen y borrarlo.
+El partido 2D por decisiones (`scenes/Match/`, `ui/match/`) también se
+borró. Si no juegas (sancionado o fuera de la convocatoria,
+`Match3DBridge.supported()` = false), "Jugar" simula al instante con el mismo
+`MatchEngine` (`instant_mode`, como "Simular") y va directo al resumen. Prueba:
+`tools/NoPlayFallbackProbe.tscn`. `MomentMap` (mapa de jugadas del resumen)
+pasó a `ui/common/`.
+
+Pendiente: las pancartas de la hinchada con tu nombre
+(`ImmersionEngine.crowd_banners`) solo las dibujaba el partido 2D; falta
+mostrarlas en el 3D.
 
 ---|---|
 | `match.gd` | Escena y flujo del partido en vivo |

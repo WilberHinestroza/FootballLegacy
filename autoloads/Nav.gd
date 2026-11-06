@@ -14,7 +14,7 @@ const HOME := "res://scenes/Hub/Hub.tscn"
 ## Pantallas que NO son destinos de "volver": ni se apilan ni se apila lo
 ## que había antes de entrar en ellas.
 const IGNORE := {
-	"res://scenes/Match/Match.tscn": true,
+	"res://scenes/Match3D/Match3D.tscn": true,
 	"res://scenes/MatchSummary/MatchSummary.tscn": true,
 	"res://scenes/NationalMatchSummary/NationalMatchSummary.tscn": true,
 	"res://scenes/PreMatch/PreMatch.tscn": true,

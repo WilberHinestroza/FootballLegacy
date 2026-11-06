@@ -181,22 +181,6 @@ func _ready() -> void:
 	pm.queue_free()
 	await _frames(3)
 
-	# Match: el corte a la tribuna (pancartas + familia), invocado directo.
-	var m: Node = (load("res://scenes/Match/Match.tscn") as PackedScene).instantiate()
-	get_tree().root.add_child(m)
-	await _frames(20)
-	var home: bool = String(MatchState.fixture.get("home_club_id", "")) == p.club_id
-	var crowd := ImmersionEngine.crowd_banners(MatchState.user_player, WORLD_SEED, 82, true, true, 9)
-	await _frames(520)   # que terminen el tifo del clásico y el corte automático
-	m.call("_show_stands_moment", crowd, "clasico")
-	await _frames(30)
-	_shot("match_stands")
-	await _frames(240)
-	m.call("_show_stands_moment", ImmersionEngine.crowd_banners(MatchState.user_player, WORLD_SEED, 50, false, true, 9), "")
-	await _frames(30)
-	_shot("match_boo")
-	m.queue_free()
-	await _frames(3)
 
 	# MatchSummary: vestuario (resultado armado a mano).
 	MatchState.match_result = {"score": {"home": 2 if home else 1, "away": 1 if home else 2}, "user_rating": 8.4,

@@ -1038,11 +1038,13 @@ func _on_start_match_pressed() -> void:
 	# fijo (eso sería un pick al azar disfrazado de elección a mano).
 	if Preferences.ball_mode != "random":
 		Preferences.set_last_ball(_ball_idx)
-	# Si el partido 3D no está disponible o está desactivado, usa el clásico.
+	# 6-nov: el partido se juega siempre en 3D. Si no juegas (sanción o sin
+	# convocatoria) no hay nada que mostrar: se simula al instante, como
+	# "Simular", y va directo al resumen.
 	if Match3DBridge.supported():
 		get_tree().change_scene_to_file("res://scenes/Match3D/Match3D.tscn")
 		return
-	get_tree().change_scene_to_file("res://scenes/Match/Match.tscn")
+	_on_simulate_pressed(start_button)
 
 
 ## HORIZONTAL (FootballLegacy H): todo scrollea (nada se corta), las
@@ -1102,7 +1104,9 @@ func _landscape_tweaks() -> void:
 ## "Simular" (como en WSC): el mismo MatchEngine resuelve el partido al
 ## instante, sin jugar los momentos, y va directo al resumen.
 func _on_simulate_pressed(btn: Button) -> void:
-	if MatchState.engine == null:
+	# instant_mode ya prendido = simulación en curso (doble toque en "Jugar"
+	# flotante + "Simular"): no lanzar dos run_match sobre el mismo motor.
+	if MatchState.engine == null or MatchState.engine.instant_mode:
 		return
 	btn.disabled = true
 	MatchState.kit_home_away = _home_away_kit

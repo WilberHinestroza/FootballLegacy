@@ -296,7 +296,7 @@ func _render_formation(team: MatchTeam, user: PlayerData) -> void:
 func _sprite(p: PlayerData) -> TextureRect:
 	var cfg: Dictionary = Avatar.config_for_player(p, _wseed).duplicate()
 	var keeper: bool = p.position == "GK"
-	var shirt: Color = PitchPlays.GK_US if keeper else _kit_col
+	var shirt: Color = Color("#2bbf6a") if keeper else _kit_col   # buzo de arquero
 	cfg["tint_clothing"] = shirt.to_html(false)
 	cfg["tint_shorts"] = "#1f2026" if shirt.get_luminance() > 0.42 else "#e9e9ec"
 	cfg.erase("tint_socks")
