@@ -114,7 +114,7 @@ def straighten(bm, nrm):
         centers = {}
         for v in legs:
             f = v.co.y / H
-            if f >= 0.27 or abs(v.co.x) < 3.5:
+            if f >= 0.27 or (f > 0.2 and abs(v.co.x) < 3.5):
                 continue  # la entrepierna se queda como está (si no, se estiran las caras)
             key = round(v.co.y / 2.0)
             if key not in centers:
@@ -196,6 +196,17 @@ def build(name, spec):
         nrm[v] = n.normalized() if n.length > 1e-6 else v.normal.copy()
     if spec.get("straight"):
         straighten(bm, nrm)
+        # Rodilla: suaviza la unión muslo / caída recta (quedaba un anillo marcado)
+        band = [v for v in bm.verts if 0.09 * H < v.co.y < 0.29 * H and not v.is_boundary]
+        for _ in range(6):
+            bmesh.ops.smooth_vert(bm, verts=band, factor=0.5, use_axis_x=True, use_axis_y=True, use_axis_z=True)
+        bm.normal_update()
+        for v in band:
+            n = Vector()
+            for fc in v.link_faces:
+                n += fc.normal * fc.calc_area()
+            if n.length > 1e-6:
+                nrm[v] = n.normalized()
     for v in bm.verts:
         v.co += nrm[v] * spec["off"]
     bm.to_mesh(me)
