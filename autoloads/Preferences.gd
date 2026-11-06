@@ -168,7 +168,7 @@ func _load() -> void:
 	if parsed is Dictionary and parsed.has("live_play"):
 		live_play = false   # se ignora lo guardado (ver arriba)
 	if parsed is Dictionary and parsed.has("match_3d"):
-		match_3d = bool(parsed["match_3d"])
+		match_3d = true   # 6-nov: siempre 3D (se ignora un "apagado" guardado)
 	if parsed is Dictionary and AIM_ASSIST_LEVELS.has(parsed.get("aim_assist", "")):
 		aim_assist = parsed["aim_assist"]
 	if parsed is Dictionary and parsed.has("live_tutorial_seen"):

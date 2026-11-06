@@ -14,7 +14,6 @@ func _ready() -> void:
 	SaveManager.active_slot_id = "slot_3"
 	WorldTickEngine.load_runtime()
 	Preferences.confirm_advance = false
-	LiveBridge.test_auto = true
 	start_day = WorldTickEngine.current_epoch_day
 	var t0: int = Time.get_ticks_msec()
 	get_tree().current_scene = null

@@ -962,14 +962,6 @@ func _dispatch_event(event: MatchEvent) -> void:
 				var akind: String = String(event.payload.get("kind", ""))
 				var text: String = _ambient_line(akind, event.minute)
 				event_log.append_text("[color=gray]%d' — %s[/color]\n" % [event.minute, text])
-				# La cancha en vivo acompaña lo narrado (posesión, córner...).
-				if _live_bridge != null:
-					var aside: int = -1
-					if akind.ends_with("_home"):
-						aside = 0 if _user_side_is(true) else 1
-					elif akind.ends_with("_away"):
-						aside = 0 if _user_side_is(false) else 1
-					_live_bridge.cue(akind, aside)
 		MatchEvent.Type.FULLTIME:
 			event_log.append_text("[b]Final del partido (%d')[/b]\n" % event.minute)
 			_play_pitch_flash(PitchPlays.whistle_scene("full", _ctx_now()), 1.6)
@@ -1768,10 +1760,6 @@ var _last_user_world = null   # Vector2 (mundo) donde terminaste tu última acci
 func _on_decision_requested(situation: Dictionary) -> void:
 	if _replaying or _replay_pending:
 		_deferred_decision = situation
-		return
-	# PARTIDO EN VIVO (FootballLegacy H): la jugada se juega en la cancha.
-	if LiveBridge.enabled():
-		_live_moment(situation)
 		return
 	# Jugada encadenada: arrancás donde quedaste. Jugada nueva: de cero.
 	if bool(situation.get("chained", false)) and _last_user_world != null and not bool(situation.get("foul", false)):
@@ -3570,11 +3558,6 @@ func _on_pitch_tapped(target: String) -> void:
 ## Alto de la cancha: lo que deja libre el panel de decisión (que crece
 ## desde abajo), entre 180 y 360 px.
 func _fit_pitch() -> void:
-	if _live_slot != null:
-		# Horizontal con cancha en vivo: la animación vieja no se muestra y
-		# el relato queda siempre a la vista.
-		event_log.visible = true
-		return
 	await get_tree().process_frame
 	await get_tree().process_frame
 	if _pitch == null or not _pitch.visible:
@@ -3637,10 +3620,6 @@ func _show_ambient() -> void:
 	_fit_pitch()
 
 func _play_decision_replay(result_event: MatchEvent) -> void:
-	# En vivo la cancha vieja está oculta: no se espera su animación.
-	if _live_slot != null:
-		await _live_skip_replay()
-		return
 	_replaying = true
 	_pitch_owner = "replay"
 	var ok: bool = bool(result_event.payload.get("success", false))
@@ -3701,15 +3680,6 @@ func _ambient_goal_side(event: MatchEvent) -> String:
 	return "team" if _user_side_is(hg) else "rival"
 
 func _play_ambient_goal_replay(goal_event: MatchEvent, ours: bool) -> void:
-	# En vivo: el gol se ve en la cancha en vivo (antes no se mostraba nada).
-	if _live_slot != null:
-		if _live_bridge != null:
-			_replaying = true
-			await _live_bridge.stage("goal", ours)
-			_end_replay()
-			return
-		await _live_skip_replay()
-		return
 	_replaying = true
 	_pitch_owner = "replay"
 	var user_on: bool = MatchState.engine != null and MatchState.engine.user_status() == "en_cancha"
@@ -3746,10 +3716,6 @@ func _flush_held_events() -> void:
 ## Cambio: uno sale hacia la banda y el otro entra corriendo; después sale
 ## el aviso de siempre.
 func _play_sub_replay(ev: MatchEvent) -> void:
-	# En vivo la cancha vieja está oculta: no se espera su animación.
-	if _live_slot != null:
-		await _live_skip_replay()
-		return
 	_replaying = true
 	_pitch_owner = "replay"
 	var p_out = ev.payload.get("player_out", null)
@@ -3774,15 +3740,6 @@ func _play_sub_replay(ev: MatchEvent) -> void:
 
 ## Ocasión clara de cualquiera de los dos equipos (sin gol).
 func _play_chance_replay(ev: MatchEvent) -> void:
-	# En vivo: la ocasión se ve en la cancha en vivo (tiro y atajada).
-	if _live_slot != null:
-		if _live_bridge != null:
-			_replaying = true
-			await _live_bridge.stage("chance", _user_side_is(ev.payload.get("home", null)))
-			_end_replay()
-			return
-		await _live_skip_replay()
-		return
 	_replaying = true
 	_pitch_owner = "replay"
 	var ours: bool = _user_side_is(ev.payload.get("home", null))
@@ -3803,10 +3760,6 @@ func _play_chance_replay(ev: MatchEvent) -> void:
 
 ## Lesión: el jugador queda en el piso y los camilleros se lo llevan.
 func _play_injury_replay(ev: MatchEvent) -> void:
-	# En vivo la cancha vieja está oculta: no se espera su animación.
-	if _live_slot != null:
-		await _live_skip_replay()
-		return
 	_replaying = true
 	_pitch_owner = "replay"
 	var pl = ev.payload.get("player", null)
@@ -3824,15 +3777,6 @@ func _play_injury_replay(ev: MatchEvent) -> void:
 ## Tarjeta: el árbitro llega y la levanta; después sale el aviso de
 ## siempre (el motor ya está en pausa esperando ese ack).
 func _play_card_replay(card_event: MatchEvent) -> void:
-	# En vivo: la falta que da la tarjeta se ve en la cancha en vivo.
-	if _live_slot != null:
-		if _live_bridge != null and not bool(card_event.payload.get("is_user", false)):
-			_replaying = true
-			await _live_bridge.stage("card", _user_side_is(card_event.payload.get("home", null)))
-			_end_replay()
-			return
-		await _live_skip_replay()
-		return
 	_replaying = true
 	_pitch_owner = "replay"
 	var pl = card_event.payload.get("player", null)
@@ -3853,11 +3797,6 @@ func _play_card_replay(card_event: MatchEvent) -> void:
 ## Penal de la tanda pateado por otro: se ve en la cancha y después se
 ## suelta el evento (registro + ack al motor).
 func _play_shootout_kick(ev: MatchEvent) -> void:
-	# En vivo la cancha vieja está oculta: no se espera su animación.
-	if _live_slot != null:
-		await _live_skip_replay()
-		_release_engine()
-		return
 	_replaying = true
 	_pitch_owner = "replay"
 	var ours: bool = _user_side_is(ev.payload.get("home", null))
@@ -4137,32 +4076,6 @@ func _on_pitch_mg_done(r: Dictionary) -> void:
 	_finish_decision(precision)
 
 
-# ---------------------------------------------------------------- partido en vivo
-var _live_bridge: LiveBridge = null
-
-var _live_slot: Control = null
-
-func _ensure_live_bridge() -> void:
-	if _live_bridge == null:
-		_live_bridge = LiveBridge.new()
-		add_child(_live_bridge)
-		_live_bridge.build(_home_color, _away_color)
-
-## Cancha en vivo incrustada en la columna derecha desde el arranque.
-func _live_embed() -> void:
-	await get_tree().process_frame
-	if not is_inside_tree() or _live_slot == null:
-		return
-	_ensure_live_bridge()
-	_live_bridge.embed(_live_slot)
-
-func _live_moment(situation: Dictionary) -> void:
-	_ensure_live_bridge()
-	var r: Dictionary = await _live_bridge.play(situation)
-	if MatchState.engine != null:
-		MatchState.engine.resolve_decision(r)
-
-
 ## HORIZONTAL (FootballLegacy H): dos columnas. Izquierda: marcador, banco y
 ## avisos. Derecha: la cancha a todo el alto durante las jugadas, y el
 ## relato cuando no hay jugada (_fit_pitch ya alterna uno y otro).
@@ -4191,30 +4104,9 @@ func _landscape_match() -> void:
 		if k == _pitch or k == event_log:
 			continue
 		(k as Node).reparent(left)
-	if LiveBridge.enabled():
-		# La cancha EN VIVO (la misma de tus jugadas) reemplaza a la animación
-		# vieja: arriba la cancha con el partido de fondo, abajo el relato.
-		var hidden := Control.new()
-		hidden.visible = false
-		right.add_child(hidden)
-		_pitch.reparent(hidden)
-		# Oculta y DORMIDA: antes seguía animando (y dibujando) en segundo
-		# plano todo el partido, gastando batería y cuadros por nada.
-		_pitch.process_mode = Node.PROCESS_MODE_DISABLED
-		_live_slot = Control.new()
-		_live_slot.name = "LiveSlot"
-		_live_slot.size_flags_vertical = Control.SIZE_EXPAND_FILL
-		_live_slot.size_flags_stretch_ratio = 1.7
-		_live_slot.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		right.add_child(_live_slot)
-		event_log.reparent(right)
-		event_log.size_flags_vertical = Control.SIZE_EXPAND_FILL
-		event_log.custom_minimum_size.y = 120
-		_live_embed.call_deferred()
-	else:
-		_pitch.reparent(right)
-		event_log.reparent(right)
-		event_log.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_pitch.reparent(right)
+	event_log.reparent(right)
+	event_log.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	var log_bg := Styles.card_flat(Color(0.04, 0.045, 0.06, 0.9), 12)
 	log_bg.content_margin_left = 12
 	log_bg.content_margin_right = 12
@@ -4223,10 +4115,3 @@ func _landscape_match() -> void:
 	event_log.add_theme_stylebox_override("normal", log_bg)
 
 
-## Modo en vivo: en vez de la animación (invisible) de la cancha vieja, una
-## pausa corta para leer el relato y se sigue.
-func _live_skip_replay() -> void:
-	_replaying = true
-	_last_user_world = null
-	await get_tree().create_timer(0.6).timeout
-	_end_replay()

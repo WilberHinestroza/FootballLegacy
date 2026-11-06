@@ -494,15 +494,20 @@ Se conecta directamente con el reloj del partido 3D y con `MatchEngine`.
 
 ---
 
-## 7. El partido por decisiones (2D)
+## 7. El partido (solo 3D)
 
-Carpeta `match_live/`: es el partido "en vivo" por gestos sobre una cancha 2D,
-**estacionado** por decisión del autor (la jugabilidad táctil no convenció en
-el teléfono). El partido por defecto es **por decisiones** (`live_play = false`
-y se ignora lo guardado).
+**6-nov-2026:** el partido se juega **siempre en 3D** (`match3d/` +
+`scenes/Match3D/`), para club y para selección. Se borraron el partido "en vivo"
+2D (`match_live/`), el prototipo `prototypes/match_v2/` y sus pruebas; el
+interruptor "Partido 3D" de Ajustes ya no existe (`Preferences.match_3d` queda
+siempre en `true`).
 
-| Archivo | Rol |
-|---|---|
+`scenes/Match/Match.tscn` (cancha 2D por decisiones, `ui/match/`) sigue solo
+como **respaldo** cuando no juegas: sancionado o sin convocatoria
+(`Match3DBridge.supported()` = false). Fase 2 pendiente: reemplazarlo por una
+simulación directa al resumen y borrarlo.
+
+---|---|
 | `match.gd` | Escena y flujo del partido en vivo |
 | `live_bridge.gd` | Puente con `MatchEngine` |
 | `field.gd`, `goal.gd`, `stadium.gd` | Cancha, arcos y estadio 2D |

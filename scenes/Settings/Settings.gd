@@ -186,9 +186,7 @@ func _tab_game() -> void:
 		func(v): Preferences.set_confirm_advance(v)))
 	_content.add_child(_toggle_row("Menos animaciones (público, confeti…)", Preferences.reduce_motion,
 		func(v): Preferences.set_reduce_motion(v)))
-	# Partido 3D (31-oct): titular en partidos de club. Apagado = el de siempre.
-	_content.add_child(_toggle_row("Partido 3D", Preferences.match_3d,
-		func(v): Preferences.set_match_3d(v)))
+	# 6-nov: el partido es siempre 3D (sin interruptor; ver Preferences.match_3d).
 
 	_content.add_child(_thin_divider())
 	_content.add_child(_section("Asistencia de puntería (partido 3D)"))

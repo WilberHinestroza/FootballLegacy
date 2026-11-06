@@ -1,4 +1,5 @@
 extends Control
+const Match3DBridge = preload("res://engine/match/m3d/Match3DBridge.gd")
 
 ## Selecciones nacionales — pantalla nueva del menú hamburguesa (Fase 5 de
 ## selecciones: pedido explícito de Wilber, "un botón que se llame
@@ -437,6 +438,10 @@ func _on_play_pressed(fx: Dictionary) -> void:
 		user_start_chance, "res://scenes/Selections/Selections.tscn", false,
 		String(fx.get("competition", "qualifying")), bool(fx.get("is_knockout", false)), String(fx.get("key", "")))
 	if not bool(prep.get("ok", false)):
+		return
+	# 6-nov: la selección también se juega en 3D (antes iba siempre al clásico).
+	if Match3DBridge.supported():
+		get_tree().change_scene_to_file("res://scenes/Match3D/Match3D.tscn")
 		return
 	get_tree().change_scene_to_file("res://scenes/Match/Match.tscn")
 

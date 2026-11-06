@@ -4,7 +4,6 @@ func _ready() -> void:
 	WorldTickEngine.load_runtime()
 	var player: PlayerData = SaveManager.load_player()
 	MatchLauncher.prepare(WorldTickEngine.world, player, WorldTickEngine.next_user_fixture(player.club_id), "res://scenes/Hub/Hub.tscn", false)
-	LiveBridge.test_auto = true
 	get_tree().current_scene = null
 	get_tree().change_scene_to_file("res://scenes/Match/Match.tscn")
 	await get_tree().create_timer(12.0).timeout
