@@ -206,6 +206,8 @@ func _play(anim: AnimationPlayer, n: String) -> void:
 ## Cámara: acompaña la caminata desde delante a un lado, se acerca a la entrega, queda
 ## baja y cerca cuando lo enseña y, al levantarlo, se abre y gira alrededor.
 func _update_camera(delta: float) -> void:
+	if not is_inside_tree():
+		return # la escena ya se fue (salida del partido): el esqueleto aún avisa
 	var w := _winner.global_position
 	var look := w + Vector3(0.0, 1.3, 0.0)
 	var pos := look + Vector3(3.0, 1.0, -5.6)
@@ -229,6 +231,8 @@ func _update_camera(delta: float) -> void:
 
 
 func _place_award() -> void:
+	if not is_inside_tree():
+		return # la escena ya se fue (salida del partido): el esqueleto aún avisa
 	if _award == null or not is_instance_valid(_award) or _holder == null:
 		return
 	# Levantado, la copa asoma por encima de la cabeza (las manos quedan en la frente)

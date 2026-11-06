@@ -298,6 +298,8 @@ func _boom() -> void:
 ## Cámara: a ras de césped siguiendo tu llegada; plano medio de la entrega; contrapicado
 ## cerca en la espera; al levantar la copa se abre, sube y gira alrededor del podio.
 func _update_camera(delta: float) -> void:
+	if not is_inside_tree():
+		return
 	var lp := _lifter.global_position
 	var look := lp + Vector3(0.0, 1.3, 0.0)
 	var pos := look + Vector3(4.5, 0.6, 7.5)
@@ -322,6 +324,8 @@ func _update_camera(delta: float) -> void:
 
 
 func _place_cup() -> void:
+	if not is_inside_tree():
+		return # la escena ya se fue (salida del partido): el esqueleto aún avisa
 	if _holder == null or _cup == null:
 		return
 	# Las manos agarran la copa por debajo de la mitad; sube un pelín inclinada hacia el público

@@ -1970,7 +1970,7 @@ func _start_locker() -> void:
 	_hud.set_sim_visible(false)
 	_hud.set_hint("")
 	SoundFx.set_crowd(-30.0)
-	_hud.show_message("DESCANSO\n%s %d - %d %s" % [TEAM_NAMES[0], score[0], score[1], TEAM_NAMES[1]], 2.2)
+	_hud.show_message("DESCANSO\n%s %d - %d %s" % [TEAM_NAMES[0], score[0], score[1], TEAM_NAMES[1]], 2.2, 0.62)
 	get_tree().create_timer(2.4).timeout.connect(func() -> void:
 		if state != State.LOCKER:
 			return
@@ -1999,7 +1999,7 @@ func _start_extra_time_break() -> void:
 	_hud.set_sim_visible(false)
 	_hud.set_hint("")
 	SoundFx.set_crowd(-30.0)
-	_hud.show_message("DESCANSO DE LA PRÓRROGA\n%s %d - %d %s" % [TEAM_NAMES[0], score[0], score[1], TEAM_NAMES[1]], 2.2)
+	_hud.show_message("DESCANSO DE LA PRÓRROGA\n%s %d - %d %s" % [TEAM_NAMES[0], score[0], score[1], TEAM_NAMES[1]], 2.2, 0.62)
 	get_tree().create_timer(2.4).timeout.connect(func() -> void:
 		if state != State.LOCKER:
 			return
@@ -3731,7 +3731,9 @@ func _on_goal_area_entered(body: Node3D, scoring_team: int) -> void:
 ## celebra con la cámara de frente. Al acabar sigue `_celeb_then` (repetición o simulación).
 const CELEB_RUN_MAX := 5.5        # segundos como mucho de carrera hasta el banderín
 const CELEB_DANCE := 6.0          # baile de tus goles y los de tu equipo en una jugada
-const CELEB_DANCE_AMBIENT := 4.5  # goles del partido de fondo y del rival: algo más corto
+const CELEB_DANCE_AMBIENT := 2.5  # goles del partido de fondo y del rival: corto (eran ~10 s por gol ajeno)
+const CELEB_RUN_AMBIENT := 2.5
+var _celeb_run_max := CELEB_RUN_MAX
 var _celeb_scorer: SoccerPlayer = null
 var _celeb_team := 0
 var _celeb_spot := Vector3.ZERO
@@ -3746,6 +3748,7 @@ var _replay_hold := false # la repetición termina en el gol: la celebración no
 
 
 func _start_goal_celebration(scorer: SoccerPlayer, team: int, then: Callable, dance := CELEB_DANCE) -> void:
+	_celeb_run_max = CELEB_RUN_MAX if dance >= CELEB_DANCE else CELEB_RUN_AMBIENT
 	_celeb_scorer = scorer
 	_celeb_team = team
 	_celeb_then = then
@@ -3787,7 +3790,7 @@ func _update_celebration(delta: float) -> void:
 		return
 	if not _celeb_dancing:
 		var to := flat(_celeb_spot - s.global_position)
-		if to.length() < 0.9 or _celeb_t > CELEB_RUN_MAX:
+		if to.length() < 0.9 or _celeb_t > _celeb_run_max:
 			_celeb_dancing = true
 			_celeb_t = 0.0
 			s.velocity = Vector3.ZERO

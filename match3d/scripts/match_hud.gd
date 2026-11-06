@@ -837,7 +837,8 @@ func set_hint(text: String) -> void:
 	_hint.visible = text != ""
 
 
-func show_message(text: String, duration: float) -> void:
+## top_frac: altura del mensaje (fracción de pantalla); el vestuario lo baja para no tapar su cartel.
+func show_message(text: String, duration: float, top_frac := 0.16) -> void:
 	var lines := text.split("
 ", false, 1)
 	_message.text = lines[0] if lines.size() > 0 else ""
@@ -857,7 +858,7 @@ func show_message(text: String, duration: float) -> void:
 	_msg_box.reset_size()
 	_msg_box.size.x = w
 	var h := _text_h(_message, w) + (_text_h(_message_sub, w) if _message_sub.visible else 0.0)
-	var top := (vp.y - h) * 0.5 if final_screen else vp.y * 0.16
+	var top := (vp.y - h) * 0.5 if final_screen else vp.y * top_frac
 	_msg_box.position = Vector2(margin, top)
 	_msg_box.size = Vector2(w, h)
 	_msg_box.set_deferred("size", Vector2(w, h)) # cuando las etiquetas ya midan su ancho nuevo
