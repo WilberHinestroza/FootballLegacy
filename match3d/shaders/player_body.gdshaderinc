@@ -80,8 +80,10 @@ void vertex() {
 	float inflate = 0.0;
 	if (COLOR.r < 0.5 && COLOR.g < 0.5) {
 		if (long_pants) {
+			// El pantalón largo es una malla aparte (PantsBuilder) que va por encima:
+			// la pierna se queda pegada para no asomar por fuera de él.
 			if (f > BOOTS_TOP + 0.004 && f < SHIRT_BOTTOM) {
-				inflate = mix(0.026, 0.008, smoothstep(0.33, 0.40, f));
+				inflate = mix(0.0, 0.006, smoothstep(0.36, 0.41, f));
 			}
 		} else if (f > SHORTS_BOTTOM - 0.004 && f < SHIRT_BOTTOM) {
 			inflate = mix(0.032, 0.007, smoothstep(0.26, 0.40, f));
@@ -90,6 +92,13 @@ void vertex() {
 		inflate = 0.016;
 	}
 	VERTEX += NORMAL * inflate;
+}
+
+// Con pantalón largo, la pierna del modelo (con la pantaloneta modelada) no se dibuja:
+// la tapa el tubo de PantsBuilder, y así no asoman parches ni el borde de la pantaloneta.
+bool under_pants() {
+	return long_pants && body_w.x < 0.5 && body_w.y < 0.5
+		&& body_a.y > BOOTS_TOP + 0.002 && body_a.y < 0.34;
 }
 
 // 1 dentro de la elipse (centro c, radios r), con borde suavizado
@@ -357,16 +366,24 @@ vec3 body_color() {
 	}
 	// Tronco y piernas, de abajo arriba: botas, medias (con ribete), piel, pantalón, camiseta
 	vec3 boot = use_sole ? mix(sole_color, boots_color, 1.0 - below(f, 0.013)) : boots_color;
+	if (long_pants) {
+		// Zapato de vestir: más oscuro que el pantalón, con suela de cuero visible
+		boot = mix(vec3(0.16, 0.11, 0.075), boots_color * 0.55, 1.0 - below(f, 0.011));
+	}
 	vec3 c = mix(boot, socks_color, 1.0 - below(f, BOOTS_TOP));
 	float sock_band = (1.0 - below(f, SOCKS_TOP - 0.011)) * below(f, SOCKS_TOP);
 	c = mix(c, trim_of(socks_color), sock_band);
 	c = mix(c, skin_color, 1.0 - below(f, SOCKS_TOP));
-	float shorts_bottom = long_pants ? BOOTS_TOP : SHORTS_BOTTOM;
+	// El pantalón largo tapa el empeine del zapato (el bajo cae sobre él)
+	float shorts_bottom = long_pants ? BOOTS_TOP - 0.008 : SHORTS_BOTTOM;
+	// Pantalón negro: un punto más claro que el zapato para que se distingan
 	vec3 shorts = long_pants ? shorts_color : mix(shorts_color, trim_of(shorts_color), below(f, SHORTS_BOTTOM + 0.01));
 	if (long_pants) {
 		// Pantalón: bajo un poco más oscuro (el dobladillo), raya de la plancha por
 		// delante de cada pernera y cinturón bajo la camiseta
-		shorts *= mix(1.0, 0.82, below(f, BOOTS_TOP + 0.012));
+		shorts *= mix(1.0, 0.78, below(f, BOOTS_TOP + 0.004));
+		// Pliegues del bajo sobre el zapato
+		shorts *= 1.0 - 0.08 * below(f, BOOTS_TOP + 0.03) * (1.0 - below(f, BOOTS_TOP + 0.012)) * (0.5 + 0.5 * sin(ax * 260.0));
 		float crease = (dn < 0.55 ? 1.0 : 0.0) * below(abs(ax - (0.085 - (f - 0.15) * 0.16)), 0.0025) * below(f, 0.36);
 		shorts = mix(shorts, shorts * 0.86, crease);
 		shorts = mix(shorts, vec3(0.07, 0.05, 0.04), (1.0 - below(f, SHIRT_BOTTOM - 0.014)) * below(f, SHIRT_BOTTOM + 0.002));

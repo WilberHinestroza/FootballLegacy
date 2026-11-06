@@ -28,6 +28,9 @@ func _ready() -> void:
 	add_child(floor)
 	var av := PlayerAvatar.new()
 	add_child(av)
+	if OS.get_cmdline_user_args().has("suit"):
+		av.queue_free()
+		av = CeremonyKit.suit_person(self, Color(0.7, 0.1, 0.1), "dt")
 	var cam := Camera3D.new()
 	cam.fov = 30.0
 	add_child(cam)
@@ -64,7 +67,8 @@ func _ready() -> void:
 		if strip == null:
 			strip = Image.create(cw * n, h, false, crop.get_format())
 		strip.blit_rect(crop, Rect2i(0, 0, cw, h), Vector2i(cw * i, 0))
-	strip.resize(strip.get_width() / 2, strip.get_height() / 2)
+	if not OS.get_cmdline_user_args().has("full"):
+		strip.resize(strip.get_width() / 2, strip.get_height() / 2)
 	strip.save_png("res://build/anim_%s_%s%s.png" % [an, view, pose])
 	print("STRIP ", an, " len=", length)
 	get_tree().quit(0)
