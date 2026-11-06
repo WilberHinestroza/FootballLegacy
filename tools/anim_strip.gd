@@ -31,6 +31,12 @@ func _ready() -> void:
 	if OS.get_cmdline_user_args().has("suit"):
 		av.queue_free()
 		av = CeremonyKit.suit_person(self, Color(0.7, 0.1, 0.1), "dt")
+	# street=<arriba>,<abajo>: ropa de calle del vestuario (Avatar3D.STREET), p. ej. street=polo,jeans
+	for a: String in OS.get_cmdline_user_args():
+		if a.begins_with("street="):
+			var parts := a.substr(7).split(",")
+			Avatar3D.apply(av, {"top": parts[0], "bottom": parts[1] if parts.size() > 1 else parts[0],
+				"tint_base": "#8d5a3c", "hair": "corto"})
 	var cam := Camera3D.new()
 	cam.fov = 30.0
 	add_child(cam)

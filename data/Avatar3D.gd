@@ -199,6 +199,14 @@ static func apply(av: PlayerAvatar, cfg: Dictionary) -> void:
 		if Avatar.GUAYOS_TINT.has(g):
 			c["boots_color"] = Color(String(Avatar.GUAYOS_TINT[g]))
 	av.set_colors(c)
+	# Ropa de calle como prendas 3D de verdad (Garments): la manga y el largo los da
+	# la prenda; con el kit del club, nada (la equipación va pintada)
+	var wear: Array = []
+	if STREET.has(top):
+		wear.append("top_long" if bool((STREET[top] as Array)[2]) else "top_short")
+	if STREET.has(bottom):
+		wear.append("shorts" if SHORT_BOTTOMS.has(bottom) else "trousers")
+	av.set_garments(wear)
 	av.set_hair_style(hair)
 	var acc := {}
 	for slot: String in ["acc_head", "acc_eyes", "acc_neck", "acc_ears", "acc_wrist"]:

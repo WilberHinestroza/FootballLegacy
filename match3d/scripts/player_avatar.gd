@@ -30,6 +30,11 @@ var _hair_node: Node3D
 var _hair_style := ""
 var _arm_pose: ArmPose
 var _arm_tween: Tween
+var _garments := {} # id -> MeshInstance3D (Garments)
+var _garment_ids: Array = []
+var _faded := false
+var _long_sleeves := false
+var _long_pants := false
 
 
 ## Trote: no hay animación de andar/trotar en el modelo, así que se saca de "run" con la
@@ -257,6 +262,40 @@ func set_colors(colors: Dictionary) -> void:
 		_mat_fade.set_shader_parameter(key, colors[key])
 	if colors.has("hair_color"):
 		_hair_mat.albedo_color = Color(colors.hair_color, _hair_mat.albedo_color.a)
+	# Manga larga / pantalón largo: prendas de verdad (Garments) en vez de pintadas
+	if colors.has("long_sleeves") or colors.has("long_pants"):
+		_long_sleeves = bool(colors.get("long_sleeves", _long_sleeves))
+		_long_pants = bool(colors.get("long_pants", _long_pants))
+		var ids: Array = []
+		if _long_sleeves:
+			ids.append("top_long")
+		if _long_pants:
+			ids.append("trousers")
+		set_garments(ids)
+
+
+## Viste prendas por piezas (ids de Garments.SPECS: "top_long", "top_short", "trousers",
+## "shorts"). [] las quita todas. El cuerpo no se dibuja debajo de ellas.
+func set_garments(ids: Array) -> void:
+	if ids == _garment_ids:
+		return
+	for mi: MeshInstance3D in _garments.values():
+		mi.queue_free()
+	_garments.clear()
+	_garment_ids = ids.duplicate()
+	for id: String in ids:
+		var mi := Garments.make(id, skeleton)
+		if mi == null:
+			continue
+		mi.material_override = _mat_fade if _faded else _mat
+		_garments[id] = mi
+	var c := Garments.cover_for(_garments.keys())
+	for mi in _meshes:
+		mi.set_instance_shader_parameter("cover", c)
+
+
+func garment_ids() -> Array:
+	return _garment_ids.duplicate()
 
 
 ## Copia el aspecto de otro avatar (colores, equipación, peinado y tamaño): para sacar a
@@ -272,6 +311,9 @@ func copy_look(other: PlayerAvatar) -> void:
 			_mat_fade.set_shader_parameter(n, v)
 	_hair_mat.albedo_color = other._hair_mat.albedo_color
 	set_hair_style(other._hair_style)
+	_long_sleeves = other._long_sleeves
+	_long_pants = other._long_pants
+	set_garments(other._garment_ids)
 	scale = Vector3(absf(other.scale.x), other.scale.y, other.scale.z)
 
 
@@ -338,7 +380,10 @@ func hands_position() -> Vector3:
 
 
 func set_faded(value: bool) -> void:
+	_faded = value
 	for mi in _meshes:
+		mi.material_override = _mat_fade if value else _mat
+	for mi: MeshInstance3D in _garments.values():
 		mi.material_override = _mat_fade if value else _mat
 	_hair_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA if value else BaseMaterial3D.TRANSPARENCY_DISABLED
 	_hair_mat.albedo_color.a = 0.25 if value else 1.0

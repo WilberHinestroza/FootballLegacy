@@ -68,10 +68,40 @@ varying vec2 body_a;
 varying vec2 body_b;
 varying vec2 body_w;
 
+// Ropa por piezas (Garments): las prendas son copias infladas de la malla del cuerpo y
+// comparten este material. garment_layer: 0 cuerpo, 1 prenda de arriba, 2 de abajo.
+// cover (solo el cuerpo): lo que tapa la ropa y no se dibuja: tronco/piernas de f = x
+// a f = y, brazo hasta t = z, cuello si w > 0.5.
+instance uniform float garment_layer = 0.0;
+instance uniform vec4 cover = vec4(2.0, 2.0, -9.0, 0.0);
+
+bool covered_by_garment() {
+	if (garment_layer > 0.5) { return false; }
+	if (body_w.y > 0.5) { return cover.w > 0.5 && body_a.y < COLLAR_F - 0.04; }
+	if (body_w.x > 0.5) { return body_b.y * 3.0 - 0.5 < cover.z; }
+	return body_a.y > cover.x && body_a.y < cover.y;
+}
+
 void vertex() {
 	body_a = UV;
 	body_b = UV2;
 	body_w = COLOR.rg;
+	if (garment_layer > 0.5) {
+		// Cada prenda pinta solo lo suyo: sin el borde de otra zona (piel, media, camiseta)
+		// en el bajo, el puño o el cuello. La geometría ya va inflada.
+		if (COLOR.r < 0.5 && COLOR.g < 0.5) {
+			if (garment_layer < 1.5) {
+				body_a.y = max(UV.y, SHIRT_BOTTOM + 0.003);
+			} else {
+				body_a.y = clamp(UV.y, long_pants ? BOOTS_TOP - 0.004 : SHORTS_BOTTOM + 0.003, SHIRT_BOTTOM - 0.003);
+			}
+		} else if (COLOR.g > 0.5) {
+			body_a.y = min(UV.y, COLLAR_F - 0.035);
+		} else {
+			float s_end = long_sleeves ? WRIST_T : SLEEVE_END;
+			body_b.y = min(UV2.y, (s_end - 0.006 + 0.5) / 3.0);
+		}
+	} else {
 	// Ropa con volumen: la malla es una sola piel, así que el pantalón se separa un poco
 	// de la pierna (si no, parece pintado, como unas mallas). La pantaloneta se abre hacia
 	// el bajo (más ancha abajo, como la de verdad); el pantalón largo cae recto hasta el
@@ -90,6 +120,7 @@ void vertex() {
 		inflate = 0.016;
 	}
 	VERTEX += NORMAL * inflate;
+	}
 }
 
 // 1 dentro de la elipse (centro c, radios r), con borde suavizado
