@@ -509,9 +509,7 @@ borró. Si no juegas (sancionado o fuera de la convocatoria,
 `tools/NoPlayFallbackProbe.tscn`. `MomentMap` (mapa de jugadas del resumen)
 pasó a `ui/common/`.
 
-Pendiente: las pancartas de la hinchada con tu nombre
-(`ImmersionEngine.crowd_banners`) solo las dibujaba el partido 2D; falta
-mostrarlas en el 3D.
+Pancartas en 3D (6-nov): `Match3DBridge` pasa `config.crowd` (`ImmersionEngine.crowd_banners`) y `FieldBuilder` tiende trapos sobre las filas 1-2 de las gradas laterales: los tuyos junto al túnel, más frases de la hinchada local (1 + estrellas). La frase de la tribuna va en la línea de ayuda de la salida. Capturas: `tools/M3DBannersShot.tscn` (con ventana).
 
 ---|---|
 | `match.gd` | Escena y flujo del partido en vivo |

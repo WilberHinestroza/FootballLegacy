@@ -315,7 +315,18 @@ static func build_config(on_finish: Callable) -> Dictionary:
 		"carry_us": int(tie.get("home" if user_home else "away", 0)),
 		"carry_them": int(tie.get("away" if user_home else "home", 0)),
 		"user_look": Avatar.config_for_player(p, wseed),
+		# Pancartas de la grada con tu nombre (o silbidos): las mismas de
+		# ImmersionEngine que dibujaba el partido 2D. {} en selección.
+		"crowd": {} if national else _crowd_banners(p, fixture, user_home, wseed, world),
 	}
+
+## Pancartas de la hinchada (6-nov): misma entrada que usaba el partido 2D.
+static func _crowd_banners(p: PlayerData, fixture: Dictionary, user_home: bool, wseed: int, world: Dictionary) -> Dictionary:
+	var fs: int = int(WorldTickEngine.season.get("fan_sentiment", InterviewEngine.FAN_DEFAULT))
+	var num: int = Kit.suggested_number(p.position, "%s|%d" % [p.player_name, wseed])
+	# Ex club (v34): de visitante en una cancha donde jugaste.
+	var ex_rec: String = "" if user_home else ImmersionEngine.ex_club_reception(p, world, String(fixture.get("home_club_id", "")), wseed)
+	return ImmersionEngine.crowd_banners(p, wseed, fs, user_home, bool(fixture.get("derby", false)), num, ex_rec)
 
 ## Resultado en el formato de MatchEngine.run_match() (lo consume MatchSummary).
 ## `res` = SoccerMatch.result(): score [tu equipo, rival] y stats.

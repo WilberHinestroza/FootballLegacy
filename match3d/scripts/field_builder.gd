@@ -47,7 +47,9 @@ static func build(root: Node3D) -> Array[Area3D]:
 	_pitch(root)
 	_lines(root)
 	_walls(root)
+	_banner_plan = _plan_banners()
 	_stands(root)
+	_build_banners(root)
 	_extras(root)
 	_confetti(root)
 	if stars >= 2:
@@ -438,7 +440,7 @@ static func _stands(root: Node3D) -> void:
 			while x < side_len * 0.5 - 0.5:
 				# Hueco del túnel en el centro de la grada de los banquillos
 				var tunnel := s < 0.0 and absf(x - TUNNEL_X) < TUNNEL_GAP + 0.3 and k < TUNNEL_ROWS
-				if not tunnel and randf() < crowd_fill:
+				if not tunnel and not _under_banner(s, k, x) and randf() < crowd_fill:
 					var face := Basis(Vector3.UP, PI if s > 0.0 else 0.0) # mirando al campo
 					xforms.append(Transform3D(face, Vector3(x + randf_range(-0.1, 0.1), top, z)))
 					colors.append(_fan_color(false))
@@ -625,6 +627,129 @@ static func set_tifo(root: Node, value: float) -> void:
 	if n:
 		n.visible = value > 0.001
 		(n.material_override as ShaderMaterial).set_shader_parameter("reveal", value)
+
+
+## ---------- pancartas ----------
+
+## Frases genéricas de la hinchada local (nada de nombres reales).
+const BANNER_TEXTS := ["VAMOS EQUIPO", "SIEMPRE CONTIGO", "LA 12", "AGUANTE", "LOCALES",
+		"ESTA ES TU CASA", "HASTA EL FINAL", "CORAZÓN Y GARRA", "LA BANDA", "FIELES"]
+## Filas de grada que tapa un trapo (la 1 y la 2: la 0 queda delante, la 3 lo sostiene).
+const BANNER_ROW0 := 1
+const BANNER_ROWS := 2
+## Pancartas del jugador (las pone SoccerMatch desde config["crowd"], de
+## ImmersionEngine.crowd_banners): {kind: "love" | "boo" | "", banners: [String]}.
+static var crowd := {}
+## Semilla de las frases genéricas (el estadio): siempre las mismas en la misma cancha.
+static var banner_seed_name := ""
+## Plan de trapos de este partido: [{text, x, s, w, boo, home_cloth}]. Se arma antes de
+## las gradas para no poner público debajo (ver _stands).
+static var _banner_plan: Array = []
+
+
+## Trapos tendidos sobre la grada lateral (como en las canchas sudamericanas), de cara
+## a la cámara de TV. Junto al túnel (lo que enfoca la salida) van los tuyos; el resto
+## son frases de la hinchada local, más cuantas más estrellas tenga el estadio.
+static func _plan_banners() -> Array:
+	var plan: Array = []
+	var half := (SoccerMatch.FIELD_LENGTH + 2.0 * END_STANDS) * 0.5 - 2.0
+	var mine: Array = crowd.get("banners", [])
+	var boo := String(crowd.get("kind", "")) == "boo"
+	var next_x := [TUNNEL_X - TUNNEL_GAP - 1.0, TUNNEL_X + TUNNEL_GAP + 1.0] # izquierda, derecha
+	for i in mine.size():
+		var txt := String(mine[i])
+		var w := _banner_width(txt)
+		var side := i % 2
+		var x: float = next_x[side] - w * 0.5 if side == 0 else next_x[side] + w * 0.5
+		next_x[side] = x - w * 0.5 - 1.0 if side == 0 else x + w * 0.5 + 1.0
+		plan.append({"text": txt, "x": x, "s": -1.0, "w": w, "boo": boo, "home_cloth": true})
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash(banner_seed_name)
+	var count := 1 + stars
+	var tries := 0
+	while count > 0 and tries < 80:
+		tries += 1
+		var txt: String = BANNER_TEXTS[rng.randi() % BANNER_TEXTS.size()]
+		var w := _banner_width(txt)
+		var s := -1.0 if rng.randf() < 0.6 else 1.0
+		var x := rng.randf_range(-half + w * 0.5, half - w * 0.5)
+		if s < 0.0 and absf(x - TUNNEL_X) < TUNNEL_GAP + 1.0 + w * 0.5:
+			continue # el hueco del túnel
+		var clash := false
+		for q: Dictionary in plan:
+			if float(q.s) == s and absf(x - float(q.x)) < (w + float(q.w)) * 0.5 + 1.0:
+				clash = true
+				break
+		if not clash:
+			plan.append({"text": txt, "x": x, "s": s, "w": w, "boo": false, "home_cloth": rng.randf() < 0.7})
+			count -= 1
+	return plan
+
+
+## ¿Este asiento (grada lateral `s`, fila `k`, posición `x`) queda bajo un trapo?
+static func _under_banner(s: float, k: int, x: float) -> bool:
+	if k < BANNER_ROW0 or k >= BANNER_ROW0 + BANNER_ROWS:
+		return false
+	for q: Dictionary in _banner_plan:
+		if float(q.s) == s and absf(x - float(q.x)) < float(q.w) * 0.5 + 0.2:
+			return true
+	return false
+
+
+static func _banner_width(txt: String) -> float:
+	return maxf(3.0, txt.length() * 0.45 + 1.0)
+
+
+static func _build_banners(root: Node3D) -> void:
+	if _banner_plan.is_empty():
+		return
+	var holder := Node3D.new()
+	holder.name = "Banners"
+	root.add_child(holder)
+	for q: Dictionary in _banner_plan:
+		_banner(holder, q)
+
+
+## Un trapo: borde, paño y texto, apoyado sobre la pendiente de la grada.
+## `home_cloth` = paño del color del local (si no, blanco con letras del local);
+## `boo` = tela negra de silbidos.
+static func _banner(parent: Node3D, q: Dictionary) -> void:
+	var s := float(q.s)
+	var w := float(q.w)
+	var cloth := Color(0.93, 0.93, 0.9)
+	var edge := home_color
+	var ink := home_color.darkened(0.3)
+	if bool(q.boo):
+		cloth = Color(0.07, 0.07, 0.08)
+		edge = Color(0.85, 0.12, 0.12)
+		ink = Color(0.96, 0.96, 0.96)
+	elif bool(q.home_cloth):
+		cloth = home_color
+		edge = home_color2
+		ink = Color(0.97, 0.97, 0.95) if home_color.get_luminance() < 0.55 else Color(0.08, 0.08, 0.1)
+	# Del borde delantero de la fila BANNER_ROW0 al de la última fila que tapa
+	var d0 := SoccerMatch.FIELD_WIDTH * 0.5 + SIDE_STANDS + BANNER_ROW0 * ROW_DEPTH - ROW_DEPTH * 0.5
+	var y0 := 0.9 + BANNER_ROW0 * ROW_RISE
+	var run := BANNER_ROWS * ROW_DEPTH
+	var rise := BANNER_ROWS * ROW_RISE
+	var up := Vector3(0.0, rise, s * run).normalized()        # sube por la grada
+	var right := Vector3(1.0 if s < 0.0 else -1.0, 0.0, 0.0)  # se lee desde el campo
+	var normal := right.cross(up)
+	var h := sqrt(run * run + rise * rise) - 0.2
+	var b := Node3D.new()
+	b.transform = Transform3D(Basis(right, up, normal),
+			Vector3(float(q.x), y0 + rise * 0.5, s * (d0 + run * 0.5)) + normal * 0.12)
+	parent.add_child(b)
+	add_mesh(b, box(Vector3(w + 0.2, h + 0.2, 0.02)), Vector3(0.0, 0.0, -0.015), edge)
+	add_mesh(b, box(Vector3(w, h, 0.03)), Vector3.ZERO, cloth)
+	var lab := Label3D.new()
+	lab.text = String(q.text)
+	lab.font_size = 64
+	lab.pixel_size = 0.0115
+	lab.outline_size = 0
+	lab.modulate = ink
+	lab.position = Vector3(0.0, 0.0, 0.02)
+	b.add_child(lab)
 
 
 static func set_crowd_wave(root: Node, value: float) -> void:

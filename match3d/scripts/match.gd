@@ -302,6 +302,9 @@ func _ready() -> void:
 	FieldBuilder.home_color2 = Color(String(config.get("stadium_home_color2", "#f2f2f2")))
 	FieldBuilder.away_color = Color(String(config.get("stadium_away_color", "#2961eb")))
 	FieldBuilder.crowd_fill = clampf(float(config.get("crowd_fill", 0.85)), 0.2, 1.0)
+	# Trapos de la grada: los tuyos (config.crowd) y los de la hinchada del estadio
+	FieldBuilder.crowd = config.get("crowd", {}) as Dictionary
+	FieldBuilder.banner_seed_name = String(config.get("stadium", config.get("home_name", "LOCAL")))
 	var goal_areas := FieldBuilder.build(self)
 	FieldBuilder.build_tifo(self, String(config.get("home_name", "LOCAL")))
 	_goal_areas = goal_areas
@@ -929,7 +932,10 @@ func _start_walkout() -> void:
 	_cam_look = exit
 	_hud.set_sim_visible(false)
 	_hud.show_walkout_intro(_walkout_intro_data())
-	_hud.set_hint("Salen los equipos · toca para empezar")
+	# La tribuna habla de ti (trapos con tu nombre o silbidos): la frase va en la
+	# línea de abajo, que no choca con el cartel ni las alineaciones de la tele.
+	var crowd_line := String(FieldBuilder.crowd.get("line", ""))
+	_hud.set_hint((crowd_line + " · " if crowd_line != "" else "Salen los equipos · ") + "toca para empezar")
 	FieldBuilder.set_crowd_excitement(self, 1.0)
 	SoundFx.play("cheer", -4.0)
 	SoundFx.set_crowd(-6.0)
