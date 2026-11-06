@@ -494,6 +494,8 @@ func _physics_process(delta: float) -> void:
 				_back_to_simulation()
 		State.ENDED:
 			_freeze_players()
+			if _trophy != null:
+				_trophy.physics_step(delta) # los rivales se van caminando al túnel
 		State.WALKOUT:
 			_update_walkout(delta)
 		State.REPLAY:
@@ -1100,7 +1102,7 @@ const WALK_REFS := 1.0      # los árbitros cruzan la puerta del vestuario
 const WALK_TEAMS := 3.0     # y detrás de ellos (unos metros), los equipos
 const WALK_GAP := 0.36      # segundos entre un jugador y el siguiente al salir del túnel
 const WALK_PACE := 0.6      # paso de la salida (fracción de la carrera)
-const OUTRO_PACE := 0.38    # paso de la vuelta al túnel (caminando, no al trote)
+const OUTRO_PACE := 0.46    # paso de la vuelta al túnel (caminando, no al trote)
 const TUNNEL_SHOT := 5.6    # segundos de plano desde el césped mirando a la boca del túnel
 
 
@@ -1356,8 +1358,8 @@ func _finish_match() -> void:
 		add_child(_trophy)
 		_trophy.start(self, trophy)
 		_tap_lock = Time.get_ticks_msec() + 3500
-		_hud.show_message("¡CAMPEONES!\n" + trophy, 6.0)
-		get_tree().create_timer(6.8).timeout.connect(func() -> void:
+		_hud.show_message("¡CAMPEONES!\n" + trophy, 3.0)
+		get_tree().create_timer(TrophyCeremony.DURATION).timeout.connect(func() -> void:
 			if state == State.ENDED:
 				_start_outro())
 		return
@@ -1650,7 +1652,8 @@ func _start_outro() -> void:
 	var deep := FieldBuilder.TUNNEL_ROWS * FieldBuilder.ROW_DEPTH + 1.5
 	for rank in order.size():
 		var p: SoccerPlayer = order[rank]
-		var col := -1.05 if p.team == 0 else 1.05
+		# Cuatro carriles en el pasillo (dos por equipo): en fila india se atascaban
+		var col := (-1.0 if p.team == 0 else 1.0) * (0.55 if rank % 2 == 0 else 1.45)
 		# Destino al fondo del pasillo: desaparecen ya dentro, sin "pop" en la boca
 		_outro_target[p] = Vector3(FieldBuilder.TUNNEL_X + col, 0.0,
 				-FIELD_WIDTH * 0.5 - FieldBuilder.SIDE_STANDS - deep)
@@ -1658,13 +1661,15 @@ func _start_outro() -> void:
 		# Se van de a poco, caminando: los más cercanos primero pero con huecos
 		# irregulares, y unos cuantos se quedan un rato aplaudiendo a la grada.
 		var lingers := randf() < 0.35
-		_outro_delay[p] = 1.2 + float(rank) * 0.45 + randf_range(0.0, 0.9) + (1.6 if lingers else 0.0)
+		_outro_delay[p] = 1.0 + float(rank) * 0.28 + randf_range(0.0, 0.7) + (1.4 if lingers else 0.0)
 		_outro_pace[p] = OUTRO_PACE * randf_range(0.85, 1.15)
 		var clap_d := randf_range(0.0, 0.5) + (float(_outro_delay[p]) - 1.8 if lingers else 0.0)
 		get_tree().create_timer(maxf(clap_d, 0.0), false).timeout.connect(func() -> void:
 			if is_instance_valid(p) and state == State.OUTRO:
 				p.play_action("clap", 1.0, 1.0)) # el giro a la grada lo hace _update_outro, de a poco
 		p.stun_timer = 0.0
+		p.set_physics_process(true) # los del podio de campeones estaban quietos a mano
+		p.global_position.y = 0.0
 		p.walk_normal = true
 		# Entre ellos sí chocan (no se atraviesan en la manga); los muros no, para
 		# poder meterse en el túnel.
@@ -1724,10 +1729,10 @@ func _update_outro(delta: float) -> void:
 		AiBrain.move_to(p, target, 0.3, false)
 		# Desde lejos vienen trotando y el último tramo, ya cerca de la manga, caminando
 		var far := clampf((flat_dist(p.global_position, Vector3(FieldBuilder.TUNNEL_X, 0.0, mouth_z)) - 14.0) / 22.0, 0.0, 1.0)
-		p.move_input *= float(_outro_pace.get(p, OUTRO_PACE)) * lerpf(1.0, 1.6, far) * _walk_pace(p) / WALK_PACE
+		p.move_input *= float(_outro_pace.get(p, OUTRO_PACE)) * lerpf(1.0, 2.2, far) * _walk_pace(p) / WALK_PACE
 		_keep_spacing(p)
 		pending += 1
-	if pending == 0 or _outro_t > 34.0:
+	if pending == 0 or _outro_t > 24.0:
 		_finish_outro()
 
 

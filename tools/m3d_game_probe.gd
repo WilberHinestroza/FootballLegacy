@@ -236,8 +236,11 @@ func _ready() -> void:
 		await get_tree().create_timer(2.0).timeout
 		get_viewport().get_texture().get_image().save_png("res://build/m3d_review_mvp.png")
 		await get_tree().create_timer(4.0).timeout
-	else:
-		await get_tree().create_timer(5.8).timeout
+	# La entrega del MVP dura ~9 s (camina, recibe, enseña y levanta): esperar a que acabe
+	for tick in 60:
+		if not _res.is_empty():
+			break
+		await get_tree().create_timer(0.25).timeout
 	_check(not _res.is_empty(), "on_finish no se llamó")
 	var res: Dictionary = scr._final_result if not scr._final_result.is_empty() else Match3DBridge.to_match_result(_res, cfg)
 	for k in ["score", "user_rating", "rating_events", "user_injured", "user_red_carded", "user_double_yellow", "shootout_winner",
