@@ -2435,6 +2435,7 @@ func _start_moment(kind: Moment, pl: Dictionary = {}) -> void:
 	moment_type = kind
 	play = pl
 	play_carrier = null
+	_high_regain = false
 	state = State.MOMENT_INTRO
 	_timer = 1.6
 	_moment_timer = MOMENT_SECONDS
@@ -3662,6 +3663,8 @@ func _check_moment_outcome(delta: float) -> void:
 			_finish_moment(_shootout_miss_text())
 		return
 	if not is_attacking_moment():
+		if holder != null and holder.team == 0 and _try_high_regain(holder):
+			return
 		if holder != null and holder.team == 0:
 			var txt := "¡BALÓN RECUPERADO!"
 			if holder.is_keeper:
@@ -3756,6 +3759,34 @@ func _crowd_reacts(text: String) -> void:
 		SoundFx.play("applause", -5.0)
 
 
+## Robo en campo rival durante una jugada de defensa: no se corta la jugada, se
+## convierte en un contraataque con la defensa rival descolocada (pedido de Wilber:
+## "si mi equipo recupera el balón en el campo rival, que sea ocasión de gol").
+var _high_regain := false
+const HIGH_REGAIN_SECONDS := 10.0
+
+
+func _try_high_regain(holder: SoccerPlayer) -> bool:
+	if moment_type != Moment.DEFENSE or _high_regain or holder.is_keeper:
+		return false
+	if holder.global_position.x * attack_dir(0) <= 0.0:
+		return false # en nuestro campo: se cierra como "balón recuperado"
+	_high_regain = true
+	if holder == star:
+		match_stats.me.recov += 1 # al acabar ya es una jugada de ataque: se cuenta ahora
+	moment_type = Moment.COUNTER
+	_moment_timer = maxf(_moment_timer, HIGH_REGAIN_SECONDS)
+	_shot_pending = false
+	_saved = false
+	possession_team = 0
+	_hud.show_message("¡ROBO ARRIBA! ¡AL ATAQUE!", 1.1)
+	_hud.set_hint(HINT_ATTACK)
+	SoundFx.play("cheer", -9.0)
+	SoundFx.set_crowd(-7.0)
+	Haptics.hit("success")
+	return true
+
+
 func _finish_moment(text: String) -> void:
 	if state == State.MOMENT_RESULT:
 		return # ya cerrada: evita doble conteo si el balón entra y vence el timer
@@ -3780,6 +3811,8 @@ func _finish_moment(text: String) -> void:
 		_finish_shootout()
 		return
 	var ok := _moment_goal == 0 if is_attacking_moment() else _moment_goal != 1
+	if _high_regain and _moment_goal != 1:
+		ok = true # el robo arriba ya fue bueno, aunque el contraataque no acabe en gol
 	if _foul_for_us:
 		# Una falta a tu favor no es una jugada fallida: la jugada sigue viva
 		# en el penalti/tiro libre que se cobra después.
@@ -3802,6 +3835,8 @@ func _finish_moment(text: String) -> void:
 			grade = "regular" # a puerta, pero parada
 	elif ok and (ball.owner_player == star or _saved):
 		grade = "perfecto" # la robaste tú / la paraste tú
+	if _high_regain and _moment_goal != 0 and grade == "perfecto":
+		grade = "bueno"
 	if _foul_grade != "":
 		grade = _foul_grade
 		_foul_grade = ""
