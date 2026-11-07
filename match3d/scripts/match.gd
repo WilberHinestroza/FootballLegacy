@@ -1481,9 +1481,9 @@ func _finish_match() -> void:
 		_hud.show_message("¡CAMPEONES!\n" + trophy, 3.0)
 		get_tree().create_timer(TrophyCeremony.DURATION).timeout.connect(func() -> void:
 			if state == State.ENDED:
-				_start_outro())
+				_match_moment_then(_start_outro))
 		return
-	_start_outro()
+	_match_moment_then(_start_outro)
 
 
 func _start_penalty_shootout() -> void:
@@ -2436,6 +2436,8 @@ func _start_moment(kind: Moment, pl: Dictionary = {}) -> void:
 	play = pl
 	play_carrier = null
 	_high_regain = false
+	_hl_flair = ""
+	_hl_base = [match_stats.me.goals, match_stats.me.assists, match_stats.me.saves, match_stats.me.recov]
 	state = State.MOMENT_INTRO
 	_timer = 1.6
 	_moment_timer = MOMENT_SECONDS
@@ -3759,6 +3761,53 @@ func _crowd_reacts(text: String) -> void:
 		SoundFx.play("applause", -5.0)
 
 
+## Momento del partido: cada jugada tuya puntúa (gol > asistencia > paradón >
+## robo > jugada perfecta; la chilena y la volea suman) y la mejor se repite sola
+## al pitazo final (ReplayDirector.play_best).
+var _hl_flair := ""   # "bicycle" / "volley" si el remate de la jugada fue tuyo así
+var _hl_base := [0, 0, 0, 0]
+
+
+func _propose_highlight(ok: bool, grade: String) -> void:
+	var me = match_stats.me
+	var score := 0.0
+	var label := ""
+	if me.goals > int(_hl_base[0]):
+		score = 100.0 + (30.0 if _hl_flair == "bicycle" else (15.0 if _hl_flair == "volley" else 0.0))
+		label = {"bicycle": "¡GOL DE CHILENA!", "volley": "¡GOL DE VOLEA!"}.get(_hl_flair, "¡TU GOL!")
+	elif me.assists > int(_hl_base[1]):
+		score = 70.0
+		label = "TU ASISTENCIA"
+	elif me.saves > int(_hl_base[2]):
+		score = 60.0
+		label = "TU PARADA"
+	elif me.recov > int(_hl_base[3]) or _high_regain:
+		score = 40.0
+		label = "TU RECUPERACIÓN"
+	elif _hl_flair != "":
+		score = 30.0
+		label = "¡LO INTENTÓ DE CHILENA!" if _hl_flair == "bicycle" else "SU VOLEA"
+	elif ok and grade == "perfecto":
+		score = 20.0
+		label = "TU JUGADA"
+	if score <= 0.0:
+		return
+	score += minute * 0.01 # a igualdad, la más tardía (la que más se recuerda)
+	replay.propose(score, {"minute": int(minute), "label": label})
+
+
+## Al final del partido, antes de la despedida: el momento del partido, solo.
+func _match_moment_then(next: Callable) -> void:
+	if not replay.has_best():
+		next.call()
+		return
+	var info: Dictionary = replay.best_info
+	replay.play_best(self, "★ MOMENTO DEL PARTIDO · %d'  %s" % [int(info.get("minute", 0)), String(info.get("label", ""))],
+		func() -> void:
+			_camera.make_current()
+			next.call())
+
+
 ## Robo en campo rival durante una jugada de defensa: no se corta la jugada, se
 ## convierte en un contraataque con la defensa rival descolocada (pedido de Wilber:
 ## "si mi equipo recupera el balón en el campo rival, que sea ocasión de gol").
@@ -3842,6 +3891,7 @@ func _finish_moment(text: String) -> void:
 		_foul_grade = ""
 	match_stats.moment_log.append({"minute": int(minute), "kind": Moment.keys()[moment_type], "ok": ok, "text": text, "grade": grade,
 			"play": String(play.get("family", ""))})
+	_propose_highlight(ok, grade)
 	moment_ended.emit(text, ok)
 	Haptics.hit("success" if ok else "fail")
 	_end_decision()
@@ -5497,6 +5547,8 @@ func _volley(p: SoccerPlayer) -> void:
 	p.facing = dir
 	p.rotation.y = atan2(dir.x, dir.z)
 	p.play_action_from("volley", 0.32, 1.2, 0.6)
+	if p == star:
+		_hl_flair = "volley"
 	ball.kick(p, dir * float(vr.speed) + Vector3.UP * float(vr.lift) * randf_range(0.6, 1.2), 0.0, "shot")
 	on_shot(p)
 	shake(0.25)
@@ -5525,6 +5577,8 @@ func _bicycle(p: SoccerPlayer) -> void:
 	p.facing = -dir
 	p.rotation.y = atan2(-dir.x, -dir.z)
 	p.play_action_from("bicycle", ProceduralAnims.BICYCLE_CONTACT - 0.08, 1.0, 1.45)
+	if p == star:
+		_hl_flair = "bicycle"
 	p.stun_timer = maxf(p.stun_timer, 1.25)
 	ball.kick(p, dir * float(vr.speed) + Vector3.UP * float(vr.lift), 0.0, "shot")
 	on_shot(p)

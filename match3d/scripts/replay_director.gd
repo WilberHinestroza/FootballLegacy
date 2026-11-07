@@ -35,14 +35,61 @@ var _blink := 0.0
 var _seeking := false
 var _on_stop := Callable()
 
+# Momento del partido (7-nov): la mejor jugada tuya se guarda (copia de sus
+# fotogramas) y se ve sola al final. Cada jugada propone una puntuación al acabar;
+# se confirma al empezar la siguiente grabación, así incluye la celebración.
+var _best_frames: Array = []
+var _best_score := -1.0
+var best_info := {}
+var _pending_score := -1.0
+var _pending_info := {}
+var _saved_frames: Array = []
+var _restore := {}
+var _auto_close := false
+var _auto_left := 0.0
+
 
 func begin() -> void:
-	_frames.clear()
+	_commit()
+	_frames = [] # array nuevo: la copia del mejor momento no se borra
 	_rec_acc = 0.0
 
 
 func has_frames() -> bool:
 	return _frames.size() > 10
+
+
+## La jugada que acaba de terminar puede ser el momento del partido.
+func propose(score: float, info: Dictionary) -> void:
+	_pending_score = score
+	_pending_info = info
+
+
+func _commit() -> void:
+	if _pending_score > _best_score and has_frames():
+		_best_frames = _frames
+		_best_score = _pending_score
+		best_info = _pending_info
+	_pending_score = -1.0
+
+
+func has_best() -> bool:
+	_commit()
+	return _best_frames.size() > 10
+
+
+## Reproduce el momento del partido solo (sin tocar nada) y al acabar deja todo como
+## estaba ahora; luego llama a `on_stop`.
+func play_best(m: SoccerMatch, title: String, on_stop: Callable) -> void:
+	_commit()
+	_restore = _capture(m)
+	_saved_frames = _frames
+	_frames = _best_frames
+	play(m, on_stop)
+	_auto_close = true
+	_auto_left = 1.4
+	_rec_label.text = title
+	_rec_label.label_settings.font_color = Color(1.0, 0.85, 0.3)
 
 
 ## Guarda el fotograma actual (lo llama el partido en cada paso de física de la jugada).
@@ -53,6 +100,10 @@ func record(m: SoccerMatch) -> void:
 	if _rec_acc < 1.0 / REC_HZ:
 		return
 	_rec_acc = 0.0
+	_frames.append(_capture(m))
+
+
+func _capture(m: SoccerMatch) -> Dictionary:
 	var xf: Array[Transform3D] = []
 	var vis: Array[Transform3D] = []
 	var anims := PackedStringArray()
@@ -67,7 +118,7 @@ func record(m: SoccerMatch) -> void:
 		else:
 			anims.append("")
 			times.append(0.0)
-	_frames.append({"ball": m.ball.global_transform, "xf": xf, "vis": vis, "an": anims, "at": times})
+	return {"ball": m.ball.global_transform, "xf": xf, "vis": vis, "an": anims, "at": times}
 
 
 func play(m: SoccerMatch, on_stop := Callable()) -> void:
@@ -101,7 +152,16 @@ func play(m: SoccerMatch, on_stop := Callable()) -> void:
 func _stop() -> void:
 	if not _playing:
 		return
-	_apply(_frames.size() - 1) # todo queda como estaba al final de la jugada
+	if not _restore.is_empty():
+		_apply_frame(_restore) # momento del partido: vuelve a como estaba antes de verlo
+		_restore = {}
+		_frames = _saved_frames
+		_saved_frames = []
+		_rec_label.text = "● REPETICIÓN"
+		_rec_label.label_settings.font_color = Color(1.0, 0.25, 0.25)
+	else:
+		_apply(_frames.size() - 1) # todo queda como estaba al final de la jugada
+	_auto_close = false
 	_playing = false
 	_ui.visible = false
 	_touches.clear()
@@ -127,6 +187,11 @@ func _process(delta: float) -> void:
 			_t = _frames.size() - 1
 			_paused = true
 			_play_btn.text = "▶"
+	if _auto_close and _paused and _t >= _frames.size() - 1:
+		_auto_left -= delta
+		if _auto_left <= 0.0:
+			_stop()
+			return
 		_apply(int(_t))
 		_slider.set_value_no_signal(_t / maxf(_frames.size() - 1, 1.0))
 	_blink += delta
@@ -138,7 +203,10 @@ func _process(delta: float) -> void:
 
 
 func _apply(i: int) -> void:
-	var f: Dictionary = _frames[clampi(i, 0, _frames.size() - 1)]
+	_apply_frame(_frames[clampi(i, 0, _frames.size() - 1)])
+
+
+func _apply_frame(f: Dictionary) -> void:
 	_match.ball.global_transform = f.ball
 	var xf: Array = f.xf
 	var vis: Array = f.vis
