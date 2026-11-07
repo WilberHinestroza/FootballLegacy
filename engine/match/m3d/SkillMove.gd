@@ -23,7 +23,7 @@ const ARCH_FROM := 0.2
 const ARCH_TO := 0.8
 
 ## Costo de stamina de cada jugada.
-const COSTS := {"elastica": 0.05, "bicicleta": 0.04, "sombrero": 0.07, "rabona": 0.06}
+const COSTS := {"elastica": 0.05, "bicicleta": 0.04, "sombrero": 0.07, "rabona": 0.06, "enganche": 0.03}
 
 
 ## Clasifica el gesto. Devuelve "" si es un gesto normal (tiro, pase, regate).
@@ -65,6 +65,8 @@ static func success_chance(move: String, dribbling: float, control: float,
 			chance = 0.45 + c * 0.35 + d * 0.2 - def * 0.25
 		"rabona":
 			chance = 0.5 + p * 0.35 + c * 0.2 - def * 0.2
+		"enganche": # pisar y salir: control y regate, contra un rival que llega lanzado
+			chance = 0.52 + c * 0.25 + d * 0.25 - def * 0.25
 	return clampf(chance, 0.2, 0.92)
 
 

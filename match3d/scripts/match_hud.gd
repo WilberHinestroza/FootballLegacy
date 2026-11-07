@@ -825,6 +825,29 @@ func _team_seg(seg: PanelContainer, team_name: String, c: Color, c2: Color, make
 	return l
 
 
+## Mapita de la cancha (abajo a la izquierda) durante las jugadas.
+var minimap: MiniMap
+
+
+func setup_minimap(m: Node, home: Color, away: Color) -> void:
+	minimap = MiniMap.new()
+	minimap.match_ref = m
+	minimap.colors = [home, away]
+	minimap.anchor_top = 1.0
+	minimap.anchor_bottom = 1.0
+	minimap.offset_left = 16.0
+	minimap.offset_right = 16.0 + MiniMap.W
+	minimap.offset_top = -MiniMap.H - 16.0
+	minimap.offset_bottom = -16.0
+	minimap.visible = false
+	add_child(minimap)
+
+
+func show_minimap(value: bool) -> void:
+	if minimap != null and minimap.visible != value:
+		minimap.visible = value
+
+
 func set_timer(fraction: float, show: bool) -> void:
 	_timer_bar.visible = show
 	_timer_bar.value = clampf(fraction, 0.0, 1.0)

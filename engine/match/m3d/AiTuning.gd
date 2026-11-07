@@ -108,3 +108,23 @@ static func offside_awareness(passing: float, decision_making: float) -> float:
 ## fuera de juego al delantero (línea adelantada) cuando el rival va a pasar.
 static func offside_trap_chance(decision_making: float) -> float:
 	return lerpf(0.15, 0.6, clampf(decision_making, 0.0, 1.0))
+
+
+## Regate de la IA · probabilidad de intentar un regate (quiebro o jugada de lujo)
+## cuando un rival le sale de frente: el buen regateador encara, el malo la toca.
+static func dribble_attempt_chance(dribbling: float, composure: float) -> float:
+	return lerpf(0.15, 0.65, clampf(dribbling * 0.7 + composure * 0.3, 0.0, 1.0))
+
+
+## Regate de la IA · qué gesto: los mejores se atreven con la bicicleta, la elástica
+## o el enganche; el resto, quiebro. `roll` 0..1.
+static func dribble_move(dribbling: float, roll: float) -> String:
+	var fancy := clampf((dribbling - 0.55) * 1.6, 0.0, 0.6)
+	if roll < fancy * 0.35:
+		return "stepover"
+	if roll < fancy * 0.65:
+		return "elastico"
+	if roll < fancy:
+		return "dragback"
+	return ""
+

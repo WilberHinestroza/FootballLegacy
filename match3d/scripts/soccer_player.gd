@@ -85,6 +85,8 @@ const KICKS := {
 	"penalty": {"anim": "penalty", "from": 0.15, "speed": 1.15, "contact": 0.8},
 	"pass": {"anim": "pass_inside", "from": 0.08, "speed": 1.25, "contact": 0.3},
 	"throw": {"anim": "keeper_throw", "from": 0.75, "speed": 1.5, "contact": 1.55},
+	# Solo animación (el balón sale como "pass"): sombrero de tacón
+	"flick": {"anim": "flick_up", "from": 0.05, "speed": 1.15, "contact": 0.3},
 }
 
 ## Estiradas del portero. Las animaciones de Mixamo se importan sin desplazamiento (root motion),
@@ -486,6 +488,16 @@ func _check_receive() -> void:
 			facing = -bv / spd
 			body_trap(by)
 		return
+	# Balón aéreo que ha decidido bajar con el cuerpo (o volear): se prepara para eso,
+	# no para el cabezazo (AerialControl)
+	var aerial: String = match_ref.aerial_choice_for(self)
+	if aerial != "" and aerial != "header":
+		var coming := spd > 4.0 and d < 4.0 and d > 0.4 and to_me.dot(bv) > d * spd * 0.85
+		if aerial != "volley" and coming and (d - 0.5) / spd < ProceduralAnims.TRAP_CONTACT and by < 2.1:
+			facing = -bv / spd
+			# El gesto del control elegido (la altura de ahora no es la de llegada)
+			body_trap({"thigh": 1.0, "instep": 0.5}.get(aerial, 1.5))
+		return
 	if spd > 4.0 and by > 1.0 and by < 3.2 and d < 4.0 and d > 0.4 and to_me.dot(bv) > d * spd * 0.85:
 		var eta := (d - 0.4) / spd
 		if eta < (HEADER_CONTACT - HEADER_FROM) / HEADER_SPEED:
@@ -506,9 +518,9 @@ func _check_receive() -> void:
 
 ## Control con el cuerpo: pecho si el balón llega alto, muslo si llega a media altura.
 func body_trap(ball_y: float) -> void:
-	if _action_timer > 0.0 and _anim.current_animation in ["chest_trap", "thigh_trap"]:
+	if _action_timer > 0.0 and _anim.current_animation in ["chest_trap", "thigh_trap", "instep_trap"]:
 		return
-	var anim_name := "chest_trap" if ball_y > 1.15 else "thigh_trap"
+	var anim_name := "chest_trap" if ball_y > 1.15 else ("thigh_trap" if ball_y > 0.8 else "instep_trap")
 	if _anim.has_animation(anim_name):
 		play_action(anim_name, 1.0, 0.7)
 
@@ -653,7 +665,7 @@ func cross_to_point(point: Vector3, height := 1.75) -> void:
 
 ## P1-06 · Sombrero: picarla por encima del defensor hacia un punto del campo.
 ## `power` < 1 la deja corta (fallo de la jugada) para que el rival la controle.
-func chip_ball(target_point: Vector3, power := 1.0) -> void:
+func chip_ball(target_point: Vector3, power := 1.0, flick := false) -> void:
 	if not has_ball() or is_kicking():
 		return
 	var aim := func() -> Vector3:
@@ -663,7 +675,7 @@ func chip_ball(target_point: Vector3, power := 1.0) -> void:
 		var h := d / t * clampf(power, 0.5, 1.2)
 		var vy := SoccerBall.lift_for(2.3, t)
 		return to / d * h + Vector3.UP * vy
-	_start_kick("pass", aim, 0.0, Callable())
+	_start_kick("pass", aim, 0.0, Callable(), "flick" if flick else "")
 
 
 ## P1-06 · Rabona: pase con efecto al compañero, golpeando con la pierna de
@@ -744,8 +756,8 @@ func kick_spot() -> Vector3:
 
 ## Empieza la animación del golpe y suelta el balón justo cuando el pie lo toca.
 ## `vel` es la velocidad del balón, o un Callable que la calcula en el momento del golpe.
-func _start_kick(kind: String, vel: Variant, curl: float, on_release: Callable) -> void:
-	var k: Dictionary = KICKS[kind]
+func _start_kick(kind: String, vel: Variant, curl: float, on_release: Callable, anim_kind := "") -> void:
+	var k: Dictionary = KICKS[anim_kind if anim_kind != "" else kind]
 	var flat_v := SoccerMatch.flat(vel.call() if vel is Callable else vel)
 	var face := flat_v.normalized() if flat_v.length() > 0.01 else facing
 	var delay := 0.0
@@ -771,6 +783,17 @@ func _release_kick() -> void:
 	match_ref.ball.kick(self, v, k.curl, String(k.get("kind", "pass")))
 	if (k.release as Callable).is_valid():
 		(k.release as Callable).call()
+
+
+## Regateado: se queda clavado `t` s (sin poder entrar) y trastabilla hacia el
+## lado por el que se le fue el balón, pero NO se cae: caerse es para las faltas.
+func beaten(t: float, toward: Vector3 = Vector3.ZERO) -> void:
+	stun_timer = maxf(stun_timer, t)
+	if is_keeper or is_diving():
+		return
+	var d := SoccerMatch.flat(toward)
+	var left: bool = facing.cross(Vector3.DOWN).dot(d) > 0.0 if d.length() > 0.01 else randf() < 0.5
+	play_action("stumble_l" if left else "stumble_r", 1.0, minf(t, 0.7))
 
 
 func stun(t: float) -> void:
@@ -840,10 +863,15 @@ func play_action_from(anim_name: String, from: float, anim_speed := 1.0, max_tim
 
 
 ## Quiebro rápido en una dirección sin perder el balón.
-func dodge(dir: Vector3) -> void:
+func dodge(dir: Vector3, anim := "") -> void:
 	var d := SoccerMatch.flat(dir).normalized()
 	if d == Vector3.ZERO:
 		return
+	# Cada quiebro con su gesto: hacia su izquierda o su derecha (o una jugada de lujo)
+	if anim == "":
+		anim = "dodge_l" if facing.cross(Vector3.DOWN).dot(d) > 0.0 else "dodge_r"
+	if not is_kicking():
+		play_action(anim, 1.15 if anim.begins_with("dodge") else 1.0, 0.5 if anim.begins_with("dodge") else 0.8)
 	velocity = d * 9.5
 	_lunge_timer = 0.3
 	dodge_timer = 0.6
@@ -989,6 +1017,26 @@ func set_human(value: bool) -> void:
 
 ## Marca "TÚ" encima de tu jugador estrella (el de tu carrera en FootballCareer).
 var star_label: Label3D # la marca "TÚ"
+var name_tag: Label3D   # apellido sobre la cabeza (todos los jugadores)
+
+
+## Apellido sobre la cabeza: tamaño fijo en pantalla (se lee igual de cerca que en
+## la vista de transmisión), con contorno oscuro y el color de su equipo.
+func set_name_tag(text: String, color: Color) -> void:
+	if name_tag == null:
+		name_tag = Label3D.new()
+		name_tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		name_tag.fixed_size = true
+		name_tag.pixel_size = 0.00055
+		name_tag.font_size = 30
+		name_tag.outline_size = 9
+		name_tag.outline_modulate = Color(0.0, 0.0, 0.0, 0.85)
+		name_tag.no_depth_test = true
+		name_tag.render_priority = 2
+		name_tag.position = Vector3(0.0, 2.12, 0.0)
+		add_child(name_tag)
+	name_tag.text = text
+	name_tag.modulate = color
 
 
 func set_star() -> void:

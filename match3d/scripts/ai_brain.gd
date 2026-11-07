@@ -7,6 +7,7 @@ extends RefCounted
 
 const AiTuning = preload("res://engine/match/m3d/AiTuning.gd")
 const Offside = preload("res://engine/match/m3d/Offside.gd")
+const DribbleCombo = preload("res://engine/match/m3d/DribbleCombo.gd")
 
 
 static func think(p: SoccerPlayer, m: SoccerMatch) -> void:
@@ -37,6 +38,10 @@ static func move_to(p: SoccerPlayer, target: Vector3, stop_dist := 0.4, sprint :
 
 ## El medio más cercano se ofrece corto; el resto conserva su dibujo táctico.
 static func _support(p: SoccerPlayer, m: SoccerMatch, holder: SoccerPlayer) -> void:
+	# Tras dártela, el pasador sigue la jugada: arranca al hueco para la devolución
+	if p.has_meta("run_until") and Time.get_ticks_msec() < int(p.get_meta("run_until")):
+		move_to(p, _hold_onside(p, m, p.get_meta("run_to") as Vector3), 0.6, true)
+		return
 	var offers := false
 	if p.role == "MF" and m.state == SoccerMatch.State.SIMULATING:
 		var best_d := INF
@@ -269,6 +274,9 @@ static func _with_ball(p: SoccerPlayer, m: SoccerMatch) -> void:
 	if _kill_clock(p, m, dist):
 		var flag := goal + Vector3(-m.attack_dir(p.team) * 1.5, 0.0, signf(p.global_position.z + 0.01) * (SoccerMatch.FIELD_WIDTH * 0.5 - 1.0))
 		move = SoccerMatch.flat(flag - p.global_position).normalized()
+	# Rival justo delante: a veces lo encara con un regate de verdad (con su gesto)
+	if not p.is_human and _try_dribble(p, m, dir_goal):
+		return
 	# Regatear hacia la portería apartándose de los rivales cercanos
 	for o: SoccerPlayer in m.teams[1 - p.team]:
 		var off := SoccerMatch.flat(p.global_position - o.global_position)
@@ -280,6 +288,41 @@ static func _with_ball(p: SoccerPlayer, m: SoccerMatch) -> void:
 		move.z -= signf(p.global_position.z) * (4.0 - edge_z) * 0.5
 	p.move_input = SoccerMatch.flat(move).normalized()
 	p.sprinting = m.nearest_opponent_distance(p, p.global_position) > 4.0
+
+
+## Regate de la IA: con un rival de frente a menos de 2,6 m, según su regate intenta
+## un quiebro (o bicicleta / elástica / enganche). Sale bien según DribbleCombo y el
+## rival se queda clavado; si no, sigue la jugada normal. Un intento cada ~2,5 s.
+static func _try_dribble(p: SoccerPlayer, m: SoccerMatch, dir_goal: Vector3) -> bool:
+	var now := Time.get_ticks_msec()
+	if now < int(p.get_meta("dribble_ms", 0)) or p.dodge_timer > 0.0 or p.is_kicking():
+		return false
+	var rival: SoccerPlayer = null
+	for o: SoccerPlayer in m.teams[1 - p.team]:
+		if o.is_keeper or o.stun_timer > 0.0 or not o.visible:
+			continue
+		var off := SoccerMatch.flat(o.global_position - p.global_position)
+		if off.length() < 2.6 and off.normalized().dot(dir_goal) > 0.4:
+			rival = o
+			break
+	if rival == null:
+		return false
+	p.set_meta("dribble_ms", now + 2500)
+	if randf() >= AiTuning.dribble_attempt_chance(p.stat("dribbling"), p.stat("composure")):
+		return false
+	var move := AiTuning.dribble_move(p.stat("dribbling"), randf())
+	var side := 1.0 if randf() < 0.5 else -1.0
+	var lateral := dir_goal.cross(Vector3.UP) * side
+	var dir := (dir_goal * 0.55 + lateral).normalized()
+	if move == "dragback":
+		dir = (-dir_goal * 0.4 + lateral).normalized()
+	p.dodge(dir, move)
+	if move == "stepover" or move == "dragback":
+		p.velocity *= 0.5
+	var chance := DribbleCombo.beat_chance(p.stat("dribbling"), rival.duel_skill(true), 2 if move != "" else 1)
+	if randf() < chance:
+		rival.beaten(DribbleCombo.stun_time(1), p.global_position - rival.global_position)
+	return true
 
 
 ## ¿Toca perder tiempo? Solo fuera de tus jugadas, ganando por uno pasado el 85' y ya

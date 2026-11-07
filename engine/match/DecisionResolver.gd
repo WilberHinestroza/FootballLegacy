@@ -1147,3 +1147,14 @@ static func m3d_keeper_dive_catches(speed: float, r: float) -> bool:
 static func m3d_keeper_contact_beaten(speed: float, lateral: float, keeper_skill: float) -> float:
 	var beaten: float = clampf((speed - 16.0) / 14.0 * 0.35 + lateral * 0.25, 0.0, 0.6)
 	return clampf(beaten * lerpf(1.4, 0.6, keeper_skill), 0.0, 0.75)
+
+
+## Volea: velocidad (m/s) y error angular (rad) según el tiro, la sangre fría y lo
+## cómodo que llega el balón (lo ideal, a la altura de la rodilla ~0,7 m).
+static func m3d_volley(shooting: float, composure: float, ball_y: float) -> Dictionary:
+	var comfort: float = clampf(1.0 - absf(ball_y - 0.7) / 0.7, 0.0, 1.0)
+	var skill: float = clampf(shooting * 0.7 + composure * 0.3, 0.0, 1.0)
+	return {"speed": lerpf(16.0, 26.0, skill) * lerpf(0.8, 1.0, comfort),
+		"spread": (1.0 - skill) * 0.16 + (1.0 - comfort) * 0.12,
+		"lift": lerpf(2.5, 0.6, comfort)} # mal cogida, se va hacia arriba
+

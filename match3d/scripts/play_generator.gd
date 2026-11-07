@@ -29,6 +29,8 @@ const FAMILIES := {
 		"title": "¡ENCARA AL LATERAL!", "hint": "Uno contra uno por la banda: desliza hacia un lado para irte\ny luego toca a un compañero del área o chuta"},
 	"diagonal": {"phase": "ataque", "base": "ATTACK", "w": {"ST": 0.8, "MF": 0.9, "DF": 0.2},
 		"title": "¡RECORTA HACIA DENTRO!", "hint": "Pierna cambiada: el lateral te cierra la línea, no el centro\nDesliza en diagonal hacia el área y chuta al palo largo"},
+	"balon_largo": {"phase": "ataque", "base": "ATTACK", "w": {"ST": 1.0, "MF": 0.3, "DF": 0.1},
+		"title": "¡BALÓN LARGO!", "hint": "El central te la manda en largo: ve a por ella (toca el césped)\ncontrolas de pecho y encaras o defines"},
 	"pared": {"phase": "ataque", "base": "ATTACK", "w": {"ST": 1.0, "MF": 1.7, "DF": 0.5},
 		"title": "¡TIRA LA PARED!", "hint": "Toca al compañero de al lado y sigue corriendo:\ntócate a ti para pedirla de vuelta y define"},
 	"rechace": {"phase": "ataque", "base": "ATTACK", "w": {"ST": 1.6, "MF": 0.7, "DF": 0.6},
@@ -102,9 +104,9 @@ const POSITION_STYLE := {
 		"entre_lineas": 0.6, "rechace": 0.5, "duelo": 0.6, "diagonal": 1.0}},
 	"EI": {"lane": -1.0, "w": {"desborde": 2.4, "contra_rapida": 1.3, "superioridad": 1.2, "frontal": 0.5,
 		"entre_lineas": 0.6, "rechace": 0.5, "duelo": 0.6, "diagonal": 1.0}},
-	"SD": {"lane": 0.0, "w": {"pared": 1.7, "frontal": 1.4, "entre_lineas": 1.4, "centro": 0.7, "diagonal": 0.6}},
+	"SD": {"lane": 0.0, "w": {"pared": 1.7, "frontal": 1.4, "entre_lineas": 1.4, "centro": 0.7, "diagonal": 0.6, "balon_largo": 0.9}},
 	"DC": {"lane": 0.0, "w": {"rechace": 1.5, "centro": 1.5, "mano_a_mano": 1.3, "pared": 0.8, "desborde": 0.5,
-		"diagonal": 0.2}},
+		"diagonal": 0.2, "balon_largo": 1.6}},
 }
 
 const PHASE_BY_POSITION := {

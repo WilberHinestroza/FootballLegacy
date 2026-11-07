@@ -18,6 +18,7 @@ const AiTuning = preload("res://engine/match/m3d/AiTuning.gd")
 const ShotZone = preload("res://engine/match/m3d/ShotZone.gd")
 const DribbleCombo = preload("res://engine/match/m3d/DribbleCombo.gd")
 const SkillMove = preload("res://engine/match/m3d/SkillMove.gd")
+const AerialControl = preload("res://engine/match/m3d/AerialControl.gd")
 const CrossZone = preload("res://engine/match/m3d/CrossZone.gd")
 const HeaderTiming = preload("res://engine/match/m3d/HeaderTiming.gd")
 const PlayChain = preload("res://engine/match/m3d/PlayChain.gd")
@@ -407,6 +408,7 @@ func _ready() -> void:
 		"crests": [config.get("home_crest"), config.get("away_crest")],
 		"colors2": [kits[0].get("shirt_color2", Color.WHITE), kits[1].get("shirt_color2", Color.WHITE)],
 		"competition": String(config.get("competition", ""))})
+	_hud.setup_minimap(self, profile.shirt, shirts[1])
 	_hud.gesture.tapped.connect(_on_tapped)
 	_hud.cross_zone_selected.connect(_on_cross_zone_selected)
 	replay = ReplayDirector.new()
@@ -474,6 +476,8 @@ func _exit_tree() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	_hud.show_minimap(state == State.MOMENT_INTRO or state == State.MOMENT)
+	_update_name_tags()
 	match state:
 		State.SIMULATING:
 			if bool(config.get("ambient_ai", true)):
@@ -2735,6 +2739,39 @@ func _setup_play() -> bool:
 			fb.facing = flat(star.global_position - fb.global_position).normalized()
 			_crowd_box(0, 2, [star])
 			_spread_rivals_in_box(3, [fb])
+		"balon_largo":
+			# Desde atrás: tu central te la manda en largo y tú, de espaldas a la
+			# portería no, de cara: arrancas hacia ella con el central rival detrás.
+			var bp := Vector3(lerpf(16.0, 28.0, depth), 0.0, _lane_z(12.0))
+			_attack_base(bp)
+			_place(star, bp)
+			star.facing = Vector3.RIGHT
+			var from := Vector3(bp.x - randf_range(28.0, 32.0), 0.0, bp.z * 0.3 + randf_range(-6.0, 6.0))
+			var cbm := _nearest_of_role(0, from, ["DF"], [star])
+			if cbm != null:
+				_place(cbm, from)
+				cbm.facing = flat(bp - from).normalized()
+				_give_ball_now(cbm)
+				cbm.ai_timer = 9.0
+				_arrival_from = cbm
+				play.long_ball = true
+				# Tiene tiempo de levantar la cabeza: nadie le encima al golpear
+				for o: SoccerPlayer in teams[1]:
+					if not o.is_keeper:
+						var op := _room_from(from, o.global_position, 9.0)
+						if op != o.global_position:
+							o.reset_to(op, flat(from - op).normalized())
+			else:
+				_give_ball_now(star)
+			var cb := _nearest_of_role(1, bp, ["DF"], [])
+			_place(cb, bp + Vector3(randf_range(6.5, 8.0), 0.0, randf_range(-1.5, 1.5)))
+			cb.facing = Vector3.LEFT
+			# El balón es para ti: los compañeros, abiertos y no en la zona de caída
+			for mt: SoccerPlayer in teams[0]:
+				if mt != star and mt != cbm and not mt.is_keeper and flat_dist(mt.global_position, bp) < 9.0:
+					var away := signf(mt.global_position.z - bp.z) if absf(mt.global_position.z - bp.z) > 0.3 else 1.0
+					_place(mt, Vector3(mt.global_position.x, 0.0, bp.z + away * 10.0))
+			_set_human(star)
 		"diagonal":
 			# Recibes abierto en tu banda; el lateral rival te cierra POR FUERA y deja
 			# el pasillo hacia dentro. El central sale tarde y el área está cargada.
@@ -2976,11 +3013,26 @@ func _launch_arrival() -> void:
 	for o: SoccerPlayer in teams[1]:
 		if not o.is_keeper and flat_dist(o.global_position, star.global_position) < PrePlayChoice.OPENING_RADIUS:
 			o.tackle_cooldown = maxf(o.tackle_cooldown, PrePlayChoice.OPENING_TACKLE_DELAY)
+	if bool(play.get("long_ball", false)):
+		# En largo, por alto: cae a la altura del pecho un par de metros por delante
+		var lead := star.global_position + flat(opponent_goal_center(0) - star.global_position).normalized() * 2.5
+		passer.cross_to_point(lead, 1.3)
+		_move_target = _clamp_to_field(lead) # vas a por ella; tocando el césped corriges
+		_hud.show_message("¡EN LARGO!", 0.6)
+		return
 	if String(play.get("family", "")) == "mano_a_mano":
 		var ahead := star.global_position + flat(opponent_goal_center(0) - star.global_position).normalized() * 3.5
 		passer.pass_to_point(ahead, star, 1.0)
 	else:
 		passer.pass_ball(star)
+	# Pase y sigue: el compañero se va al espacio por dentro, por delante de ti,
+	# y queda como opción de pared (toca a él para devolvérsela).
+	var goal := opponent_goal_center(0)
+	var sp := star.global_position
+	var run_to := sp + flat(goal - sp).normalized() * 9.0
+	run_to.z = lerpf(sp.z, 0.0, 0.45) + randf_range(-2.0, 2.0)
+	passer.set_meta("run_to", _clamp_to_field(run_to))
+	passer.set_meta("run_until", Time.get_ticks_msec() + 3500)
 	_hud.show_message("¡TE LA PASAN!", 0.6)
 
 
@@ -3162,6 +3214,7 @@ func _shirt_number(t: int, i: int) -> int:
 ## El escudo lo manda FootballCareer (home_crest / away_crest: Callable -> Control);
 ## si no, uno dibujado. El patrocinio, el del config o uno inventado fijo por club.
 func _bake_kit_decals() -> void:
+	_refresh_name_tags()
 	var jobs := []
 	for t in 2:
 		var side: String = ["home", "away"][t]
@@ -3180,6 +3233,36 @@ func _bake_kit_decals() -> void:
 					"number": _shirt_number(t, i), "name": words[-1] if words.size() > 0 else "", "ink": ink,
 					"edge": _kit_edge(base, ink, int(_kits[t].get("shirt_pattern", 0)))})
 	await KitDecals.bake_all(self, jobs)
+
+
+## Nombre sobre la cabeza de cada jugador: el apellido (como en la espalda). Tu
+## jugador, en amarillo como su marca; los demás, en blanco con un toque de su
+## equipo para distinguirlos de un vistazo.
+func _refresh_name_tags() -> void:
+	for t in 2:
+		var tint: Color = Color.WHITE.lerp([profile.shirt, _kit_shirt1][t], 0.28)
+		for p: SoccerPlayer in teams[t]:
+			var words := _name_of(p).split(" ", false)
+			var nm := String(words[-1]).to_upper() if words.size() > 0 else ""
+			if p == star:
+				p.set_name_tag(nm, Color(1.0, 0.9, 0.3))
+			else:
+				p.set_name_tag(nm, tint)
+
+
+var _tags_shown := true
+
+
+## Solo en juego (no en túnel, vestuario, celebraciones ni ceremonias).
+func _update_name_tags() -> void:
+	var show := state in [State.SIMULATING, State.MOMENT_INTRO, State.MOMENT, State.MOMENT_RESULT,
+			State.AMBIENT_GOAL, State.PENALTY_SHOOTOUT]
+	if show == _tags_shown:
+		return
+	_tags_shown = show
+	for p: SoccerPlayer in players:
+		if p.name_tag != null:
+			p.name_tag.visible = show
 
 
 ## Contorno de las letras: en diseños cargados (rayas, cuadros...), grueso y del color
@@ -4493,6 +4576,10 @@ func _on_swiped(points: PackedVector2Array, duration: float) -> void:
 	if _try_skill_move(points, dir, to_goal):
 		return
 
+	# Deslizar hacia atrás con un rival delante = enganche (pisas y sales hacia el otro lado)
+	if (moment_type == Moment.ATTACK or moment_type == Moment.COUNTER) and dir.dot(to_goal) < -0.55:
+		if _do_enganche(dir, to_goal):
+			return
 	# Deslizar hacia un lado (no hacia la portería) = regate
 	if moment_type == Moment.ATTACK or moment_type == Moment.COUNTER:
 		if dir.dot(to_goal) < 0.45:
@@ -4620,7 +4707,7 @@ func _do_dodge(dir: Vector3) -> void:
 		var chance := DribbleCombo.beat_chance(
 			human.stat("dribbling"), o.duel_skill(true), _dodge_chain, o.is_keeper)
 		if randf() < chance:
-			o.stun(DribbleCombo.stun_time(_dodge_chain))
+			o.beaten(DribbleCombo.stun_time(_dodge_chain), human.global_position - o.global_position)
 			beaten = true
 	if beaten:
 		_open_shot_chain(_dodge_chain)
@@ -4716,7 +4803,7 @@ func _execute_skill_move(move: String, dir: Vector3, to_goal: Vector3,
 	var ok := randf() < chance
 	match move:
 		"elastica":
-			human.dodge(dir)
+			human.dodge(dir, "elastico")
 			_dodge_chain = mini(_dodge_chain + 1, DribbleCombo.MAX_CHAIN)
 			_dodge_window = DribbleCombo.WINDOW
 			_dodge_dir = flat(dir).normalized()
@@ -4728,7 +4815,7 @@ func _execute_skill_move(move: String, dir: Vector3, to_goal: Vector3,
 				human.stun(0.5)
 				_hud.show_message("SE LE FUE LARGO", 0.7)
 		"bicicleta":
-			human.dodge(dir)
+			human.dodge(dir, "stepover")
 			human.velocity *= 0.4 # amague: se mueve poco, pero marea
 			if ok:
 				_stun_near(3.2, 0.7)
@@ -4741,7 +4828,7 @@ func _execute_skill_move(move: String, dir: Vector3, to_goal: Vector3,
 			if nearest != null:
 				over = nearest.global_position + to_goal * 2.5
 			_reset_dodge_combo()
-			human.chip_ball(over, 1.0 if ok else 0.62)
+			human.chip_ball(over, 1.0 if ok else 0.62, true)
 			_hud.show_message("¡SOMBRERO!" if ok else "¡SE QUEDÓ CORTO!", 0.7)
 		"rabona":
 			var mate := _nearest_open_teammate()
@@ -4755,10 +4842,42 @@ func _execute_skill_move(move: String, dir: Vector3, to_goal: Vector3,
 				_hud.show_message("¡RABONA!", 0.7)
 
 
+## Enganche: pisas el balón, tiras de él hacia atrás y giras. El rival que venía
+## lanzado de frente se pasa de largo si sale bien (SkillMove decide la probabilidad).
+## Devuelve false si no hay nadie delante (entonces es un regate normal).
+func _do_enganche(dir: Vector3, to_goal: Vector3) -> bool:
+	var rival: SoccerPlayer = null
+	var best := 4.5
+	for o: SoccerPlayer in teams[1]:
+		if o.is_keeper or o.stun_timer > 0.0:
+			continue
+		var off := flat(o.global_position - human.global_position)
+		if off.length() < best and off.normalized().dot(to_goal) > 0.2:
+			best = off.length()
+			rival = o
+	if rival == null or _skill_cooldown > 0.0:
+		return false
+	_skill_cooldown = 0.9
+	stamina = maxf(stamina - SkillMove.stamina_cost("enganche"), 0.05)
+	var ok := randf() < SkillMove.success_chance("enganche", human.stat("dribbling"),
+			human.stat("control"), human.stat("passing"), rival.duel_skill(true))
+	human.dodge(dir, "dragback")
+	human.velocity *= 0.55 # pisa y sale, no es un sprint
+	_reset_dodge_combo()
+	if ok:
+		rival.beaten(0.9, human.global_position - rival.global_position) # se come el amague y se va de largo
+		rival.velocity = flat(human.global_position - rival.global_position).normalized() * -2.0 + to_goal * 4.0
+		_open_shot_chain(1)
+		_hud.show_message("¡ENGANCHE!", 0.7)
+	else:
+		_hud.show_message("TE LEYÓ EL ENGANCHE", 0.7)
+	return true
+
+
 func _stun_near(radius: float, t: float) -> void:
 	for o: SoccerPlayer in teams[1]:
 		if flat_dist(o.global_position, human.global_position) <= radius:
-			o.stun(t)
+			o.beaten(t, human.global_position - o.global_position)
 
 
 ## Compañero más cercano con espacio (sin un rival encima) para la rabona.
@@ -5152,6 +5271,9 @@ func _update_possession(delta: float) -> void:
 			for p in players:
 				if p.is_keeper or p.stun_timer > 0.0 or not ball.can_be_picked_by(p):
 					continue
+				var ac := aerial_choice_for(p)
+				if ac != "" and ac != AerialControl.HEADER:
+					continue # este la baja con el cuerpo o le pega de volea
 				var hd := flat_dist(p.global_position, bpos)
 				if hd < header_d:
 					header_d = hd
@@ -5185,6 +5307,17 @@ func _update_possession(delta: float) -> void:
 				max_h = 1.65
 				body = true
 			var d := flat_dist(p.global_position, bpos)
+			if not p.is_keeper:
+				var ac: String = _aerial_choice.get(p, "")
+				var vol_h := bpos.y >= AerialControl.VOLLEY_MIN and bpos.y <= AerialControl.VOLLEY_MAX
+				if ac == AerialControl.VOLLEY and d < 1.15 and vol_h:
+					_volley(p)
+					return
+				if AerialControl.is_control(ac) and ball_spd <= AerialControl.MAX_CONTROL_SPEED:
+					# Lo decidió bajar con el cuerpo: pecho, muslo o empeine
+					reach = 1.0
+					max_h = AerialControl.reach_height(ac)
+					body = true
 			if d < reach and bpos.y < max_h and d < best_d:
 				best = p
 				best_d = d
@@ -5253,6 +5386,63 @@ func _check_dive_contact(k: SoccerPlayer) -> void:
 
 ## Cabezazo: cerca de la portería rival, a gol (al palo contrario al portero o hacia donde
 ## deslizaste el dedo); lejos, despeje hacia arriba.
+## Qué hace `p` con el balón que viene por el aire (AerialControl). Se decide una
+## vez por balón, cuando le llega a menos de 7 m; "" = no le llega o es el portero.
+var _aerial_choice := {}
+
+
+func aerial_choice_for(p: SoccerPlayer) -> String:
+	if p.is_keeper or ball.owner_player != null:
+		return ""
+	if _aerial_choice.has(p):
+		return String(_aerial_choice[p])
+	var bpos := ball.global_position
+	if bpos.y < 0.3:
+		return ""
+	var v := ball.linear_velocity
+	var fv := flat(v)
+	var to_me := flat(p.global_position - bpos)
+	var d := to_me.length()
+	if d > 7.0 or fv.length() < 2.0 or to_me.dot(fv) < d * fv.length() * 0.8:
+		return ""
+	# Altura a la que le llegará (tiro parabólico, sin el frenado del aire)
+	var t := d / fv.length()
+	var y := maxf(bpos.y + v.y * t - 4.9 * t * t, 0.0)
+	if y < AerialControl.INSTEP_MIN:
+		return "" # llega ya casi raso: control normal con el pie
+	var own := ball.last_touch != null and ball.last_touch.team == p.team
+	var goal := opponent_goal_center(p.team)
+	var att := own and flat_dist(p.global_position, goal) < 18.0 and absf(p.global_position.z) < 16.0
+	var c := AerialControl.choose(y, v.length(), nearest_opponent_distance(p, p.global_position), own,
+			att, in_own_box(p.team, p.global_position), p.stat("control"), randf())
+	_aerial_choice[p] = c
+	return c
+
+
+## Volea: le pega en el aire hacia la portería (lejos del portero; con el dedo, a
+## donde apuntaste). La fuerza y el error salen de DecisionResolver.m3d_volley.
+func _volley(p: SoccerPlayer) -> void:
+	var goal := opponent_goal_center(p.team)
+	var aim := goal
+	if p == human and _header_aim != Vector3.ZERO:
+		aim = p.global_position + _header_aim * flat(goal - p.global_position).length()
+	else:
+		var keeper: SoccerPlayer = teams[1 - p.team][0]
+		var away := -signf(keeper.global_position.z - goal.z)
+		aim.z = (away if away != 0.0 else 1.0) * randf_range(1.0, GOAL_WIDTH * 0.5 - 0.5)
+	_header_aim = Vector3.ZERO
+	var vr: Dictionary = DecisionResolver.m3d_volley(p.stat("shooting"), p.stat("composure"), ball.global_position.y)
+	var dir := flat(aim - p.global_position).normalized().rotated(Vector3.UP, randf_range(-1.0, 1.0) * float(vr.spread))
+	p.facing = dir
+	p.rotation.y = atan2(dir.x, dir.z)
+	p.play_action_from("volley", 0.32, 1.2, 0.6)
+	ball.kick(p, dir * float(vr.speed) + Vector3.UP * float(vr.lift) * randf_range(0.6, 1.2), 0.0, "shot")
+	on_shot(p)
+	shake(0.25)
+	if state == State.MOMENT and p.team == 0:
+		_hud.show_message("¡VOLEA!", 0.7)
+
+
 func _header(p: SoccerPlayer, quality := 1.0) -> void:
 	var goal := opponent_goal_center(p.team)
 	var to_goal := flat(goal - p.global_position)
@@ -5555,6 +5745,8 @@ func _camera_declutter() -> void:
 		# perspectiva encima de rivales lejanos; ahí ya te marca el aro amarillo.
 		var hide_mark := d < 7.5
 		star.star_label.scale = Vector3.ONE * (0.001 if hide_mark else clampf(d / 14.0, 0.25, 1.0))
+		if star.name_tag != null:
+			star.name_tag.scale = Vector3.ONE * (0.001 if hide_mark else 1.0)
 
 
 func _update_camera(delta: float) -> void:
@@ -6214,6 +6406,7 @@ func is_offside_now(p: SoccerPlayer) -> bool:
 
 ## En cada golpeo: foto de quién del equipo que golpea está adelantado o en línea.
 func _on_ball_kicked(by: SoccerPlayer, _kind: String) -> void:
+	_aerial_choice.clear() # balón nuevo: cada uno vuelve a decidir qué hace con él
 	if by == null or not (state == State.MOMENT or state == State.SIMULATING):
 		_offside_snap = {}
 		return
