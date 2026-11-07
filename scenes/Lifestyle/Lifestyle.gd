@@ -571,7 +571,16 @@ static func _life_tex(key: String) -> Texture2D:
 
 ## Lo que tenés HOY, grande (escala ×2 entera) sobre una placa clara — el
 ## coche de lujo es negro y se perdía contra la tarjeta oscura.
+const LifeStage = preload("res://ui/common/LifeStage.gd")
+
 func _tier_showcase(key: String, kind: String) -> Control:
+	# 3D (8-nov): tu vivienda o tu coche de verdad, con tu jugador al lado
+	var home_key: String = key if kind == "home" else _player.home_type
+	var car_key: String = key if kind == "car" else _player.car_type
+	var st: Control = LifeStage.make(Avatar.config_for_player(_player, SaveManager.load_world_seed()),
+			home_key, car_key, kind, 230)
+	if st != null:
+		return st
 	var center := CenterContainer.new()
 	var tex := _life_tex(key)
 	if tex == null:
