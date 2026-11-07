@@ -43,6 +43,22 @@ const GUAYOS_TINT := {
 	"guayos_rosa": "#ff4fa3", "guayos_blanco": "#e9eef6",
 	"guayos_azul": "#2e7bff", "guayos_morado": "#8a3cff", "guayos_rojo": "#e3262f", "guayos_arcoiris": "#ffb21a",
 	"guayos_plata": "#c9ced8", "guayos_lava": "#ff6a1a",
+	"guayos_tormenta": "#2e7bff", "guayos_galaxia": "#5a1fd1", "guayos_tigre": "#ff8a00",
+	"guayos_camo": "#5a6b35", "guayos_fuego": "#ff8a1a", "guayos_hielo": "#4fd1ff",
+	"guayos_neon": "#39ff14", "guayos_dos_caras": "#e3262f",
+	"guayos_voltaje": "#ffe600",
+	"guayos_dragon": "#b3121b",
+	"guayos_grafiti": "#121214",
+	"guayos_marmol": "#f2f2f0",
+	"guayos_oceano": "#0a5fa8",
+	"guayos_aurora": "#062a2a",
+	"guayos_ajedrez": "#141414",
+	"guayos_cobra": "#1f6b2a",
+	"guayos_pantera": "#5a1fd1",
+	"guayos_atardecer": "#ff7a1a",
+	"guayos_glaciar": "#dff4ff",
+	"guayos_bosque": "#1e5c2e",
+	"guayos_confeti": "#f4f4f4",
 }
 
 const HAIR_STYLES := [
@@ -172,6 +188,28 @@ const ACCESSORIES := [
 	# bufanda, boina y lentes redondos.
 	{"id": "guayos_plata", "label": "Guayos plateados", "slot": "acc_feet"},
 	{"id": "guayos_lava", "label": "Guayos lava", "slot": "acc_feet"},
+	# 7-nov: guayos con diseños locos (marcas inventadas, BootBrands)
+	{"id": "guayos_tormenta", "label": "Guayos tormenta", "slot": "acc_feet"},
+	{"id": "guayos_galaxia", "label": "Guayos galaxia", "slot": "acc_feet"},
+	{"id": "guayos_tigre", "label": "Guayos tigre", "slot": "acc_feet"},
+	{"id": "guayos_camo", "label": "Guayos camuflaje", "slot": "acc_feet"},
+	{"id": "guayos_fuego", "label": "Guayos fuego", "slot": "acc_feet"},
+	{"id": "guayos_hielo", "label": "Guayos hielo", "slot": "acc_feet"},
+	{"id": "guayos_neon", "label": "Guayos neón", "slot": "acc_feet"},
+	{"id": "guayos_dos_caras", "label": "Guayos dos caras", "slot": "acc_feet"},
+	{"id": "guayos_voltaje", "label": "Guayos voltaje", "slot": "acc_feet"},
+	{"id": "guayos_dragon", "label": "Guayos dragón", "slot": "acc_feet"},
+	{"id": "guayos_grafiti", "label": "Guayos grafiti", "slot": "acc_feet"},
+	{"id": "guayos_marmol", "label": "Guayos mármol", "slot": "acc_feet"},
+	{"id": "guayos_oceano", "label": "Guayos océano", "slot": "acc_feet"},
+	{"id": "guayos_aurora", "label": "Guayos aurora", "slot": "acc_feet"},
+	{"id": "guayos_ajedrez", "label": "Guayos ajedrez", "slot": "acc_feet"},
+	{"id": "guayos_cobra", "label": "Guayos cobra", "slot": "acc_feet"},
+	{"id": "guayos_pantera", "label": "Guayos pantera", "slot": "acc_feet"},
+	{"id": "guayos_atardecer", "label": "Guayos atardecer", "slot": "acc_feet"},
+	{"id": "guayos_glaciar", "label": "Guayos glaciar", "slot": "acc_feet"},
+	{"id": "guayos_bosque", "label": "Guayos bosque", "slot": "acc_feet"},
+	{"id": "guayos_confeti", "label": "Guayos confeti", "slot": "acc_feet"},
 	# Zapatos de CALLE: slot propio (10-oct, Wilber: "los guayos son
 	# diferentes a los zapatos para ropa"). Se ven con ropa de calle; los
 	# guayos (acc_feet) se ven con el kit.

@@ -8,13 +8,13 @@ class_name BootBrands
 ## (schema v32, pendiente de confirmación de Wilber).
 const BRANDS := [
 	{"id": "voltix", "name": "Voltix", "logo": "bolt", "color": "#e3262f",
-		"models": ["guayos_rojo", "guayos_negro"]},
+		"models": ["guayos_rojo", "guayos_negro", "guayos_tormenta", "guayos_fuego", "guayos_lava", "guayos_voltaje", "guayos_dragon", "guayos_grafiti"]},
 	{"id": "aerion", "name": "Aerion", "logo": "wing", "color": "#2e7bff",
-		"models": ["guayos_blanco", "guayos_azul"]},
+		"models": ["guayos_blanco", "guayos_azul", "guayos_galaxia", "guayos_hielo", "guayos_plata", "guayos_marmol", "guayos_oceano", "guayos_aurora"]},
 	{"id": "vulpex", "name": "Vulpex", "logo": "fox", "color": "#ff7a1a",
-		"models": ["guayos_rosa", "guayos_oro"]},
+		"models": ["guayos_rosa", "guayos_oro", "guayos_tigre", "guayos_neon", "guayos_ajedrez", "guayos_cobra", "guayos_pantera", "guayos_atardecer"]},
 	{"id": "summit", "name": "Summit", "logo": "peak", "color": "#3ee03a",
-		"models": ["guayos_verde", "guayos_morado", "guayos_arcoiris"]},
+		"models": ["guayos_verde", "guayos_morado", "guayos_arcoiris", "guayos_camo", "guayos_dos_caras", "guayos_glaciar", "guayos_bosque", "guayos_confeti"]},
 ]
 
 static func by_id(id: String) -> Dictionary:

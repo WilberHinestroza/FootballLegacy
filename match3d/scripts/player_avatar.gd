@@ -607,6 +607,10 @@ func set_accessories(acc: Dictionary) -> void:
 		var id := String(acc.get(slot, ""))
 		if id == "":
 			continue
+		# Gorras y gorros: modelados sobre la cabeza (Hats), no piezas sueltas encima
+		if slot == "acc_head" and Hats.has(id):
+			_items[slot] = Hats.make(id, skeleton)
+			continue
 		var bone := "LeftHand" if slot == "acc_wrist" else ("Neck" if slot == "acc_neck" else "Head")
 		var holder := _holder(bone)
 		if holder == null:

@@ -256,6 +256,23 @@ const COSMETIC_PRICE := {
 	"gabardina": [2.4, 60], "blazer_terciopelo": [2.8, 70],
 	"zapatillas_blancas": [0.6, 15], "mocasines": [1.4, 35], "botas_chelsea": [1.6, 40],
 	"guayos_plata": [1.6, 40], "guayos_lava": [1.4, 35],
+	# 7-nov: guayos con diseños locos
+	"guayos_tormenta": [2.2, 55], "guayos_galaxia": [2.8, 70], "guayos_tigre": [2.0, 50],
+	"guayos_camo": [1.8, 45], "guayos_fuego": [2.2, 55], "guayos_hielo": [1.8, 45],
+	"guayos_neon": [2.4, 60], "guayos_dos_caras": [2.0, 50],
+	"guayos_voltaje": [2.0, 50],
+	"guayos_dragon": [2.6, 65],
+	"guayos_grafiti": [1.8, 45],
+	"guayos_marmol": [2.4, 60],
+	"guayos_oceano": [2.2, 55],
+	"guayos_aurora": [2.6, 65],
+	"guayos_ajedrez": [2.0, 50],
+	"guayos_cobra": [2.4, 60],
+	"guayos_pantera": [2.2, 55],
+	"guayos_atardecer": [1.6, 40],
+	"guayos_glaciar": [2.2, 55],
+	"guayos_bosque": [1.8, 45],
+	"guayos_confeti": [2.0, 50],
 	"bufanda": [0.4, 10], "boina": [0.5, 12], "lentes_redondos": [0.7, 18],
 }
 

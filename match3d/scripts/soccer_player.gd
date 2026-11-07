@@ -1084,16 +1084,18 @@ func _build_model(shirt: Color) -> void:
 	add_child(_avatar)
 	_anim = _avatar.anim
 	# Aspecto al azar; tu jugador y la equipación de tu equipo se aplican luego desde el perfil
-	_avatar.set_colors({
+	var look := {
 		"skin_color": PlayerProfile.SKIN_TONES.pick_random(),
 		"hair_color": PlayerProfile.HAIR_COLORS.pick_random(),
 		"shirt_color": shirt,
 		"shorts_color": Color(0.95, 0.95, 0.95) if team == 0 else Color(0.08, 0.1, 0.22),
 		"socks_color": shirt.darkened(0.15),
-		"boots_color": ItemCatalog.guayos_color(ItemCatalog.GUAYOS.keys().pick_random()),
 		"show_hair": true,
 		"beard_style": randi() % ItemCatalog.FACE_STYLES.size() if randf() < 0.45 else 0,
-	})
+	}
+	# Cada uno con sus guayos (con diseño y marca), como en un partido de verdad
+	look.merge(ItemCatalog.guayos_params(ItemCatalog.GUAYOS.keys().pick_random()))
+	_avatar.set_colors(look)
 	# Peinado al azar: la mitad con pelo corto pintado, la otra mitad con uno de los 3D
 	var style: String = ["rapado", "rapado", "degradado", "calvo"].pick_random()
 	if randf() < 0.5:

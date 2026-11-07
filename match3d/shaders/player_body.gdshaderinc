@@ -29,6 +29,17 @@ uniform bool long_pants = false;
 // Zapatos de calle: suela de otro color (los guayos no la llevan)
 uniform bool use_sole = false;
 uniform vec3 sole_color : source_color = vec3(0.1);
+// Guayos (ItemCatalog.GUAYOS): color principal (boots_color), segundo color, acento
+// (suela, logo, detalles) y diseño:
+// 0 liso · 1 degradado · 2 líneas de velocidad · 3 llamas · 4 camuflaje · 5 rayo
+// 6 dos caras · 7 galaxia · 8 tigre · 9 puntos neón · 10 arcoíris · 11 lava
+// 12 zigzag · 13 ajedrez · 14 salpicado · 15 escamas · 16 mármol
+// Logo de la marca (BootBrands, todas inventadas): 0 ninguno · 1 rayo (Voltix)
+// 2 ala (Aerion) · 3 colmillos (Vulpex) · 4 cumbre (Summit)
+uniform vec3 boots_color2 : source_color = vec3(0.9);
+uniform vec3 boots_accent : source_color = vec3(1.0, 0.85, 0.1);
+uniform int boots_design = 0;
+uniform int boots_logo = 0;
 // Guantes de portero: palma y dorso de glove_color, puño de glove_color2
 uniform bool gloves = false;
 uniform vec3 glove_color : source_color = vec3(0.95);
@@ -147,6 +158,186 @@ float luma(vec3 c) { return dot(c, vec3(0.3, 0.59, 0.11)); }
 // Ribete de la equipación: oscuro sobre colores claros, claro sobre oscuros
 vec3 trim_of(vec3 c) {
 	return luma(c) > 0.55 ? c * 0.45 : mix(c, vec3(1.0), 0.72);
+}
+
+// ---------- Guayos ----------
+
+float boot_hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+
+float boot_noise(vec2 p) {
+	vec2 i = floor(p);
+	vec2 q = fract(p);
+	q = q * q * (3.0 - 2.0 * q);
+	float a = boot_hash(i);
+	float b = boot_hash(i + vec2(1.0, 0.0));
+	float c = boot_hash(i + vec2(0.0, 1.0));
+	float d = boot_hash(i + vec2(1.0, 1.0));
+	return mix(mix(a, b, q.x), mix(c, d, q.x), q.y);
+}
+
+// 1 dentro de un trazo de grosor `th` de a a b (borde suavizado)
+float boot_stroke(vec2 p, vec2 a, vec2 b, float th) {
+	vec2 pa = p - a;
+	vec2 ba = b - a;
+	float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+	float d = length(pa - ba * h) - th;
+	float w = fwidth(d) + 0.002;
+	return 1.0 - smoothstep(-w, w, d);
+}
+
+// Logo de la marca en el costado; p en [-1, 1] (x hacia la punta, y hacia arriba)
+float boot_logo_mask(vec2 p, int kind) {
+	// Sin salir antes por el recuadro: fwidth en un if por píxel deja un marco visible
+	float m = 0.0;
+	if (kind == 1) {
+		// Rayo en zigzag a lo largo del pie, más grueso delante
+		m = max(m, boot_stroke(p, vec2(-1.0, -0.15), vec2(-0.25, 0.45), 0.13));
+		m = max(m, boot_stroke(p, vec2(-0.25, 0.45), vec2(0.1, -0.35), 0.15));
+		m = max(m, boot_stroke(p, vec2(0.1, -0.35), vec2(1.0, 0.3), 0.17));
+	} else if (kind == 2) {
+		// Ala: tres plumas inclinadas, cada una más corta
+		for (int i = 0; i < 3; i++) {
+			float fi = float(i);
+			float y = -0.55 + 0.5 * fi;
+			m = max(m, boot_stroke(p, vec2(-0.95 + 0.3 * fi, y - 0.2), vec2(0.9 - 0.25 * fi, y + 0.22), 0.11));
+		}
+	} else if (kind == 3) {
+		// Colmillos: doble flecha hacia la punta
+		for (int i = 0; i < 2; i++) {
+			float o = -0.75 * float(i);
+			m = max(m, boot_stroke(p, vec2(o - 0.35, 0.7), vec2(o + 0.45, 0.0), 0.15));
+			m = max(m, boot_stroke(p, vec2(o + 0.45, 0.0), vec2(o - 0.35, -0.7), 0.15));
+		}
+	} else if (kind == 4) {
+		// Cumbre: una cordillera de dos picos
+		m = max(m, boot_stroke(p, vec2(-1.0, -0.6), vec2(-0.3, 0.65), 0.12));
+		m = max(m, boot_stroke(p, vec2(-0.3, 0.65), vec2(0.2, -0.05), 0.12));
+		m = max(m, boot_stroke(p, vec2(0.2, -0.05), vec2(0.5, 0.3), 0.12));
+		m = max(m, boot_stroke(p, vec2(0.5, 0.3), vec2(1.0, -0.6), 0.12));
+	}
+	return m;
+}
+
+vec3 boot_hue(float h) {
+	return clamp(abs(mod(h * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);
+}
+
+// u: talón 0 → punta 1 · h: suela 0 → tobillo 1 · s: centro del pie 0 → costado ±1
+vec3 boot_upper(float u, float h, float s) {
+	vec3 c1 = boots_color;
+	vec3 c2 = boots_color2;
+	vec3 ac = boots_accent;
+	vec2 q = vec2(u * 3.2, h * 1.6 + s * 0.4);
+	if (boots_design == 1) {
+		return mix(c2, c1, smoothstep(0.2, 0.85, u));
+	} else if (boots_design == 2) {
+		// Dos líneas finas de velocidad que barren el costado hacia atrás
+		float l = fract((h * 1.1 - u * 0.55) * 3.0);
+		float band = step(0.25, u) * step(u, 0.95) * step(0.15, h) * step(h, 0.8);
+		return mix(mix(c1, c2, smoothstep(0.55, 1.0, u)), ac, band * (below(abs(l - 0.3), 0.06) + below(abs(l - 0.55), 0.03)));
+	} else if (boots_design == 3) {
+		// Llamas que salen de la punta hacia el talón
+		float edge = 0.5 + 0.13 * sin(h * 22.0 + u * 4.0) + 0.06 * sin(h * 47.0);
+		float flame = 1.0 - below(u, edge);
+		float core = 1.0 - below(u, edge + 0.12);
+		return mix(c1, mix(c2, ac, core * 0.6), flame);
+	} else if (boots_design == 4) {
+		float n = boot_noise(q * 2.3) * 0.65 + boot_noise(q * 5.1) * 0.35;
+		vec3 c = mix(c1, c2, step(0.45, n));
+		return mix(c, ac, step(0.7, n) * 0.85);
+	} else if (boots_design == 5) {
+		// Rayo grande que cruza todo el costado
+		vec2 p = vec2((u - 0.5) / 0.42, (h - 0.45) / 0.45);
+		float b = boot_logo_mask(p, 1);
+		return mix(mix(c1, c2, smoothstep(0.3, 1.0, h)), ac, b);
+	} else if (boots_design == 6) {
+		// Dos caras: corte en diagonal con filo del acento
+		float k = u + h * 0.45 - 0.72;
+		return mix(mix(c1, c2, 1.0 - below(k, 0.0)), ac, below(abs(k), 0.025));
+	} else if (boots_design == 7) {
+		vec3 c = mix(c1, c2, smoothstep(0.25, 0.75, boot_noise(q * 2.0)));
+		vec2 g = q * 9.0;
+		float star = step(0.93, boot_hash(floor(g))) * below(length(fract(g) - 0.5), 0.18);
+		return mix(c, ac, star);
+	} else if (boots_design == 8) {
+		float w = sin(u * 34.0 + sin(h * 9.0 + u * 3.0) * 2.4 + s * 3.0);
+		return mix(c1, c2, 1.0 - below(w, 0.55));
+	} else if (boots_design == 9) {
+		// Puntos que crecen hacia la punta, como trama de imprenta
+		vec2 g = vec2(u * 16.0, h * 7.0);
+		float r = mix(0.06, 0.38, u);
+		return mix(c1, c2, below(length(fract(g) - 0.5), r));
+	} else if (boots_design == 10) {
+		return mix(boot_hue(u * 0.9 + h * 0.25), c1, 0.12);
+	} else if (boots_design == 11) {
+		// Lava: roca oscura con grietas que brillan
+		float n = boot_noise(q * 3.4);
+		float crack = below(abs(n - 0.5), 0.045);
+		return mix(c1, mix(c2, ac, crack), max(crack, smoothstep(0.75, 1.0, n) * 0.4));
+	} else if (boots_design == 12) {
+		// Zigzag: bandas en V que apuntan a la punta, con filo del acento
+		float z = fract(u * 4.0 - abs(h - 0.5) * 2.2);
+		return mix(mix(c1, c2, step(0.5, z)), ac, below(abs(z - 0.5), 0.04));
+	} else if (boots_design == 13) {
+		// Ajedrez en la mitad delantera; el talón queda liso con el acento de filo
+		vec2 g = vec2(u * 12.0, h * 6.0);
+		float k = mod(floor(g.x) + floor(g.y), 2.0) * step(0.45, u);
+		return mix(mix(c1, c2, k), ac, below(abs(u - 0.45), 0.012));
+	} else if (boots_design == 14) {
+		// Pintura salpicada: manchas de dos colores sobre la base
+		float n1 = boot_noise(q * 4.2 + vec2(7.0, 3.0));
+		float n2 = boot_noise(q * 6.5 + vec2(1.0, 9.0));
+		vec3 c = mix(c1, c2, step(0.72, n1));
+		return mix(c, ac, step(0.76, n2));
+	} else if (boots_design == 15) {
+		// Escamas de dragón: filas desplazadas de medias lunas
+		vec2 g = vec2(u * 13.0, h * 7.0);
+		g.x += step(1.0, mod(floor(g.y), 2.0)) * 0.5;
+		vec2 f2 = fract(g) - vec2(0.5, 0.0);
+		float d = length(f2);
+		vec3 c = mix(c1, c2, smoothstep(0.2, 0.75, d));
+		return mix(c, ac, below(abs(d - 0.5), 0.05) * 0.8);
+	} else if (boots_design == 16) {
+		// Mármol: vetas finas onduladas
+		float v = sin(u * 9.0 + h * 4.0 + boot_noise(q * 2.6) * 7.0);
+		vec3 c = mix(c1, c2, smoothstep(0.55, 1.0, v) * 0.55);
+		return mix(c, ac, below(abs(v - 0.92), 0.05) * 0.7);
+	}
+	return c1;
+}
+
+vec3 boot_color(float ax, float f, float dn) {
+	if (boots_design == 0 && boots_logo == 0) { return boots_color; } // zapato liso (staff, gala...)
+	float u = clamp((0.86 - dn) / 0.7, 0.0, 1.0);
+	float h = clamp(f / BOOTS_TOP, 0.0, 1.0);
+	float s = clamp((ax - 0.1) / 0.045, -1.0, 1.0);
+	vec3 c = boot_upper(u, h, s);
+	float side = smoothstep(0.4, 0.7, abs(s));
+	// Cordones en el empeine (los diseños lisos y los de dos colores)
+	if (boots_design != 3 && boots_design != 11) {
+		float lace = (1.0 - side) * step(0.42, u) * step(u, 0.78) * step(0.45, h);
+		float row = below(abs(fract(u * 15.0) - 0.5), 0.18);
+		c = mix(c, mix(boots_color2, vec3(0.95), 0.5), lace * row * 0.85);
+	}
+	// Logo de la marca a los dos costados
+	if (boots_logo > 0) {
+		vec2 p = vec2((u - 0.47) / 0.2, (h - 0.42) / 0.3);
+		float m = boot_logo_mask(p, boots_logo) * side;
+		vec3 ink = boots_design == 5 ? boots_color2 : boots_accent;
+		if (abs(luma(ink) - luma(c)) < 0.18) { ink = luma(c) > 0.5 ? vec3(0.06) : vec3(0.97); }
+		// Sobre patrones cargados el logo va con un borde de contraste, como una pegatina
+		bool busy = boots_design == 4 || boots_design == 8 || boots_design == 11 || boots_design >= 12;
+		if (busy) {
+			float halo = boot_logo_mask(p * 0.82, boots_logo) * side;
+			c = mix(c, luma(ink) > 0.5 ? vec3(0.05) : vec3(0.97), halo);
+		}
+		c = mix(c, ink, m);
+	}
+	// Talonera, cuello tipo media y suela con tacos del acento
+	c = mix(c, mix(c, boots_color2, 0.7), (1.0 - smoothstep(0.08, 0.14, u)) * step(0.15, h));
+	c = mix(c, c * 0.35 + boots_color2 * 0.15, 1.0 - below(h, 0.86));
+	c = mix(c, boots_accent, below(h, 0.13));
+	return c;
 }
 
 vec3 head_color(float x, float ax, float f, float dn) {
@@ -393,7 +584,8 @@ vec3 body_color() {
 		return mix(head_color(x, ax, f, dn), kit_color(x, ax, f, dn), below(f, collar_f));
 	}
 	// Tronco y piernas, de abajo arriba: botas, medias (con ribete), piel, pantalón, camiseta
-	vec3 boot = use_sole ? mix(sole_color, boots_color, 1.0 - below(f, 0.013)) : boots_color;
+	vec3 boot = use_sole ? mix(sole_color, boots_color, 1.0 - below(f, 0.013))
+			: (f < BOOTS_TOP + 0.01 ? boot_color(ax, f, dn) : boots_color);
 	vec3 c = mix(boot, socks_color, 1.0 - below(f, BOOTS_TOP));
 	float sock_band = (1.0 - below(f, SOCKS_TOP - 0.011)) * below(f, SOCKS_TOP);
 	c = mix(c, trim_of(socks_color), sock_band);

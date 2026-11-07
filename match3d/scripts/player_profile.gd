@@ -53,14 +53,15 @@ var socks: Color = KIT_COLORS[0]
 
 ## Colores y opciones para el shader de zonas del jugador.
 func colors() -> Dictionary:
-	return {
+	var c := {
 		"skin_color": skin, "hair_color": hair, "shirt_color": shirt,
 		"shorts_color": shorts, "socks_color": socks,
-		"boots_color": ItemCatalog.guayos_color(guayos),
 		"show_hair": hair_style != "calvo",
 		"hair_style": ItemCatalog.shader_hair_index(hair_style),
 		"beard_style": ItemCatalog.face_index(face),
 	}
+	c.merge(ItemCatalog.guayos_params(guayos)) # color, diseño y logo de los guayos
+	return c
 
 
 ## Escala del cuerpo: la altura escala todo, la complexión ensancha.

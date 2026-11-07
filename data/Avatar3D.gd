@@ -220,13 +220,15 @@ static func apply(av: PlayerAvatar, cfg: Dictionary) -> void:
 		c["boots_color"] = Color(String(shoes[0]))
 		c["sole_color"] = Color(String(shoes[1]))
 		c["use_sole"] = true
+		c["boots_design"] = 0 # zapato de calle: liso, sin logo de guayo
+		c["boots_logo"] = 0
 		if bool(c["long_pants"]):
 			c["socks_color"] = c["shorts_color"]
 	else:
 		c["use_sole"] = false
 		var g := String(cfg.get("acc_feet", ""))
-		if Avatar.GUAYOS_TINT.has(g):
-			c["boots_color"] = Color(String(Avatar.GUAYOS_TINT[g]))
+		if ItemCatalog.GUAYOS.has(g):
+			c.merge(ItemCatalog.guayos_params(g), true) # color, diseño y logo de la marca
 	av.set_colors(c)
 	# Ropa como prendas 3D de verdad (Garments): la de calle con su manga y su largo,
 	# y la mitad que va con el kit del club, con la camiseta y la pantaloneta nuevas
