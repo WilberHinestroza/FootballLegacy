@@ -66,6 +66,11 @@ static func _support(p: SoccerPlayer, m: SoccerMatch, holder: SoccerPlayer) -> v
 		if run != Vector3.INF:
 			move_to(p, _hold_onside(p, m, run), 0.5, true)
 			return
+	# Lateral que dobla por fuera al compañero que avanza por su banda
+	var lap := _overlap_run(p, m, holder)
+	if lap != Vector3.INF:
+		move_to(p, _hold_onside(p, m, lap), 0.6, true)
+		return
 	# Tercer hombre: el segundo mediocentro llega al borde del área para el pase
 	# atrás. Da una opción más al que lleva el balón y variedad al ataque.
 	var late := _late_run(p, m, holder)
@@ -91,6 +96,37 @@ static func _hold_onside(p: SoccerPlayer, m: SoccerMatch, target: Vector3) -> Ve
 	if target.x * dir > limit:
 		target.x = limit * dir
 	return target
+
+
+## Subida del lateral: si un compañero conduce por su banda en campo rival, el
+## defensa de ese lado (solo uno, el más abierto) dobla por fuera pegado a la
+## cal. Nunca con el equipo atrincherado defendiendo una ventaja.
+static func _overlap_run(p: SoccerPlayer, m: SoccerMatch, holder: SoccerPlayer) -> Vector3:
+	if p.is_human or p.role != "DF" or m.state != SoccerMatch.State.SIMULATING:
+		return Vector3.INF
+	if m.team_mentality(p.team) < -2.0:
+		return Vector3.INF
+	var dir := m.attack_dir(p.team)
+	var hz := holder.global_position.z
+	if holder.global_position.x * dir < 4.0 or absf(hz) < 6.0:
+		return Vector3.INF # balón por el centro o todavía en campo propio
+	var side := signf(hz)
+	# El defensa más abierto de esa banda es el lateral
+	var wide: SoccerPlayer = null
+	for mate: SoccerPlayer in m.teams[p.team]:
+		if mate.role != "DF" or mate.is_keeper or not mate.visible:
+			continue
+		if signf(mate.global_position.z) != side:
+			continue
+		if wide == null or absf(mate.global_position.z) > absf(wide.global_position.z):
+			wide = mate
+	if wide != p or absf(p.global_position.z) < 5.0:
+		return Vector3.INF
+	var lane := side * (SoccerMatch.FIELD_WIDTH * 0.5 - 2.5)
+	if absf(hz) > SoccerMatch.FIELD_WIDTH * 0.5 - 7.0:
+		lane = side * (absf(hz) - 6.0) # él va pegado a la cal: el lateral entra por dentro
+	var ahead := minf(holder.global_position.x * dir + 8.0, SoccerMatch.FIELD_LENGTH * 0.5 - 8.0)
+	return Vector3(ahead * dir, 0.0, lane)
 
 
 ## Solo el SEGUNDO mediocentro más adelantado hace la llegada: el primero se
