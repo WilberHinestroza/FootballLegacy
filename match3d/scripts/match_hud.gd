@@ -7,6 +7,7 @@ const CrossZone = preload("res://engine/match/m3d/CrossZone.gd")
 const PrePlayChoice = preload("res://engine/match/m3d/PrePlayChoice.gd")
 
 signal replay_pressed
+signal pause_pressed
 signal entry_requested
 signal leave_requested
 signal exit_requested
@@ -18,6 +19,7 @@ var gesture: GestureInput
 var _cross_bar: HBoxContainer
 var _preplay_bar: HBoxContainer
 var _replay_btn: Button
+var _pause_btn: Button
 var _request_btn: Button
 var _leave_btn: Button
 var _exit_btn: Button
@@ -155,6 +157,27 @@ func _ready() -> void:
 
 	gesture = GestureInput.new()
 	add_child(gesture)
+
+	# Pausa (8-nov): arriba en el centro, como en las consolas
+	_pause_btn = Button.new()
+	_pause_btn.text = "❚❚"
+	_pause_btn.focus_mode = Control.FOCUS_NONE
+	_pause_btn.add_theme_font_size_override("font_size", 26)
+	_pause_btn.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	_pause_btn.offset_left = -36.0
+	_pause_btn.offset_right = 36.0
+	_pause_btn.offset_top = 10.0
+	_pause_btn.offset_bottom = 82.0
+	var pb := StyleBoxFlat.new()
+	pb.bg_color = Color(0.05, 0.06, 0.08, 0.72)
+	pb.set_corner_radius_all(36)
+	pb.set_border_width_all(2)
+	pb.border_color = Color(1, 1, 1, 0.35)
+	for st in ["normal", "hover", "pressed"]:
+		_pause_btn.add_theme_stylebox_override(st, pb)
+	_pause_btn.pressed.connect(func() -> void: pause_pressed.emit())
+	_pause_btn.visible = false
+	add_child(_pause_btn)
 
 	# Botón de repetición: aparece al terminar cada jugada
 	_replay_btn = Button.new()
@@ -498,6 +521,11 @@ func show_substitution(team_name: String, color: Color, num_off: int, num_on: in
 	off.text = "▼  Sale el %d" % num_off
 	off.label_settings.font_color = Color(1.0, 0.4, 0.35)
 	_sub_time = 4.5
+
+
+func show_pause_button(value: bool) -> void:
+	if _pause_btn != null and _pause_btn.visible != value:
+		_pause_btn.visible = value
 
 
 func show_replay_button(value: bool) -> void:

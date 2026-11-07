@@ -92,6 +92,17 @@ func play_best(m: SoccerMatch, title: String, on_stop: Callable) -> void:
 	_rec_label.label_settings.font_color = Color(1.0, 0.85, 0.3)
 
 
+## Desde la pausa (8-nov): vuelve a ver tu última jugada con la cámara libre y,
+## al cerrar, deja todo como estaba ahora (como play_best, pero sin cierre solo).
+func play_last(m: SoccerMatch, on_stop: Callable) -> void:
+	_commit()
+	_restore = _capture(m)
+	_saved_frames = _frames
+	play(m, on_stop)
+	_rec_label.text = "⟲ ÚLTIMA JUGADA"
+	_rec_label.label_settings.font_color = Color(1.0, 0.85, 0.3)
+
+
 ## Guarda el fotograma actual (lo llama el partido en cada paso de física de la jugada).
 func record(m: SoccerMatch) -> void:
 	if _playing or _frames.size() >= MAX_FRAMES:

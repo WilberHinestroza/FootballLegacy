@@ -425,6 +425,9 @@ func _ready() -> void:
 	replay = ReplayDirector.new()
 	add_child(replay)
 	_hud.replay_pressed.connect(_start_replay)
+	_pause = PauseMenuScript.new(self)
+	add_child(_pause)
+	_hud.pause_pressed.connect(open_pause)
 	_hud.entry_requested.connect(_on_entry_requested)
 	_hud.exit_requested.connect(_on_exit_requested)
 	stamina = clampf(float(config.get("start_energy", 1.0)), 0.3, 1.0)
@@ -630,6 +633,7 @@ func _physics_process(delta: float) -> void:
 	if _ops_acc >= 0.1:
 		_ops_acc = 0.0
 		_update_hud_extras()
+		_hud.show_pause_button(state in PAUSABLE_STATES)
 	if _deciding:
 		_hud.set_timer(_decision_left / DECISION_SECONDS, true)
 	else:
@@ -1454,6 +1458,42 @@ func _resume_shootout_after_replay() -> void:
 
 
 ## Lo llama la repetición al cerrarse: vuelve al final de la jugada y sigue el partido.
+# ---------------------------------------------------------------- pausa (8-nov)
+## Estados en los que se puede pausar (no en la repetición ni en las ceremonias).
+const PAUSABLE_STATES := [State.SIMULATING, State.MOMENT_INTRO, State.MOMENT, State.MOMENT_RESULT,
+	State.PENALTY_SHOOTOUT, State.AMBIENT_GOAL]
+const PauseMenuScript = preload("res://match3d/scripts/pause_menu.gd")
+var _pause: CanvasLayer
+
+func open_pause() -> void:
+	if state in PAUSABLE_STATES and _pause != null:
+		_pause.open()
+
+
+## ¿Se puede ver una repetición desde la pausa? "last" = tu última jugada,
+## "best" = la mejor del partido. Solo con el balón parado en la simulación o
+## al acabar una jugada (en mitad de una, la grabación está en curso).
+func can_pause_replay(kind: String) -> bool:
+	if state not in [State.SIMULATING, State.MOMENT_RESULT]:
+		return false
+	return replay.has_frames() if kind == "last" else replay.has_best()
+
+
+func pause_replay(kind: String) -> void:
+	if not can_pause_replay(kind):
+		return
+	var back: int = state
+	_hud.show_replay_button(false)
+	state = State.REPLAY
+	var done := func() -> void:
+		_camera.make_current()
+		state = back
+	if kind == "best":
+		replay.play_best(self, "★ MEJOR JUGADA", done)
+	else:
+		replay.play_last(self, done)
+
+
 func end_replay() -> void:
 	_camera.make_current()
 	state = State.MOMENT_RESULT
