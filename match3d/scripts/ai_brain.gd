@@ -307,6 +307,8 @@ static func _defend(p: SoccerPlayer, m: SoccerMatch, holder: SoccerPlayer) -> vo
 	var contain := BallContact.contain_distance(expo)
 	if not holder.is_human:
 		contain *= 0.8 # con la IA contra la IA se juega más al choque (la simulación avanza)
+	elif p.tackle_cooldown > 0.0:
+		contain = maxf(contain, 2.5) # aún no puede entrar: te espera a distancia, no encima
 	var target := holder.global_position + line * contain + lateral * side * 0.35
 	var hv := SoccerMatch.flat(holder.velocity)
 	var rel := SoccerMatch.flat(p.global_position - holder.global_position)

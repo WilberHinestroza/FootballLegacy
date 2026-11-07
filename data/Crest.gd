@@ -124,10 +124,15 @@ static func _tex(file: String) -> Texture2D:
 ## es un club_id), el hash de siempre.
 static var _league_slot: Dictionary = {}   # club_id -> [shape_idx, emblem_idx]
 
-static func _slot_for(club_id: String) -> Array:
-	if _league_slot.has(club_id):
+## `world` vacío = el mundo cargado (con caché). La lista de partidas guardadas
+## no tiene carrera cargada y pasa el mundo de cada partida: sin él caía al hash
+## suelto y el escudo no coincidía con el de dentro de la carrera.
+static func _slot_for(club_id: String, world: Dictionary = {}) -> Array:
+	var live := world.is_empty()
+	if live and _league_slot.has(club_id):
 		return _league_slot[club_id]
-	var world: Dictionary = WorldTickEngine.world
+	if live:
+		world = WorldTickEngine.world
 	if world.is_empty():
 		return []
 	# Por PAÍS, no por liga: con ascensos/descensos un club cambia de liga y
@@ -153,10 +158,11 @@ static func _slot_for(club_id: String) -> Array:
 	# hasta 10 vueltas (antes 29+1 = 30 caía en la MISMA silueta: Argentina
 	# y MLS, 30 clubes, repetían).
 	var off: int = posmod(1 - emb.size(), shp.size())
+	var out: Dictionary = _league_slot if live else {}
 	for i in range(ids.size()):
 		var lap: int = i / emb.size()
-		_league_slot[ids[i]] = [shp[(i + lap * off) % shp.size()], emb[i % emb.size()]]
-	return _league_slot.get(club_id, [])
+		out[ids[i]] = [shp[(i + lap * off) % shp.size()], emb[i % emb.size()]]
+	return out.get(club_id, [])
 
 static func _shuffle(a: Array, rng: RandomNumberGenerator) -> void:
 	for i in range(a.size() - 1, 0, -1):
@@ -166,12 +172,12 @@ static func _shuffle(a: Array, rng: RandomNumberGenerator) -> void:
 		a[j] = t
 
 ## Config determinista. Muchos ejes = muy pocos escudos repetidos.
-static func config_for(seed_key: String) -> Dictionary:
+static func config_for(seed_key: String, world: Dictionary = {}) -> Dictionary:
 	if PIXEL_SET:
 		var hp: int = absi(hash("crest:v7px:" + seed_key))
 		var shape_i: int = (hp / 3) % PX_SHAPES.size()
 		var emb_i: int = (hp / 37) % PX_EMBLEMS.size()
-		var slot: Array = _slot_for(seed_key)
+		var slot: Array = _slot_for(seed_key, world)
 		if slot.size() == 2:
 			shape_i = int(slot[0])
 			emb_i = int(slot[1])

@@ -33,6 +33,27 @@ func _ready() -> void:
 					ok = false
 		worst = maxi(worst, clubs.size())
 	print("ligas: ", by_league.size(), " · liga más grande: ", worst, " · emblemas: ", Crest.PX_EMBLEMS.size())
+	# Lista de partidas guardadas (sin carrera cargada, pasa el mundo de la partida):
+	# su escudo tiene que ser el mismo que el de dentro de la carrera.
+	var mism := 0
+	var live: Dictionary = WorldTickEngine.world
+	var ids: Array = []
+	for lid in by_league:
+		for c in by_league[lid]:
+			ids.append((c as ClubData).club_id)
+	var inside := {}
+	for id: String in ids:
+		inside[id] = Crest.config_for(id)
+	WorldTickEngine.world = {}
+	for id: String in ids:
+		if Crest.config_for(id, world) != inside[id]:
+			mism += 1
+	WorldTickEngine.world = live
+	if mism > 0:
+		print("FALLA: escudo distinto en la lista de partidas (", mism, " clubes)")
+		ok = false
+	else:
+		print("lista de partidas: los ", ids.size(), " escudos coinciden con los de la carrera")
 
 	var bg := ColorRect.new()
 	bg.color = Color(0.11, 0.11, 0.11)

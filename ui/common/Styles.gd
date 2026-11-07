@@ -79,14 +79,15 @@ static func apply_display_font(label: Label) -> void:
 ## color + forma + patrón + emblema, como un escudo de verdad (pedido de
 ## Wilber: "no necesitan las iniciales encima"). `short_name` solo se usa
 ## como semilla de respaldo.
-static func build_club_badge(primary_color: Color, short_name: String, size: int, secondary_color: Color = Color.TRANSPARENT, seed_key: String = "") -> Control:
+## `world`: el de la partida cuando la pantalla no tiene carrera cargada.
+static func build_club_badge(primary_color: Color, short_name: String, size: int, secondary_color: Color = Color.TRANSPARENT, seed_key: String = "", world: Dictionary = {}) -> Control:
 	var secondary: Color = secondary_color
 	if secondary.a < 0.05 or absf(secondary.get_luminance() - primary_color.get_luminance()) < 0.22:
 		var lum: float = primary_color.get_luminance()
 		secondary = primary_color.darkened(0.35) if lum > 0.5 else primary_color.lightened(0.45)
 
 	var key: String = seed_key if seed_key != "" else short_name
-	var root := Crest.build(primary_color, secondary, Crest.config_for(key), size, true)
+	var root := Crest.build(primary_color, secondary, Crest.config_for(key, world), size, true)
 	root.custom_minimum_size = Vector2(size, size)
 	return root
 

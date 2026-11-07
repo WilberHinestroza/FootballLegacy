@@ -532,7 +532,10 @@ func shoot_at(target: Vector3, power: float) -> void:
 
 ## Remate exacto para las jugadas de gol narradas: va al punto marcado, sin desviación
 ## aleatoria (la simulación ya decidió que es gol; el balón tiene que verse entrar).
-func shoot_exact(target: Vector3, power: float) -> void:
+## `solve_height`: la subida se calcula para pasar por la altura de `target` (si no,
+## una subida fija según la potencia). El tiro "por encima del larguero" de la
+## simulación lo necesita: con la subida fija llegaba a ~0,5 m y entraba.
+func shoot_exact(target: Vector3, power: float, solve_height := false) -> void:
 	if not has_ball() or is_kicking():
 		return
 	var dir := SoccerMatch.flat(target - global_position).normalized()
@@ -540,6 +543,10 @@ func shoot_exact(target: Vector3, power: float) -> void:
 		dir = facing
 	var spd := lerpf(13.0, 29.0, power) * lerpf(0.9, 1.08, stat("shooting")) * lerpf(0.92, 1.0, stat("stamina"))
 	var lift := lerpf(1.0, 5.5, power) * lerpf(0.95, 1.05, stat("shooting"))
+	if solve_height:
+		var b: Node3D = match_ref.ball
+		var t := SoccerBall.flight_time(SoccerMatch.flat_dist(b.global_position, target), spd)
+		lift = SoccerBall.lift_for(target.y - b.global_position.y, t)
 	_start_kick("shot", dir * spd + Vector3.UP * lift, 0.0, match_ref.on_shot.bind(self))
 
 

@@ -97,6 +97,7 @@ func load_runtime() -> void:
 	# devolvía el ranking del mundo anterior.
 	_coef_cache = {}
 	_coef_cache_day = -1
+	Crest._league_slot.clear() # el reparto de escudos depende del mundo de ESTA carrera
 	if not season.is_empty():
 		world = WorldFactory.build(world_seed)
 		# Ascensos y descensos (ver PromotionRelegationEngine.gd): world es

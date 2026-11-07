@@ -33,6 +33,25 @@ const HOLD_SHIELD_RADIUS := 4.0
 const HOLD_TACKLE_DELAY := 0.9
 ## Recuperación de stamina (0..1) por aguantar un momento.
 const HOLD_STAMINA_GAIN := 0.03
+## Al arrancar tu jugada con el balón: ningún rival empieza más cerca que esto (m)…
+const OPENING_SPACE := 4.5
+## …y los de alrededor tardan esto (s de juego) en poder entrar. Sin esto, quieto
+## leyendo la pantalla te lo robaban en menos de un segundo ("injugables").
+const OPENING_TACKLE_DELAY := 1.8
+const OPENING_RADIUS := 9.0
+
+
+## Dónde poner a un rival que arranca encima del balón: misma dirección, a
+## OPENING_SPACE como mínimo. Si ya está lejos, se queda donde está.
+static func opening_push(ball_pos: Vector3, rival_pos: Vector3) -> Vector3:
+	var off := Vector3(rival_pos.x - ball_pos.x, 0.0, rival_pos.z - ball_pos.z)
+	var d := off.length()
+	if d >= OPENING_SPACE:
+		return rival_pos
+	var dir := off / d if d > 0.01 else Vector3(1.0, 0.0, 0.0)
+	var p := ball_pos + dir * OPENING_SPACE
+	p.y = rival_pos.y
+	return p
 
 
 ## ¿La elección existe?

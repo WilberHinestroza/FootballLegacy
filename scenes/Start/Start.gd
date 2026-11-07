@@ -172,7 +172,7 @@ func _build_slot_row(index: int) -> PanelContainer:
 		var col: Color = Color(club.primary_color_hex) if (club != null and not club.primary_color_hex.is_empty()) else Styles.BLUE
 		var sec: Color = Color(club.secondary_color_hex) if (club != null and not club.secondary_color_hex.is_empty()) else Color.TRANSPARENT
 		var short_name: String = club.short_name if club != null else "?"
-		hbox.add_child(Styles.build_club_badge(col, short_name, 44, sec, String(summary.get("club_id", ""))))
+		hbox.add_child(Styles.build_club_badge(col, short_name, 44, sec, String(summary.get("club_id", "")), world))
 
 	var names := VBoxContainer.new()
 	names.size_flags_horizontal = Control.SIZE_EXPAND_FILL

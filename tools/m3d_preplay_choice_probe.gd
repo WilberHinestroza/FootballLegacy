@@ -65,6 +65,15 @@ func _test_pure() -> void:
 
 	_check(PrePlayChoice.hold_stamina(0.5) > 0.5, "aguantar no recupera stamina")
 	_check(_near(PrePlayChoice.hold_stamina(1.0), 1.0), "aguantar pasa del 100% de stamina")
+	# Inicio de tu jugada: nadie empieza encima del balón
+	var bpos := Vector3(10.0, 0.0, 5.0)
+	var pushed := PrePlayChoice.opening_push(bpos, Vector3(11.0, 0.0, 5.0))
+	_check(_near(pushed.distance_to(bpos), PrePlayChoice.OPENING_SPACE), "un rival encima no se aparta al empezar la jugada")
+	_check(pushed.x > bpos.x, "el rival se aparta hacia el lado contrario al que estaba")
+	var far := Vector3(20.0, 0.0, 5.0)
+	_check(PrePlayChoice.opening_push(bpos, far) == far, "un rival lejano se mueve sin necesidad")
+	_check(_near(PrePlayChoice.opening_push(bpos, bpos).distance_to(bpos), PrePlayChoice.OPENING_SPACE),
+		"un rival justo en el balón no se aparta")
 
 
 func _wait_kick(p: SoccerPlayer) -> void:

@@ -497,6 +497,7 @@ func _physics_process(delta: float) -> void:
 			if _timer <= 0.0:
 				state = State.MOMENT
 				Engine.time_scale = MOMENT_TIME_SCALE
+				_opening_room()
 				_apply_preplay_choice()
 				if _cross_pending:
 					_hud.show_cross_zones(true)
@@ -812,7 +813,7 @@ func _start_ambient_miss(team: int, at_minute: int, shooter_name: String) -> voi
 	if wide:
 		target = goal + Vector3(0.0, randf_range(0.4, 1.2), _ambient_goal_shot_side * (GOAL_WIDTH * 0.5 + randf_range(0.6, 2.0)))
 	else:
-		target = goal + Vector3(0.0, GOAL_HEIGHT + randf_range(0.3, 1.2), randf_range(-2.0, 2.0))
+		target = goal + Vector3(0.0, GOAL_HEIGHT + randf_range(0.7, 1.5), randf_range(-2.0, 2.0))
 	var start := goal - Vector3(dir * randf_range(14.0, 20.0), 0.0, _ambient_goal_shot_side * randf_range(1.0, 6.0))
 	shooter.set_physics_process(true)
 	shooter.visible = true
@@ -826,7 +827,7 @@ func _start_ambient_miss(team: int, at_minute: int, shooter_name: String) -> voi
 		_ambient_goal_keeper.visible = true
 		_ambient_goal_keeper.reset_to(keeper_pos, flat(start - keeper_pos).normalized())
 	_give_ball_now(shooter)
-	shooter.shoot_exact(target, 0.72) # sin desvío: el fallo es fallo
+	shooter.shoot_exact(target, 0.72, true) # sin desvío y a la altura pedida: el fallo es fallo
 	_hud.add_feed("%d'  %s prueba el disparo" % [at_minute, _ambient_goal_name if _ambient_goal_name != "" else TEAM_NAMES[team]])
 	SoundFx.set_crowd(-9.0)
 
@@ -2475,6 +2476,24 @@ func _on_preplay_selected(choice_id: String) -> void:
 		return
 	_preplay_choice = choice_id
 	_hud.hide_preplay_choices()
+
+
+## Al arrancar tu jugada de ataque con el balón en tu equipo: los rivales que
+## empiezan encima se apartan un poco y los de alrededor tardan en poder entrar,
+## para que dé tiempo a leer la jugada (antes te lo robaban en menos de un segundo).
+func _opening_room() -> void:
+	var holder := ball.owner_player
+	if not is_attacking_moment() or holder == null or holder.team != 0 or _set_piece_ready:
+		return
+	var bp := ball.global_position
+	for o: SoccerPlayer in teams[1]:
+		if o.is_keeper or not o.visible:
+			continue
+		var pushed := PrePlayChoice.opening_push(bp, o.global_position)
+		if pushed != o.global_position:
+			o.reset_to(Vector3(pushed.x, 0.0, pushed.z), o.facing)
+		if flat_dist(o.global_position, bp) < PrePlayChoice.OPENING_RADIUS:
+			o.tackle_cooldown = maxf(o.tackle_cooldown, PrePlayChoice.OPENING_TACKLE_DELAY)
 
 
 ## P1-13 · Aplica la elección al empezar la jugada. Sin elección, la jugada
@@ -4874,7 +4893,9 @@ func _update_possession(delta: float) -> void:
 	elif not holder.is_keeper and holder.dodge_timer <= 0.0:
 		# Un rival pegado al balón puede robarlo por contacto
 		for p: SoccerPlayer in teams[1 - holder.team]:
-			if p.stun_timer > 0.0:
+			# Con la entrada en enfriamiento (inicio de tu jugada, "aguantar") tampoco
+			# roba por contacto: antes este camino se saltaba esa espera
+			if p.stun_timer > 0.0 or p.tackle_cooldown > 0.0:
 				continue
 			var rate := 1.4 * lerpf(0.6, 1.5, p.duel_skill(true)) * lerpf(1.5, 0.55, holder.duel_skill(false))
 			if flat_dist(p.global_position, bpos) < 0.7 and randf() < rate * delta:
