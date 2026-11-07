@@ -135,9 +135,14 @@ func _on_back_pressed() -> void:
 	get_tree().change_scene_to_file("res://scenes/Hub/Hub.tscn")
 
 var _train_btn: Button = null
+const TrainingStage = preload("res://ui/common/TrainingStage.gd")
+## Campo de entrenamiento 3D (8-nov): tu jugador haciendo el ejercicio del foco.
+var _stage: Control = null
+var _training := false
 
 func _render() -> void:
 	_land_setup()
+	_update_stage()
 	_fill_progress_card()
 	var current: String = WorldTickEngine.get_training_focus()
 	current_label.text = "Foco: %s. Cada sesión suma XP a los atributos del foco y experiencia de carrera (niveles → puntos de habilidad). Jugar partidos suma más." % _label_for(current)
@@ -223,9 +228,42 @@ func _build_intensity_row(vbox: Control) -> void:
 		host.add_child(_intensity_row)
 		host.move_child(_intensity_row, _train_btn.get_index())
 
+## Pone (o actualiza) el campo 3D debajo de tu ficha con el ejercicio del foco.
+func _update_stage() -> void:
+	var p := SaveManager.load_player()
+	if p == null:
+		return
+	var focus: String = WorldTickEngine.get_training_focus()
+	if _stage == null:
+		_stage = TrainingStage.make(Avatar.config_for_player(p, SaveManager.load_world_seed()), focus,
+				p.position == "GK", 200 if _land_left != null else 230,
+				WorldFactory.find_club(WorldTickEngine.world, p.club_id) if not WorldTickEngine.world.is_empty() else null)
+		if _stage == null:
+			return # sin 3D: la pantalla de siempre
+		var host: Control = _land_left if _land_left != null else vbox
+		host.add_child(_stage)
+		host.move_child(_stage, (_hero.get_index() + 1) if (_hero != null and _hero.get_parent() == host) else 0)
+	else:
+		_stage.set_focus(focus, p.position == "GK")
+
+
 func _on_train_session() -> void:
 	var player := SaveManager.load_player()
-	if player == null or player.injury_days_remaining > 0:
+	if player == null or player.injury_days_remaining > 0 or _training:
+		return
+	if _stage != null:
+		# Primero lo ves entrenar; al acabar la sesión, se aplica y avanza el día
+		_training = true
+		_train_btn.disabled = true
+		_train_btn.text = "Entrenando…"
+		_stage.play_session(_apply_train_session)
+		return
+	_apply_train_session()
+
+
+func _apply_train_session() -> void:
+	var player := SaveManager.load_player()
+	if player == null:
 		return
 	var rng := RandomNumberGenerator.new()
 	rng.randomize()

@@ -112,6 +112,8 @@ func _process(_delta: float) -> void:
 			return
 	var k := absf(avatar.scale.y)
 	match framing:
+		"free":
+			pass # la cámara la coloca quien usa el retrato (campo de entrenamiento)
 		"jersey":
 			_jersey_pose()
 			var j := avatar.global_position + Vector3(0.0, 1.06, 0.0) * k
