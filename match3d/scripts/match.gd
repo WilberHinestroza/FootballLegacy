@@ -4463,6 +4463,13 @@ func _start_goal_celebration(scorer: SoccerPlayer, team: int, then: Callable, da
 		return flat_dist(a.global_position, scorer.global_position) < flat_dist(b.global_position, scorer.global_position))
 	for i in mini(4, near.size()):
 		_celeb_mates.append(near[i])
+	# Los que festejan no chocan con el rival (antes se trababan contra los que se
+	# lamentaban y no llegaban al banderín); entre ellos y con las vallas, sí.
+	_celeb_layers.clear()
+	for c: SoccerPlayer in [scorer] + _celeb_mates:
+		_celeb_layers[c] = [c.collision_layer, c.collision_mask]
+		c.collision_layer = CELEB_LAYER
+		c.collision_mask = (c.collision_mask & ~WALK_BODY_LAYER) | CELEB_LAYER
 	_pick_loser_reactions(team)
 	_set_human(null)
 	_hud.show_replay_button(false)
@@ -4560,7 +4567,16 @@ func _update_celebration(delta: float) -> void:
 					maxf(_celeb_dance - _celeb_t, 0.5))
 
 
+const CELEB_LAYER := 64 # capa propia de los que festejan (no la mira el rival)
+var _celeb_layers := {}
+
+
 func _end_goal_celebration() -> void:
+	for c: SoccerPlayer in _celeb_layers:
+		if is_instance_valid(c):
+			c.collision_layer = int(_celeb_layers[c][0])
+			c.collision_mask = int(_celeb_layers[c][1])
+	_celeb_layers.clear()
 	for p: SoccerPlayer in _celeb_losers:
 		if is_instance_valid(p):
 			p.sad_gait = false
