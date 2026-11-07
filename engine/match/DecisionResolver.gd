@@ -1140,6 +1140,12 @@ static func m3d_keeper_dive_beaten(speed: float, lateral: float, top_corner: boo
 		beaten += 0.13
 	return clampf(beaten * lerpf(1.3, 0.5, keeper_skill), 0.03, 0.8)
 
+## Efecto del balón (8-nov): cuánto del curvado del gesto aprovecha el jugador según
+## su técnica. Estadísticas 0..1. Técnica media = x1; top = x1,25; floja = x0,75.
+static func m3d_curl_skill(control: float, shooting: float, passing: float) -> float:
+	var tech: float = clampf(control * 0.5 + shooting * 0.3 + passing * 0.2, 0.0, 1.0)
+	return lerpf(0.75, 1.25, tech)
+
 ## Cuánto más lejos llega estirándose (múltiplo del alcance natural de la animación).
 static func m3d_keeper_reach(keeper_skill: float) -> float:
 	return lerpf(1.35, 1.65, keeper_skill)

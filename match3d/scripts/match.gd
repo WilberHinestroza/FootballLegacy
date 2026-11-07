@@ -5158,7 +5158,8 @@ func _on_swiped(points: PackedVector2Array, duration: float) -> void:
 	# Efecto: curva de verdad pero el balón acaba yendo hacia donde apuntaste.
 	# P1-02: el cansancio reduce el efecto disponible (misma stamina que la
 	# potencia), así que al 85' hay que elegir entre colocar o golpear.
-	var curl := bend * 1.3 * _shot_curl_cap()
+	var curl := bend * 1.3 * _shot_curl_cap() * DecisionResolver.m3d_curl_skill(
+			human.stat("control"), human.stat("shooting"), human.stat("passing")) # la técnica también manda
 	var launch := dir.rotated(Vector3.UP, -curl * flight * 0.5)
 	var lift := SoccerBall.lift_for(target_h - SoccerBall.RADIUS, flight)
 	human.shoot_vector(launch * spd + Vector3.UP * clampf(lift, 0.3, 11.0), curl, chain_accuracy)
