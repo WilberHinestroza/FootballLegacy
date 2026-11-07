@@ -58,6 +58,7 @@ func _ready() -> void:
 	await _test_key_pass_goal()
 	await _test_body_control()
 	await _test_deflection()
+	_test_offside()
 	_test_substitutions()
 	scr.queue_free()
 	await get_tree().process_frame
@@ -194,6 +195,63 @@ func _test_deflection() -> void:
 	m._update_possession(0.016)
 	_check(m.ball.owner_player == null, "un remate fuerte quedó controlado por el defensor en vez de desviarse")
 	_check(m.ball.last_touch == o, "el desvío no se atribuyó al defensor")
+	m.ball.owner_player = null
+
+
+## Fuera de juego y VAR (6-nov): la línea, el pito, el habilitado, la revisión
+## del VAR y que la IA espere en la línea en vez de adelantarse.
+func _test_offside() -> void:
+	var Off := preload("res://engine/match/m3d/Offside.gd")
+	_check(is_equal_approx(Off.line_x([50.0, 30.0, 20.0], 10.0), 30.0), "la línea no es el penúltimo defensor")
+	_check(is_equal_approx(Off.line_x([50.0, -10.0], -20.0), 0.0), "en campo propio no hay fuera de juego (línea en el medio)")
+	_check(is_equal_approx(Off.line_x([50.0, 30.0], 40.0), 40.0), "con el balón más adelantado la línea es el balón")
+	m._scripted_goal_receiver = null
+	m.state = m.State.SIMULATING
+	for t in 2:
+		for i in m.teams[t].size():
+			var q: SoccerPlayer = m.teams[t][i]
+			q.visible = true
+			if t == 1:
+				q.reset_to(Vector3(50.0 if q.is_keeper else 30.0 - i * 0.3, 0.0, -15.0 + i * 3.0), Vector3.LEFT)
+			else:
+				q.reset_to(Vector3(-40.0 if q.is_keeper else 5.0, 0.0, -15.0 + i * 3.0), Vector3.RIGHT)
+	var passer: SoccerPlayer = m.teams[0][5]
+	var runner: SoccerPlayer = m.teams[0][9]
+	passer.reset_to(Vector3(10.0, 0.0, 0.0), Vector3.RIGHT)
+	m.ball.reset_to(Vector3(10.4, 0.11, 0.0))
+	# 1) Adelantado 5 m: se pita y el balón pasa al rival
+	runner.reset_to(Vector3(35.0, 0.0, 4.0), Vector3.RIGHT)
+	m._on_ball_kicked(passer, "pass")
+	m._give_ball(runner)
+	_check(m.ball.owner_player != runner, "un adelantado de 5 m recibió el balón sin que se pitara")
+	_check(m.ball.owner_player != null and m.ball.owner_player.team == 1, "tras el fuera de juego el balón no es del rival")
+	# 2) Habilitado (por detrás de la línea): recibe normal
+	m.ball.owner_player = null
+	runner.reset_to(Vector3(27.0, 0.0, 4.0), Vector3.RIGHT)
+	m._on_ball_kicked(passer, "pass")
+	m._give_ball(runner)
+	_check(m.ball.owner_player == runner, "un jugador habilitado no pudo recibir")
+	# 3) VAR: un fuera de juego que el línea no vio acaba en gol -> revisión
+	m.ball.owner_player = null
+	var before: int = m.score[0]
+	m._var_pending = {"team": 0, "offside": true, "player": runner, "line_w": 30.0, "px_w": 30.3, "z": 0.0}
+	m._on_goal_area_entered(m.ball, 0)
+	_check(m.state == m.State.VAR_REVIEW, "el gol con fuera de juego no vista no pasó por el VAR")
+	_check(m.score[0] == before, "el gol subió al marcador antes de que decidiera el VAR")
+	var caught: bool = bool(m._var.get("caught", false))
+	for k in 400:
+		if m.state != m.State.VAR_REVIEW:
+			break
+		m._update_var_review(0.02)
+	_check(m.state != m.State.VAR_REVIEW, "la revisión del VAR no terminó")
+	_check(m.score[0] == (before if caught else before + 1), "el VAR no hizo lo que decidió (anular o dar el gol)")
+	_check(m.get_node_or_null("VarLines") == null or m.get_node("VarLines").is_queued_for_deletion(), "las líneas del VAR se quedaron en el campo")
+	# 4) La IA espera en la línea: un desmarque al fondo se queda a la altura del penúltimo
+	m.state = m.State.SIMULATING
+	var line: float = m.offside_line_world(0)
+	var held: Vector3 = AiBrain._hold_onside(runner, m, Vector3(48.0, 0.0, 0.0))
+	_check(held.x <= line + 1.5, "el delantero de la IA corre a quedarse en fuera de juego (%.1f > línea %.1f)" % [held.x, line])
+	m.state = m.State.ENDED
 	m.ball.owner_player = null
 
 

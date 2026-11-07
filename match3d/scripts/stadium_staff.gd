@@ -330,9 +330,13 @@ func _update_refs(b: Vector3, delta: float) -> void:
 	if _card_t <= 0.0:
 		_walk(refs[0], central, 5.5, delta)
 		_face(refs[0], b, delta * 4.0)
-	_walk(refs[1], Vector3(clampf(b.x, 0.0, L * 0.5 - 1.0), 0.0, W * 0.5 + 0.9), 6.0, delta)
+	# Jueces de línea: a la altura del penúltimo defensor (o del balón si va más
+	# adelantado), como en la tele, para ver bien el fuera de juego
+	var off0 := maxf(b.x, _match.offside_line_world(0))
+	var off1 := minf(b.x, _match.offside_line_world(1))
+	_walk(refs[1], Vector3(clampf(off0, 0.0, L * 0.5 - 1.0), 0.0, W * 0.5 + 0.9), 6.0, delta)
 	_face(refs[1], Vector3(refs[1].position.x, 0.0, 0.0), delta * 4.0)
-	_walk(refs[2], Vector3(clampf(b.x, -L * 0.5 + 1.0, 0.0), 0.0, -W * 0.5 - 0.9), 6.0, delta)
+	_walk(refs[2], Vector3(clampf(off1, -L * 0.5 + 1.0, 0.0), 0.0, -W * 0.5 - 0.9), 6.0, delta)
 	_face(refs[2], Vector3(refs[2].position.x, 0.0, 0.0), delta * 4.0)
 
 

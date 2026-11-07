@@ -49,6 +49,27 @@ func _ready() -> void:
 				await RenderingServer.frame_post_draw
 			get_viewport().get_texture().get_image().save_png("res://build/m3d_cer_%s_%02d.png" % [tag, shots])
 			shots += 1
+	elif kind == "var":
+		# Fuera de juego pitado (bandera) y luego revisión del VAR de un gol
+		m.state = SoccerMatch.State.SIMULATING
+		var runner: SoccerPlayer = m.teams[0][9]
+		var passer: SoccerPlayer = m.teams[0][5]
+		passer.reset_to(Vector3(18.0, 0.0, 2.0), Vector3.RIGHT)
+		runner.reset_to(Vector3(m.offside_line_world(0) + 2.5, 0.0, 6.0), Vector3.RIGHT)
+		m._on_ball_kicked(passer, "pass")
+		m._give_ball(runner)
+		for k in 2:
+			await get_tree().create_timer(0.5).timeout
+			get_viewport().get_texture().get_image().save_png("res://build/m3d_cer_%s_%02d.png" % [tag, shots])
+			shots += 1
+		runner.reset_to(Vector3(m.offside_line_world(0) + 0.3, 0.0, 6.0), Vector3.RIGHT)
+		m._var_pending = {"team": 0, "offside": true, "player": runner,
+			"line_w": m.offside_line_world(0), "px_w": runner.global_position.x, "z": 6.0}
+		m._on_goal_area_entered(m.ball, 0)
+		for k in 5:
+			await get_tree().create_timer(0.9).timeout
+			get_viewport().get_texture().get_image().save_png("res://build/m3d_cer_%s_%02d.png" % [tag, shots])
+			shots += 1
 	elif kind == "locker":
 		m._start_locker()
 		for k in 4:

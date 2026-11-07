@@ -296,6 +296,7 @@ static func build_config(on_finish: Callable) -> Dictionary:
 		# ajusta con ella las faltas y las tarjetas.
 		"referee_foul_mult": float(eng.referee_foul_mult),
 		"referee_card_mult": float(eng.referee_card_mult),
+		"referee_var_mult": float(eng.referee_var_mult),
 		"final_trophy": _final_trophy(fixture), # final: si la ganas, ceremonia con la copa
 		"competition": _comp_label(fixture), # cinta del cartel de la salida
 		"final_trophy_id": _final_trophy_id(fixture, home_club), # qué trofeo 3D se levanta

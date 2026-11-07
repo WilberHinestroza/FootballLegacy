@@ -6,6 +6,7 @@ extends RefCounted
 ## deriva de los atributos del jugador (passing, shooting, lectura, sangre fría).
 
 const AiTuning = preload("res://engine/match/m3d/AiTuning.gd")
+const Offside = preload("res://engine/match/m3d/Offside.gd")
 
 
 static func think(p: SoccerPlayer, m: SoccerMatch) -> void:
@@ -58,20 +59,38 @@ static func _support(p: SoccerPlayer, m: SoccerMatch, holder: SoccerPlayer) -> v
 			offer.z += side * 4.0
 			offer.z = clampf(offer.z, -SoccerMatch.FIELD_WIDTH * 0.5 + 2.0, SoccerMatch.FIELD_WIDTH * 0.5 - 2.0)
 		if absf(offer.z) < SoccerMatch.FIELD_WIDTH * 0.5 - 2.0 and absf(offer.x) < SoccerMatch.FIELD_LENGTH * 0.5 - 2.0:
-			move_to(p, offer, 0.6, false)
+			move_to(p, _hold_onside(p, m, offer), 0.6, false)
 			return
 	if p.role == "ST" and not p.is_human:
 		var run := _run_in_behind(p, m, holder)
 		if run != Vector3.INF:
-			move_to(p, run, 0.5, true)
+			move_to(p, _hold_onside(p, m, run), 0.5, true)
 			return
 	# Tercer hombre: el segundo mediocentro llega al borde del área para el pase
 	# atrás. Da una opción más al que lleva el balón y variedad al ataque.
 	var late := _late_run(p, m, holder)
 	if late != Vector3.INF:
-		move_to(p, late, 0.5, true)
+		move_to(p, _hold_onside(p, m, late), 0.5, true)
 		return
-	move_to(p, m.formation_target(p), 0.6, true)
+	move_to(p, _hold_onside(p, m, m.formation_target(p)), 0.6, true)
+
+
+## Fuera de juego: sin balón, el atacante no sube más allá de la línea (espera el
+## pase en ella). El error de cada uno sale de su lectura y se vuelve a sortear cada
+## pocos segundos: los que leen mal a veces se quedan adelantados.
+static func _hold_onside(p: SoccerPlayer, m: SoccerMatch, target: Vector3) -> Vector3:
+	if p.is_human:
+		return target
+	var dir := m.attack_dir(p.team)
+	var line := m.offside_line_world(p.team) * dir
+	var now := Time.get_ticks_msec()
+	if now - int(p.get_meta("offside_ms", -100000)) > 3000:
+		p.set_meta("offside_ms", now)
+		p.set_meta("offside_slack", AiTuning.offside_slack(p.stat("decision_making"), randf()))
+	var limit := Offside.hold_x(line, float(p.get_meta("offside_slack", -0.5)))
+	if target.x * dir > limit:
+		target.x = limit * dir
+	return target
 
 
 ## Solo el SEGUNDO mediocentro más adelantado hace la llegada: el primero se
@@ -157,12 +176,14 @@ static func _with_ball(p: SoccerPlayer, m: SoccerMatch) -> void:
 			var free := m.nearest_opponent_distance(star, star.global_position) > 2.0
 			# Desde la banda, con tu jugador en el área: centro para que cabecees
 			var star_in_box := m.in_own_box(1 - p.team, star.global_position)
-			if star_in_box and absf(p.global_position.z) > 14.0 and dist < 32.0 \
+			var aware := randf() < AiTuning.offside_awareness(p.stat("passing"), p.stat("decision_making"))
+			var star_off := aware and m.is_offside_now(star)
+			if star_in_box and not star_off and absf(p.global_position.z) > 14.0 and dist < 32.0 \
 					and randf() < AiTuning.star_cross_chance(p.stat("passing"), p.stat("composure")):
 				p.cross_to(star)
 				return
 			var near := SoccerMatch.flat_dist(p.global_position, star.global_position) < 34.0
-			if lane and near and (m.pass_requested or (free
+			if lane and near and not star_off and (m.pass_requested or (free
 					and randf() < AiTuning.star_pass_chance(p.stat("passing"), p.stat("decision_making")))):
 				p.pass_ball(star)
 				return
@@ -194,7 +215,8 @@ static func _with_ball(p: SoccerPlayer, m: SoccerMatch) -> void:
 				and randf() < AiTuning.wing_cross_chance(p.stat("passing"), p.stat("composure")):
 			var box := m.opponent_goal_center(p.team) - Vector3(m.attack_dir(p.team) * 7.0, 0.0, 0.0)
 			var striker := m._nearest_of_role(p.team, box, ["ST"], [p])
-			if striker != null:
+			if striker != null and not (m.is_offside_now(striker)
+					and randf() < AiTuning.offside_awareness(p.stat("passing"), p.stat("decision_making"))):
 				p.cross_to(striker)
 				return
 		# Pasar si le presionan (o de vez en cuando, para mover el balón)
@@ -234,8 +256,14 @@ static func _defend(p: SoccerPlayer, m: SoccerMatch, holder: SoccerPlayer) -> vo
 		var own_goal := m.goal_center(p.team)
 		var danger: SoccerPlayer = null
 		var best_d := INF
+		var adir := m.attack_dir(1 - p.team)
+		var aline := m.offside_line_world(1 - p.team) * adir
 		for a: SoccerPlayer in m.teams[1 - p.team]:
 			if a == holder or a.is_keeper:
+				continue
+			# Adelantado y con el balón lejos: se le deja en fuera de juego, no se le sigue
+			if Offside.leave_offside_runner(a.global_position.x * adir, aline,
+					SoccerMatch.flat_dist(a.global_position, holder.global_position)):
 				continue
 			var d := SoccerMatch.flat_dist(a.global_position, own_goal)
 			if d < best_d and d < 26.0:

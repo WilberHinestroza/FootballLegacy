@@ -88,3 +88,23 @@ static func vision_weight(passing: float) -> float:
 ## sobre el tiempo de intercepción).
 static func loose_ball_anticipation(decision_making: float) -> float:
 	return lerpf(1.25, 0.75, clampf(decision_making, 0.0, 1.0))
+
+
+## Fuera de juego · error del desmarque (m) al esperar en la línea: el que lee bien
+## se queda medio metro antes; el que lee mal a veces se pasa (y queda adelantado).
+## Se vuelve a sortear cada pocos segundos por jugador (ver AiBrain._hold_onside).
+static func offside_slack(decision_making: float, roll: float) -> float:
+	var read := clampf(decision_making, 0.0, 1.0)
+	return lerpf(-0.2, -0.9, read) + roll * lerpf(1.6, 0.5, read)
+
+
+## Fuera de juego · probabilidad de que el pasador vea que el compañero está
+## adelantado y no se la dé (con poca visión, a veces se la da igual).
+static func offside_awareness(passing: float, decision_making: float) -> float:
+	return lerpf(0.55, 0.95, clampf(passing * 0.5 + decision_making * 0.5, 0.0, 1.0))
+
+
+## Fuera de juego · probabilidad de que la defensa salga a la vez para dejar en
+## fuera de juego al delantero (línea adelantada) cuando el rival va a pasar.
+static func offside_trap_chance(decision_making: float) -> float:
+	return lerpf(0.15, 0.6, clampf(decision_making, 0.0, 1.0))

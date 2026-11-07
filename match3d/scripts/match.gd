@@ -7,7 +7,7 @@ extends Node3D
 
 ## WALKOUT: salida · LOCKER: descanso · OUTRO: despedida después del pitido final.
 ## CUTSCENE: plano de tu jugador en el banquillo / tu cambio (el reloj no corre)
-enum State { SIMULATING, MOMENT_INTRO, MOMENT, MOMENT_RESULT, ENDED, WALKOUT, REPLAY, CUTSCENE, LOCKER, OUTRO, MVP_CEREMONY, AMBIENT_GOAL, PENALTY_SHOOTOUT, CELEBRATION }
+enum State { SIMULATING, MOMENT_INTRO, MOMENT, MOMENT_RESULT, ENDED, WALKOUT, REPLAY, CUTSCENE, LOCKER, OUTRO, MVP_CEREMONY, AMBIENT_GOAL, PENALTY_SHOOTOUT, CELEBRATION, VAR_REVIEW }
 ## Jugadas (como ProtoDirector de FootballCareer): cuáles te tocan depende de tu puesto.
 ## Tres familias: ataque (ATTACK, COUNTER, CROSS, CORNER, FREE_KICK, PENALTY),
 ## armado (BUILDUP: construir y dar el pase clave) y defensa (DEFENSE, KEEPER).
@@ -23,6 +23,7 @@ const HeaderTiming = preload("res://engine/match/m3d/HeaderTiming.gd")
 const PlayChain = preload("res://engine/match/m3d/PlayChain.gd")
 const PrePlayChoice = preload("res://engine/match/m3d/PrePlayChoice.gd")
 const Momentum = preload("res://engine/match/m3d/Momentum.gd")
+const Offside = preload("res://engine/match/m3d/Offside.gd")
 
 # Cancha reglamentaria (metros)
 const FIELD_LENGTH := 105.0
@@ -192,6 +193,18 @@ var _foul_for_us := false
 ## Personalidad del árbitro (la manda Match3DBridge desde MatchEngine).
 var _referee_foul_mult := 1.0
 var _referee_card_mult := 1.0
+var _referee_var_mult := 1.0
+## Fuera de juego: foto de las posiciones en el último golpeo
+## {team, players: {SoccerPlayer: {margin, line_w, px_w}}} (vacío = nada pendiente).
+var _offside_snap := {}
+## Jugada que el VAR revisaría si acaba en gol: fuera de juego que el línea no vio
+## (offside = true) o una muy justa (offside = false, se confirma el gol).
+var _var_pending := {}
+var _var := {}           # revisión en curso (estado VAR_REVIEW)
+var _var_cleared := false
+var _corner_exempt := false # del saque de esquina no hay fuera de juego
+var _trap_until := [0.0, 0.0]
+var _trap_next := [0.0, 0.0]
 ## Segundos de plano de la tarjeta (la cámara enfoca al árbitro y al infractor).
 var _card_cam_t := 0.0
 var _card_fouler: SoccerPlayer = null
@@ -293,6 +306,7 @@ func _ready() -> void:
 	_bench_until = float(config.get("bench_until", 0.0))
 	_referee_foul_mult = clampf(float(config.get("referee_foul_mult", 1.0)), 0.5, 2.0)
 	_referee_card_mult = clampf(float(config.get("referee_card_mult", 1.0)), 0.5, 2.0)
+	_referee_var_mult = clampf(float(config.get("referee_var_mult", 1.0)), 0.5, 2.0)
 	if config.has("time_of_day"):
 		FieldBuilder.time_of_day = int(config.time_of_day)
 	elif not Engine.has_meta("keep_time_of_day"):
@@ -319,6 +333,7 @@ func _ready() -> void:
 	ball = SoccerBall.new()
 	ball.name = "Ball"
 	add_child(ball)
+	ball.kicked.connect(_on_ball_kicked)
 
 	var given: Variant = config.get("profile")
 	profile = given if given is PlayerProfile else PlayerProfile.load_or_default()
@@ -511,6 +526,9 @@ func _physics_process(delta: float) -> void:
 			pass
 		State.CELEBRATION:
 			_update_celebration(delta)
+		State.VAR_REVIEW:
+			_freeze_players()
+			_update_var_review(delta)
 		State.CUTSCENE:
 			_run_ai()
 			_update_possession(delta)
@@ -946,6 +964,8 @@ func _finish_ambient_goal() -> void:
 ## Durante la simulación se ve un partido de fondo, solo como ambiente: al empezar,
 ## saque de centro; tras una jugada, el juego sigue con un medio en su campo.
 func _ambient_kickoff() -> void:
+	_offside_snap = {}
+	_var_pending = {}
 	if minute < 1.0:
 		var kicking := randi() % 2
 		for t in 2:
@@ -2158,6 +2178,12 @@ func _update_hud_extras() -> void:
 	_hud.show_exit_button(on_pitch and state == State.SIMULATING and minute < _match_end_minute() - 2.0)
 	var can_request := state == State.SIMULATING and _bench_until > 0.0 and not entered and minute < _bench_until
 	_hud.show_request_button(can_request)
+	# Tu marca "TÚ" se pone naranja si estás adelantado y tu equipo tiene el balón
+	if star.star_label != null:
+		var adelantado := state == State.MOMENT and ball.owner_player != null and ball.owner_player.team == star.team \
+				and ball.owner_player != star and is_offside_now(star)
+		star.star_label.modulate = Color(1.0, 0.45, 0.15) if adelantado else Color(1.0, 0.92, 0.2)
+		star.star_label.text = "TÚ · ADELANTADO" if adelantado else "TÚ"
 
 
 func _on_pitch_now() -> bool:
@@ -2395,6 +2421,9 @@ func _start_moment(kind: Moment, pl: Dictionary = {}) -> void:
 	_star_passed_to = null
 	_moment_goal = -1
 	_scripted_goal_receiver = null
+	_offside_snap = {}
+	_var_pending = {}
+	_corner_exempt = kind == Moment.CORNER
 	_foul_grade = ""
 	_foul_for_us = false
 	_cross_pending = false
@@ -2414,6 +2443,7 @@ func _start_moment(kind: Moment, pl: Dictionary = {}) -> void:
 		p.set_highlight(false)
 	if not _setup_play():
 		_setup_base(kind)
+	_onside_setup(kind)
 	var title: String = TITLES[kind] if String(play.get("title", "")) == "" else String(play.title)
 	var hint: String = HINTS[kind] if String(play.get("hint", "")) == "" else String(play.hint)
 	_hud.set_sim_visible(false)
@@ -3653,9 +3683,19 @@ func _on_goal_area_entered(body: Node3D, scoring_team: int) -> void:
 	# existe en el resultado (pasaba si el desvío aleatorio lo metía entre los palos).
 	if state == State.AMBIENT_GOAL and (scoring_team != _ambient_goal_team or _ambient_goal_scored or _ambient_is_miss):
 		return
-	shake(0.9)
-	FieldBuilder.net_hit(_goal_areas[scoring_team], ball.global_position)
-	SoundFx.play("net", -2.0)
+	if (state == State.MOMENT or state == State.SIMULATING) and not _var_cleared \
+			and int(_var_pending.get("team", -1)) == scoring_team:
+		shake(0.9)
+		FieldBuilder.net_hit(_goal_areas[scoring_team], ball.global_position)
+		SoundFx.play("net", -2.0)
+		_start_var_review(scoring_team)
+		return
+	var revisited := _var_cleared
+	_var_cleared = false
+	if not revisited:
+		shake(0.9)
+		FieldBuilder.net_hit(_goal_areas[scoring_team], ball.global_position)
+		SoundFx.play("net", -2.0)
 	if state == State.AMBIENT_GOAL:
 		# La simulación sólo confirma el resultado cuando la escena muestra el balón en la red.
 		score[scoring_team] += 1
@@ -4668,6 +4708,7 @@ func _clamp_to_field(v: Vector3) -> Vector3:
 
 func _run_ai() -> void:
 	var in_moment := state == State.MOMENT
+	_update_offside_trap()
 	# Balón parado: todos quietos hasta que sale el golpeo (el lanzador del córner sí piensa)
 	if _set_piece_ready and ball.owner_player == null:
 		_set_piece_ready = false
@@ -4961,6 +5002,8 @@ func _try_receive(p: SoccerPlayer, body_control := false) -> void:
 
 
 func _give_ball(p: SoccerPlayer) -> void:
+	if _offside_touch(p):
+		return # fuera de juego: ya se pitó y se reanudó
 	_reset_dodge_combo()
 	var spd := ball.linear_velocity.length()
 	if p.is_keeper and spd > 4.0:
@@ -5199,6 +5242,9 @@ func _update_camera(delta: float) -> void:
 	var target_fov := 55.0
 	if state == State.CELEBRATION:
 		_celebration_camera(delta)
+		return
+	if state == State.VAR_REVIEW:
+		_var_camera(delta)
 		return
 	if state == State.PENALTY_SHOOTOUT and _shootout_shooter != null:
 		var pen_dir := attack_dir(_shootout_team)
@@ -5478,7 +5524,12 @@ func formation_target(p: SoccerPlayer, bpos: Variant = null, poss: int = -2) -> 
 	var role := p.role
 	var bx := b.x * s
 	var attacking := poss == p.team
-	var x: float = base.x + (bx + 5.0) * float(ROLE_SHIFT[role]) + (float(ROLE_PUSH[role]) if attacking else -3.0)
+	var bxx := base.x
+	if role == "DF" and not attacking:
+		bxx = _df_base_mean(p.team) # defensa en línea: todos a la misma altura
+	var x: float = bxx + (bx + 5.0) * float(ROLE_SHIFT[role]) + (float(ROLE_PUSH[role]) if attacking else -3.0)
+	if role == "DF" and not attacking and _now_s() < float(_trap_until[p.team]):
+		x += 3.5 # salen todos a la vez: el delantero queda en fuera de juego
 	x = clampf(x, float(ROLE_MIN_X[role]), float(ROLE_MAX_X[role]))
 	# La defensa no se queda por detrás del balón cuando atacamos (fuera de juego del rival)
 	if attacking and role == "DF":
@@ -5655,6 +5706,9 @@ func best_pass_option(p: SoccerPlayer) -> SoccerPlayer:
 			continue
 		if not lane_clear(p.global_position, mate.global_position, p.team):
 			continue
+		# Ve que está adelantado y no se la da (con poca visión, a veces sí)
+		if is_offside_now(mate) and randf() < AiTuning.offside_awareness(p.stat("passing"), p.stat("decision_making")):
+			continue
 		var open := minf(nearest_opponent_distance(mate, mate.global_position), 6.0)
 		# Un pasador con mejor visión valora más al hombre desmarcado.
 		var value := to.x * s * 0.35 + open * AiTuning.vision_weight(p.stat("passing")) - d * 0.05
@@ -5745,3 +5799,264 @@ static func flat(v: Vector3) -> Vector3:
 
 static func flat_dist(a: Vector3, b: Vector3) -> float:
 	return flat(a - b).length()
+
+
+# ---------- fuera de juego y VAR ----------
+
+func _now_s() -> float:
+	return Time.get_ticks_msec() / 1000.0
+
+
+## Línea de fuera de juego (x del mundo) para los atacantes de `team`.
+func offside_line_world(team: int) -> float:
+	var s := attack_dir(team)
+	var xs: Array = []
+	for o: SoccerPlayer in teams[1 - team]:
+		if o.visible:
+			xs.append(o.global_position.x * s)
+	return Offside.line_x(xs, ball.global_position.x * s) * s
+
+
+## Metros que `p` está por delante de la línea ahora mismo (> 0: adelantado).
+func offside_margin_now(p: SoccerPlayer) -> float:
+	var s := attack_dir(p.team)
+	return Offside.margin(p.global_position.x * s, offside_line_world(p.team) * s)
+
+
+func is_offside_now(p: SoccerPlayer) -> bool:
+	return offside_margin_now(p) > Offside.TOLERANCE
+
+
+## En cada golpeo: foto de quién del equipo que golpea está adelantado o en línea.
+func _on_ball_kicked(by: SoccerPlayer, _kind: String) -> void:
+	if by == null or not (state == State.MOMENT or state == State.SIMULATING):
+		_offside_snap = {}
+		return
+	if _offside_touch(by):
+		return # remató de primeras un balón que le llegó en fuera de juego
+	if not _var_pending.is_empty() and int(_var_pending.get("team", -1)) != by.team:
+		_var_pending = {}
+	if _corner_exempt:
+		_corner_exempt = false
+		_offside_snap = {}
+		return
+	var s := attack_dir(by.team)
+	var line := offside_line_world(by.team) * s
+	var list := {}
+	for mate: SoccerPlayer in teams[by.team]:
+		if mate == by or not mate.visible:
+			continue
+		var mg := Offside.margin(mate.global_position.x * s, line)
+		if mg > -0.5: # adelantado o muy justo (el VAR lo miraría)
+			list[mate] = {"margin": mg, "line_w": line * s, "px_w": mate.global_position.x}
+	_offside_snap = {"team": by.team, "players": list}
+
+
+## `p` toca el balón: si en el último pase estaba adelantado, se pita (o el línea no
+## lo ve y queda para el VAR). Devuelve true si se cortó la jugada.
+func _offside_touch(p: SoccerPlayer) -> bool:
+	if _offside_snap.is_empty() or _scripted_goal_receiver != null:
+		return false
+	if int(_offside_snap.team) != p.team:
+		_offside_snap = {} # lo jugó el rival: se acabó el fuera de juego
+		_var_pending = {}
+		return false
+	var e: Variant = (_offside_snap.players as Dictionary).get(p)
+	_offside_snap = {}
+	if e == null:
+		return false
+	var info: Dictionary = e
+	var margin := float(info.margin)
+	var offside := margin > Offside.TOLERANCE
+	if offside and not DecisionResolver.offside_flag_missed(margin):
+		_call_offside(p)
+		return true
+	_var_pending = {"team": p.team, "offside": offside, "player": p,
+		"line_w": info.line_w, "px_w": info.px_w, "z": p.global_position.z}
+	return false
+
+
+## Bandera del línea y silbato. En una jugada la cierra; en la simulación, tiro
+## libre para el equipo que defendía desde donde estaba el adelantado.
+func _call_offside(p: SoccerPlayer) -> void:
+	_offside_snap = {}
+	_var_pending = {}
+	SoundFx.play("whistle", -2.0)
+	if staff != null:
+		staff.flag_up(0 if p.global_position.x >= 0.0 else 1, 2.6)
+	var who := profile.player_name if p == star else _name_of(p)
+	if state == State.MOMENT:
+		var text := "¡FUERA DE JUEGO!"
+		if p == star:
+			text += "\nTe adelantaste: espera en la línea"
+		elif p.team == 0:
+			text += "\n%s estaba adelantado" % (who if who != "" else "Tu compañero")
+		else:
+			text += "\nLa defensa dejó adelantado a %s" % (who if who != "" else "su delantero")
+		_finish_moment(text)
+		return
+	_hud.add_feed("%d'  Fuera de juego%s" % [int(minute), (" de " + who) if who != "" else ""])
+	_hud.show_message("FUERA DE JUEGO", 1.2, 0.3)
+	_offside_restart(p.global_position, 1 - p.team)
+
+
+func _offside_restart(spot: Vector3, team: int) -> void:
+	var taker: SoccerPlayer = null
+	var best := INF
+	for d: SoccerPlayer in teams[team]:
+		if d.is_keeper or not d.visible:
+			continue
+		var dd := flat_dist(d.global_position, spot)
+		if dd < best:
+			best = dd
+			taker = d
+	if taker == null:
+		_ambient_kickoff()
+		return
+	var at := Vector3(clampf(spot.x, -FIELD_LENGTH * 0.5 + 2.0, FIELD_LENGTH * 0.5 - 2.0), 0.0,
+			clampf(spot.z, -FIELD_WIDTH * 0.5 + 1.0, FIELD_WIDTH * 0.5 - 1.0))
+	_place(taker, at)
+	taker.facing = Vector3(attack_dir(team), 0.0, 0.0)
+	possession_team = team
+	_give_ball_now(taker)
+
+
+## Al preparar una jugada, nadie del equipo que ataca empieza adelantado (los
+## compañeros esperan en la línea; tú también). Del córner y del penalti no.
+func _onside_setup(kind: Moment) -> void:
+	if kind == Moment.CORNER or kind == Moment.PENALTY or ball.owner_player == null:
+		return
+	var team := ball.owner_player.team
+	var s := attack_dir(team)
+	var line := offside_line_world(team) * s
+	for p: SoccerPlayer in teams[team]:
+		if p == ball.owner_player or p.is_keeper or not p.visible:
+			continue
+		if p.global_position.x * s > line - 0.3:
+			_place(p, Vector3((line - randf_range(0.4, 1.6)) * s, 0.0, p.global_position.z))
+
+
+## Línea adelantada: cada pocos segundos, si el rival lleva el balón, la defensa
+## puede salir a la vez (AiTuning.offside_trap_chance según su lectura).
+func _update_offside_trap() -> void:
+	var holder := ball.owner_player
+	if holder == null:
+		return
+	var t := 1 - holder.team
+	var now := _now_s()
+	if now < float(_trap_next[t]):
+		return
+	_trap_next[t] = now + randf_range(3.0, 6.0)
+	# Solo con el balón lejos de su área (si no, salir es regalar el gol)
+	if flat_dist(holder.global_position, goal_center(t)) < 30.0:
+		return
+	var dm := 0.0
+	var n := 0
+	for d: SoccerPlayer in teams[t]:
+		if d.role == "DF":
+			dm += d.stat("decision_making")
+			n += 1
+	if n > 0 and randf() < AiTuning.offside_trap_chance(dm / n):
+		_trap_until[t] = now + 1.4
+
+
+## Altura media de los defensas en la formación (para defender en línea).
+func _df_base_mean(team: int) -> float:
+	var sum := 0.0
+	var n := 0
+	for i in PLAYERS_PER_TEAM:
+		var p: SoccerPlayer = teams[team][i]
+		if p.role == "DF":
+			sum += (_bases[team][i] as Vector3).x
+			n += 1
+	return sum / n if n > 0 else -30.0
+
+
+## El VAR revisa el gol: líneas en el césped, cámara lateral y la decisión.
+func _start_var_review(team: int) -> void:
+	var info := _var_pending.duplicate()
+	_var_pending = {}
+	_offside_snap = {}
+	var caught := bool(info.get("offside", false)) and DecisionResolver.var_catches_offside(_referee_var_mult)
+	_var = {"team": team, "from": state, "t": 0.0, "caught": caught, "info": info, "done": false}
+	_end_decision()
+	state = State.VAR_REVIEW
+	Engine.time_scale = 1.0
+	_set_human(null)
+	ball.owner_player = null
+	_hud.set_hint("")
+	_hud.show_message("VAR\nRevisando posible fuera de juego", 2.8, 0.3)
+	SoundFx.set_crowd(-20.0)
+	_var_lines(info)
+
+
+func _var_lines(info: Dictionary) -> void:
+	var old := get_node_or_null("VarLines")
+	if old:
+		old.free()
+	var root := Node3D.new()
+	root.name = "VarLines"
+	add_child(root)
+	var lx := float(info.get("line_w", 0.0))
+	var px := float(info.get("px_w", lx))
+	var line := FieldBuilder.add_mesh(root, FieldBuilder.box(Vector3(0.08, 0.02, FIELD_WIDTH)), Vector3(lx, 0.03, 0.0), Color(1.4, 0.15, 0.2), true)
+	line.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var mark := FieldBuilder.add_mesh(root, FieldBuilder.box(Vector3(0.08, 0.02, 9.0)), Vector3(px, 0.04, float(info.get("z", 0.0))), Color(0.2, 0.6, 1.5), true)
+	mark.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+
+
+func _var_camera(delta: float) -> void:
+	var info: Dictionary = _var.get("info", {})
+	var lx := float(info.get("line_w", 0.0))
+	var z := float(info.get("z", 0.0))
+	var side := -1.0 if z >= 0.0 else 1.0
+	var target_pos := Vector3(lx, 11.0, z + side * 16.0)
+	var target_look := Vector3(lx, 0.0, z)
+	var k := minf(1.0, 2.5 * delta)
+	_cam_pos = _cam_pos.lerp(target_pos, k)
+	_cam_look = _cam_look.lerp(target_look, k)
+	_camera.global_position = _cam_pos
+	_camera.look_at(_cam_look, Vector3.UP)
+
+
+func _update_var_review(delta: float) -> void:
+	_var.t = float(_var.t) + delta
+	if bool(_var.done):
+		if float(_var.t) > 4.6:
+			_finish_var_review()
+		return
+	if float(_var.t) < 3.0:
+		return
+	_var.done = true
+	var team := int(_var.team)
+	if bool(_var.caught):
+		var who_p: SoccerPlayer = _var.info.get("player")
+		var who := profile.player_name if who_p == star else _name_of(who_p)
+		_hud.show_message("GOL ANULADO\nFuera de juego%s" % ((" de " + who) if who != "" else ""), 1.8, 0.3)
+		SoundFx.play("whistle", -2.0)
+		_hud.add_feed("%d'  VAR: gol anulado por fuera de juego" % int(minute))
+	else:
+		_hud.show_message("VAR\n¡GOL VÁLIDO!", 1.6, 0.3)
+		SoundFx.play("cheer", 0.0 if team == 0 else -8.0)
+
+
+func _finish_var_review() -> void:
+	var old := get_node_or_null("VarLines")
+	if old:
+		old.queue_free()
+	var team := int(_var.team)
+	var from: int = int(_var.from)
+	var info: Dictionary = _var.info
+	state = from as State
+	if bool(_var.caught):
+		if from == State.MOMENT:
+			_finish_moment("GOL ANULADO\nEl VAR vio fuera de juego")
+		else:
+			var spot := Vector3(float(info.get("px_w", 0.0)), 0.0, float(info.get("z", 0.0)))
+			_offside_restart(spot, 1 - team)
+		SoundFx.set_crowd(-14.0)
+		return
+	if from == State.MOMENT:
+		Engine.time_scale = MOMENT_TIME_SCALE
+	_var_cleared = true
+	_on_goal_area_entered(ball, team)

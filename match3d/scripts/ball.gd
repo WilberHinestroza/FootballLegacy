@@ -278,6 +278,10 @@ func release(vel: Vector3, blocked: SoccerPlayer = null, block_time := 0.3) -> v
 	_pending_velocity = vel
 
 
+## Cada golpeo (pase, centro, tiro, cabezazo): el partido mira el fuera de juego.
+signal kicked(by: SoccerPlayer, kind: String)
+
+
 func kick(by: SoccerPlayer, vel: Vector3, curl := 0.0, kind := "pass") -> void:
 	last_touch = by
 	last_kick_kind = kind
@@ -291,6 +295,7 @@ func kick(by: SoccerPlayer, vel: Vector3, curl := 0.0, kind := "pass") -> void:
 	_squash(k)
 	if k > 0.7 and get_parent().has_method("shake"):
 		get_parent().shake(0.25 * k) # disparo con todo: la cámara lo nota
+	kicked.emit(by, kind)
 
 
 ## Poste, larguero o red: cada cuerpo del campo lleva en "sfx" qué sonido hace.

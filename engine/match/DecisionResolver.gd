@@ -690,6 +690,21 @@ static func var_review(var_mult: float = 1.0) -> Dictionary:
 	return {"reviewed": true, "overturned": over,
 		"reason": String(VAR_REASONS[randi() % VAR_REASONS.size()]) if over else ""}
 
+## FUERA DE JUEGO EN EL PARTIDO 3D (6-nov). La geometría vive en m3d/Offside.gd;
+## acá solo el azar humano: el juez de línea se equivoca con las jugadas muy
+## justas (a 10 cm duda mucho; a más de 1 m nunca) y el VAR lo corrige casi siempre
+## si acaba en gol. `var_mult` = del árbitro (el "amigo del VAR" revisa más fino).
+const OFFSIDE_FLAG_MISS_MAX := 0.45   # chance de no levantar la bandera en línea
+const OFFSIDE_FLAG_SURE_AT := 1.0     # m de adelanto a partir del cual nunca falla
+const VAR_OFFSIDE_CATCH := 0.9
+
+static func offside_flag_missed(margin_m: float) -> bool:
+	var doubt := 1.0 - clampf(margin_m / OFFSIDE_FLAG_SURE_AT, 0.0, 1.0)
+	return randf() < OFFSIDE_FLAG_MISS_MAX * doubt * doubt
+
+static func var_catches_offside(var_mult: float = 1.0) -> bool:
+	return randf() < clampf(VAR_OFFSIDE_CATCH * lerpf(0.9, 1.1, clampf(var_mult - 0.8, 0.0, 1.0)), 0.0, 0.99)
+
 ## Personalidad del árbitro, DETERMINISTA por su nombre (el mismo árbitro
 ## siempre pita igual). card_mult multiplica la chance de tarjeta por
 ## minuto; var_mult la de revisión del VAR.
