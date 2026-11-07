@@ -37,17 +37,24 @@ func _ready() -> void:
 			var parts := a.substr(7).split(",")
 			Avatar3D.apply(av, {"top": parts[0], "bottom": parts[1] if parts.size() > 1 else parts[0],
 				"tint_base": "#8d5a3c", "hair": "corto"})
+	# pintada: sin prendas por piezas (la ropa pintada del shader), para comparar
+	if OS.get_cmdline_user_args().has("pintada"):
+		av.set_garments([])
 	var cam := Camera3D.new()
 	cam.fov = 30.0
 	add_child(cam)
 	cam.position = Vector3(5.5, 1.0, 0.0) if view == "lado" else Vector3(1.6, 1.0, 5.2)
 	cam.look_at(Vector3(0, 0.85, 0))
 	# cerca: primer plano de las piernas (revisar la ropa)
+	# alto: cámara a la altura de la del partido (por encima de los hombros)
+	if OS.get_cmdline_user_args().has("alto"):
+		cam.position += Vector3(0, 2.0, 0)
+		cam.look_at(Vector3(0, 0.85, 0))
 	# cerca=<altura>: lo mismo apuntando a otra altura (1.0 puños, 1.35 cuello)
 	for a: String in OS.get_cmdline_user_args():
 		var hy := 0.45 if a == "cerca" else (float(a.substr(6)) if a.begins_with("cerca=") else -1.0)
 		if hy > 0.0:
-			cam.position = cam.position * 0.4 + Vector3(0, hy - 0.9, 0)
+			cam.position = cam.position * 0.4 + Vector3(0, hy - 0.9 + (0.9 if OS.get_cmdline_user_args().has("alto") else 0.0), 0)
 			cam.look_at(Vector3(0, hy, 0))
 	cam.make_current()
 	get_viewport().size = Vector2i(360, 480) if false else get_viewport().size

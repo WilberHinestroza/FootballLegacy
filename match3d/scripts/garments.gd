@@ -7,14 +7,22 @@ extends RefCounted
 ## El cuerpo deja de dibujarse debajo (uniform `cover` del shader).
 
 const PATH := "res://match3d/models/garments.glb"
+## Distancia a la cámara (m) hasta la que se ven las prendas. Más lejos (la cámara de TV)
+## la tela no se distingue y el cuerpo vuelve a pintar la ropa: con 60 personas en el
+## estadio, dibujar las prendas de todas costaba ~5 veces más llamadas de dibujo.
+const RANGE := 15.0
+## El cuerpo deja de tapar su ropa pintada algo antes de que se apague la prenda (los dos
+## miden la distancia desde puntos un poco distintos; así nunca queda un hueco).
+const BODY_RANGE := RANGE - 1.5
 
 ## layer: 1 arriba, 2 abajo. lo/hi: alturas del tronco que tapa (algo por dentro del
-## borde de la prenda); arm: brazo tapado hasta t; neck: tapa el cuello.
+## borde de la prenda); arm: brazo tapado hasta t; neck: tapa el cuello (las camisetas
+## no: el cuello lo pinta el shader en el cuerpo, con borde suave).
 const SPECS := {
-	"top_long": {"layer": 1.0, "lo": 0.367, "hi": 0.738, "arm": 1.98, "neck": true},
-	"top_short": {"layer": 1.0, "lo": 0.367, "hi": 0.738, "arm": 0.5, "neck": true},
+	"top_long": {"layer": 1.0, "lo": 0.367, "hi": 0.738, "arm": 1.98, "neck": false},
+	"top_short": {"layer": 1.0, "lo": 0.367, "hi": 0.738, "arm": 0.5, "neck": false},
 	"trousers": {"layer": 2.0, "lo": 0.047, "hi": 0.42, "arm": -9.0, "neck": false},
-	"shorts": {"layer": 2.0, "lo": 0.244, "hi": 0.42, "arm": -9.0, "neck": false},
+	"shorts": {"layer": 2.0, "lo": 0.237, "hi": 0.42, "arm": -9.0, "neck": false},
 }
 
 static var _cache := {} # id -> {mesh, binds: [[hueso, pose]], xform}
@@ -74,6 +82,7 @@ static func make(id: String, skel: Skeleton3D) -> MeshInstance3D:
 	mi.skin = skin
 	mi.transform = d.xform
 	mi.set_instance_shader_parameter("garment_layer", float(SPECS[id].layer))
+	mi.visibility_range_end = RANGE
 	skel.add_child(mi)
 	mi.skeleton = NodePath("..")
 	return mi

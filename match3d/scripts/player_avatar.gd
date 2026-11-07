@@ -250,6 +250,8 @@ func _init() -> void:
 	for mi: MeshInstance3D in model.find_children("*", "MeshInstance3D", true, false):
 		mi.material_override = _mat
 		_meshes.append(mi)
+	# La equipación también va por piezas (camiseta y pantaloneta con volumen de tela)
+	set_garments(_kit_ids())
 	_hair_mat.roughness = 0.9
 	_hair_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 	_hair_mat.albedo_color = Color(0.35, 0.22, 0.12)
@@ -266,12 +268,12 @@ func set_colors(colors: Dictionary) -> void:
 	if colors.has("long_sleeves") or colors.has("long_pants"):
 		_long_sleeves = bool(colors.get("long_sleeves", _long_sleeves))
 		_long_pants = bool(colors.get("long_pants", _long_pants))
-		var ids: Array = []
-		if _long_sleeves:
-			ids.append("top_long")
-		if _long_pants:
-			ids.append("trousers")
-		set_garments(ids)
+		set_garments(_kit_ids())
+
+
+## Prendas de la ropa actual: camiseta (manga corta o larga) y pantaloneta o pantalón.
+func _kit_ids() -> Array:
+	return ["top_long" if _long_sleeves else "top_short", "trousers" if _long_pants else "shorts"]
 
 
 ## Viste prendas por piezas (ids de Garments.SPECS: "top_long", "top_short", "trousers",
@@ -292,6 +294,7 @@ func set_garments(ids: Array) -> void:
 	var c := Garments.cover_for(_garments.keys())
 	for mi in _meshes:
 		mi.set_instance_shader_parameter("cover", c)
+		mi.set_instance_shader_parameter("cover_range", Garments.BODY_RANGE)
 
 
 func garment_ids() -> Array:

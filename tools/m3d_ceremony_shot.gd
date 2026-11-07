@@ -21,7 +21,20 @@ func _ready() -> void:
 	m._end_walkout()
 	await get_tree().create_timer(1.0).timeout
 	var shots := 0
-	if kind == "match":
+	if args.has("pintada"):
+		# Comparar con la ropa pintada (sin prendas por piezas)
+		for av: PlayerAvatar in find_children("*", "PlayerAvatar", true, false):
+			av.set_garments([])
+	if kind == "draws":
+		# Coste de render: llamadas de dibujo y objetos en un cuadro del partido
+		for i in 3:
+			await get_tree().create_timer(1.0).timeout
+			print("DRAWS calls=%d objs=%d prims=%d avatars=%d" % [
+				RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME),
+				RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_OBJECTS_IN_FRAME),
+				RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME),
+				find_children("*", "PlayerAvatar", true, false).size()])
+	elif kind == "match":
 		# Partido entero tal cual (sin tocar nada): una captura por segundo real con el estado
 		var secs := int(args[2]) if args.size() > 2 else 150
 		for i in secs:

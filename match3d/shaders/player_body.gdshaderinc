@@ -74,9 +74,14 @@ varying vec2 body_w;
 // a f = y, brazo hasta t = z, cuello si w > 0.5.
 instance uniform float garment_layer = 0.0;
 instance uniform vec4 cover = vec4(2.0, 2.0, -9.0, 0.0);
+// Más allá de esta distancia a la cámara (m) las prendas se apagan (Garments.RANGE) y el
+// cuerpo vuelve a pintar toda la ropa
+instance uniform float cover_range = 100000.0;
+varying float obj_dist;
 
 bool covered_by_garment() {
-	if (garment_layer > 0.5) { return false; }
+	if (garment_layer > 0.5 || obj_dist > cover_range) { return false; }
+	// Cuello: justo por debajo del borde de la camiseta (build_garments: hi - NECK_DROP)
 	if (body_w.y > 0.5) { return cover.w > 0.5 && body_a.y < COLLAR_F - 0.04; }
 	if (body_w.x > 0.5) { return body_b.y * 3.0 - 0.5 < cover.z; }
 	return body_a.y > cover.x && body_a.y < cover.y;
@@ -86,6 +91,7 @@ void vertex() {
 	body_a = UV;
 	body_b = UV2;
 	body_w = COLOR.rg;
+	obj_dist = length((MODELVIEW_MATRIX * vec4(0.0, 0.0, 0.0, 1.0)).xyz);
 	if (garment_layer > 0.5) {
 		// Cada prenda pinta solo lo suyo: sin el borde de otra zona (piel, media, camiseta)
 		// en el bajo, el puño o el cuello. La geometría ya va inflada.

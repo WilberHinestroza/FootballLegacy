@@ -22,13 +22,15 @@ WRIST_T = 2.1
 # lo/hi: alturas del tronco que cubre; sleeve: fin de la manga (t) o None; off: separación
 GARMENTS = {
     # Chaqueta, camisa, chándal, abrigo: tronco + brazos hasta la muñeca
-    "top_long": dict(lo=0.355, hi=COLLAR_F - 0.008, sleeve=WRIST_T - 0.04, cuff_t=WRIST_T, off=1.7),
+    "top_long": dict(lo=0.355, hi=COLLAR_F - 0.008, sleeve=WRIST_T - 0.04, cuff_t=WRIST_T, off=1.7, taper_top=0.035),
     # Camiseta (equipación, polo): mangas cortas
-    "top_short": dict(lo=0.355, hi=COLLAR_F - 0.008, sleeve=SLEEVE_END + 0.02, cuff_t=SLEEVE_END, off=1.4),
+    "top_short": dict(lo=0.355, hi=COLLAR_F - 0.008, sleeve=SLEEVE_END + 0.02, cuff_t=SLEEVE_END, off=1.4, taper_top=0.035),
     # Pantalón largo: de la cintura al empeine
     "trousers": dict(lo=0.036, hi=0.43, sleeve=None, off=1.0, straight=True),
     # Pantaloneta
-    "shorts": dict(lo=0.232, hi=0.43, sleeve=None, off=1.0),
+    # (por encima del labio doblado del borde modelado; el bajo se rehace con caras
+    # nuevas. Arriba no sube tanto y se mete por dentro de la camiseta, que lo tapa)
+    "shorts": dict(lo=0.249, hi=0.38, sleeve=None, off=1.0, hem_drop=0.013, tuck_from=0.335),
 }
 HEM = 0.55  # grosor del dobladillo (unidades de la malla; la altura total ~196)
 
@@ -185,6 +187,27 @@ def rebridge_hem(bm):
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
 
 
+def extend_hem(bm, drop):
+    """Bajo de la pantaloneta: el borde de abajo se alarga hacia abajo y un poco hacia
+    fuera (vuelo), con caras nuevas. Copian pesos, UV y colores del borde."""
+    edges = [e for e in bm.edges if e.is_boundary and e.verts[0].co.y < 0.3 * H]
+    res = bmesh.ops.extrude_edge_only(bm, edges=edges)
+    newv = [g for g in res["geom"] if isinstance(g, bmesh.types.BMVert)]
+    for side in (1, -1):
+        ring = [v for v in newv if (v.co.x > 0) == (side > 0)]
+        if not ring:
+            continue
+        c = sum((Vector((v.co.x, 0, v.co.z)) for v in ring), Vector()) / len(ring)
+        for v in ring:
+            d = Vector((v.co.x, 0, v.co.z)) - c
+            if d.length > 1e-4:
+                v.co += d.normalized() * 0.45
+            v.co.y -= drop * H
+    for f in bm.faces:
+        f.smooth = True
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
+
+
 def build(name, spec):
     ob = body.copy()
     ob.data = body.data.copy()
@@ -225,7 +248,10 @@ def build(name, spec):
         if g > 0.5:
             # Cabeza y cuello: solo el cuello por debajo de la línea del cuello de la camiseta
             # (sin la parte de abajo de la mandíbula: salía un pico en la barbilla)
-            keep = spec["sleeve"] is not None and cen.y < spec["hi"] * H and face.normal.y > -0.35
+            # Cabeza y cuello: fuera. La malla tiene muy pocos polígonos ahí y un corte
+            # quedaba en zigzag; el cuello de la camiseta lo pinta el shader en el cuerpo
+            # (borde suave y ribete), justo encima del borde de esta prenda.
+            keep = False
         elif r > 0.5:
             if spec["sleeve"] is not None:
                 pl = [p for s, p in planes if (cen.x > 0) == (s > 0)]
@@ -300,8 +326,22 @@ def build(name, spec):
             for fc in v.link_faces:
                 n += fc.normal * fc.calc_area()
             nrm[v] = n.normalized() if n.length > 1e-6 else v.normal.copy()
+    tuck = spec.get("tuck_from")
     for v in bm.verts:
-        v.co += nrm[v] * spec["off"]
+        off = spec["off"]
+        if tuck is not None:
+            # Bajo la camiseta: pegada al cuerpo (si no, roza la tela de encima y asoma)
+            k = max(0.0, min(1.0, (v.co.y / H - tuck) / 0.03))
+            off *= 1.0 - 0.7 * k
+        taper = spec.get("taper_top")
+        if taper is not None and abs(v.co.x) < 16.0:
+            # Junto al cuello la tela se pega al cuerpo: el borde de arriba no hace
+            # escalón y enlaza con el cuello que pinta el shader
+            k2 = max(0.0, min(1.0, (v.co.y / H - (spec["hi"] - taper)) / taper))
+            off *= 1.0 - 0.85 * k2 * k2 * (3 - 2 * k2)
+        v.co += nrm[v] * off
+    if spec.get("hem_drop"):
+        extend_hem(bm, spec["hem_drop"])
     bm.to_mesh(me)
     bm.free()
     # Sombreado suave: fuera las normales a medida y las aristas duras heredadas del

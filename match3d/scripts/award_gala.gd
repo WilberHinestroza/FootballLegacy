@@ -320,12 +320,12 @@ func _update_camera() -> void:
 		return
 	if _t < REVEAL_AT:
 		var k := smoothstep(0.0, REVEAL_AT, _t)
-		camera.position = Vector3(lerpf(-1.5, 0.6, k), lerpf(2.6, 2.0, k), lerpf(9.0, 3.0, k))
-		camera.look_at(Vector3(0, 2.2, -5.0), Vector3.UP)
+		# look_at_from_position: vale también antes de que la vista entre en el árbol
+		camera.look_at_from_position(Vector3(lerpf(-1.5, 0.6, k), lerpf(2.6, 2.0, k), lerpf(9.0, 3.0, k)),
+				Vector3(0, 2.2, -5.0), Vector3.UP)
 	else:
 		var r := _t - REVEAL_AT
 		var c := winner.global_position + Vector3(0, 1.35, 0)
 		var ang := -0.35 + r * 0.12
 		var dist := lerpf(6.0, 4.2, smoothstep(0.0, 2.5, r))
-		camera.position = c + Vector3(sin(ang) * dist, 0.5, cos(ang) * dist)
-		camera.look_at(c, Vector3.UP)
+		camera.look_at_from_position(c + Vector3(sin(ang) * dist, 0.5, cos(ang) * dist), c, Vector3.UP)
