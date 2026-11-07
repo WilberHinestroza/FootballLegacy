@@ -342,6 +342,9 @@ func _team_panel(side: String, team: MatchTeam, club: ClubData, away_kit: bool, 
 	nm.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	nm.add_theme_font_override("font", Styles.font_semibold())
 	v.add_child(nm)
+	if get_viewport_rect().size.x > get_viewport_rect().size.y:
+		# Horizontal: el nombre ya está en la lista de al lado; solo el escudo
+		nm.visible = false
 
 	# camiseta + selector Titular / Visitante — en selección, un "club" de
 	# mentira (_country_kit_stub) le da color/patrón propio del país en
@@ -355,8 +358,10 @@ func _team_panel(side: String, team: MatchTeam, club: ClubData, away_kit: bool, 
 	# elegida — tú en tu equipo, la figura (mejor media) en el rival.
 	var model: PlayerData = _kit_model(team)
 	if Preferences.match_3d and model != null:
-		var fig: Control = Match3DBridge.portrait(model, kit_club, 150, true, Color(0, 0, 0, 0), away_kit, not is_nat)
-		fig.custom_minimum_size = Vector2(120, 150)
+		var land: bool = get_viewport_rect().size.x > get_viewport_rect().size.y
+		var fh: int = 112 if land else 150
+		var fig: Control = Match3DBridge.portrait(model, kit_club, fh, true, Color(0, 0, 0, 0), away_kit, not is_nat)
+		fig.custom_minimum_size = Vector2(110, fh)
 		kit_holder.add_child(fig)
 	else:
 		kit_holder.add_child(Kit.build_for_club_kit(kit_club, _season_year, away_kit, 60))
@@ -378,7 +383,11 @@ func _team_panel(side: String, team: MatchTeam, club: ClubData, away_kit: bool, 
 	sc.add_child(Styles.star_row(stars, 5, 14))
 	v.add_child(sc)
 
-	# ATA / MED / DEF
+	# ATA / MED / DEF (en horizontal no: el centro va fijo y la media ya está en la lista)
+	if get_viewport_rect().size.x > get_viewport_rect().size.y:
+		m.add_child(v)
+		panel.add_child(m)
+		return panel
 	var lines := _line_ratings(team)
 	v.add_child(_stat_bar("ATA", lines[0]))
 	v.add_child(_stat_bar("MED", lines[1]))
@@ -1189,21 +1198,33 @@ func _land_faceoff(vbox: VBoxContainer) -> void:
 	var me: PlayerData = MatchState.user_player
 	var fx: Dictionary = MatchState.fixture
 	cols.add_child(_faceoff_list(home, _home_club, _home_away_kit, fx, me))
-	var mid_sc := ScrollContainer.new()
-	mid_sc.name = "LandMid"
-	mid_sc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	# SHOW_NEVER (no DISABLED): así recorta en vez de ensanchar la columna
-	mid_sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_SHOW_NEVER
-	mid_sc.custom_minimum_size.x = 400
-	UiScroll.make_touch(mid_sc)
-	cols.add_child(mid_sc)
+	# El centro queda FIJO (Wilber: "esa sección del medio esté fija y ya las
+	# listas de la plantilla uno las pueda subir o bajar"): solo se desplazan
+	# las listas de los lados y, si no cabe, el contenido de la pestaña.
 	var mid := VBoxContainer.new()
 	mid.name = "LandLeft"
 	mid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	mid.add_theme_constant_override("separation", 12)
-	mid_sc.add_child(mid)
+	mid.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	mid.clip_contents = true
+	mid.custom_minimum_size.x = 400
+	mid.add_theme_constant_override("separation", 10)
+	cols.add_child(mid)
 	for k in kids:
 		(k as Node).reparent(mid)
+	# El favorito ya se ve en la media de cada lista
+	compare_label.visible = false
+	var tabs: Node = mid.get_node_or_null("PM_Tabs")
+	if tabs != null and _tab_kits != null:
+		var page_sc := ScrollContainer.new()
+		page_sc.size_flags_vertical = Control.SIZE_EXPAND_FILL
+		page_sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_SHOW_NEVER
+		UiScroll.make_touch(page_sc)
+		tabs.add_child(page_sc)
+		var pages := VBoxContainer.new()
+		pages.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		page_sc.add_child(pages)
+		_tab_kits.reparent(pages)
+		_tab_tactics.reparent(pages)
 	teams_row.visible = false   # las listas ya están a los lados
 	cols.add_child(_faceoff_list(away, _away_club, _away_away_kit, fx, me))
 
