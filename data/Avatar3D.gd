@@ -139,6 +139,33 @@ static func build_anim(cfg: Dictionary, anim: String, px: int, loop: bool) -> Co
 	return root
 
 
+## Camiseta 3D sola (la prenda nueva del partido) con los colores y el diseño 3D
+## `pattern` del club, escudo y patrocinio si se da `club_id`. La usa Kit en lugar de
+## la camiseta pixel art; se dibuja una vez y queda como imagen. null = sin 3D.
+static func jersey(primary: Color, secondary: Color, pattern: int, px: int, club_id := "") -> Control:
+	if not enabled():
+		return null
+	var root := Control.new()
+	root.custom_minimum_size = Vector2(px, px)
+	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var key := "jersey|%d|%s|%s|%d|%s" % [px, primary.to_html(false), secondary.to_html(false), pattern, club_id]
+	var cached: Texture2D = PlayerPortrait.cached(key)
+	if cached != null:
+		root.add_child(_image(cached))
+		return root
+	var p := PlayerPortrait.new(px, Color(0, 0, 0, 0), true, "jersey")
+	p.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	# Sin "long_sleeves": set_colors con esa clave vuelve a poner el kit entero
+	# (camiseta + pantaloneta) y la pantaloneta asomaba debajo
+	p.avatar.set_colors({"shirt_color": primary, "shirt_color2": secondary, "shirt_pattern": pattern})
+	p.collar_color = secondary if absf(secondary.get_luminance() - primary.get_luminance()) > 0.2 else primary.darkened(0.3)
+	p.snapshot_key = key
+	if club_id != "":
+		stamp_kit(p, club_id, 0, "", primary, secondary)
+	root.add_child(p)
+	return root
+
+
 ## Pasa la config de Avatar al modelo 3D.
 static func apply(av: PlayerAvatar, cfg: Dictionary) -> void:
 	var c := {}

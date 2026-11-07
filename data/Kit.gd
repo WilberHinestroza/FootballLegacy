@@ -262,8 +262,29 @@ static func build_for_club_kit(club: ClubData, season_year: int, away: bool, px:
 		var trim: Color = prim
 		if body.is_equal_approx(prim) or absf(body.get_luminance() - prim.get_luminance()) < 0.12:
 			body = Color.WHITE if prim.get_luminance() < 0.5 else Color("#1a1a1a")
-		return build(body, trim, for_club_kit(club, season_year, true), px, number)
-	return build(prim, sec, for_club_kit(club, season_year, false), px, number)
+		prim = body
+		sec = trim
+	# Con el 3D activo, la camiseta nueva del partido (con su diseño, escudo y
+	# patrocinio) en vez de la de pixel art; el dorsal va encima igual
+	var j3 := _jersey_3d(club, season_year, away, prim, sec, px)
+	if j3 != null:
+		if number > 0:
+			j3.add_child(_number_label(prim, px, number))
+		return j3
+	return build(prim, sec, for_club_kit(club, season_year, away), px, number)
+
+
+## Camiseta 3D (Avatar3D.jersey) o null. Por load(): Kit lo usan autoloads y no debe
+## arrastrar el motor del partido al cargarse.
+static func _jersey_3d(club: ClubData, season_year: int, away: bool, prim: Color, sec: Color, px: int) -> Control:
+	if club == null or px < 36 or DisplayServer.get_name() == "headless":
+		return null
+	var a3: Script = load("res://data/Avatar3D.gd")
+	var bridge: Script = load("res://engine/match/m3d/Match3DBridge.gd")
+	if a3 == null or bridge == null:
+		return null
+	var pattern: int = bridge._pattern(club, season_year, away)
+	return a3.jersey(prim, sec, pattern, px, club.club_id)
 
 static func _add(root: Control, file: String, tint: Color) -> void:
 	var r := _mk(file, tint)

@@ -57,6 +57,14 @@ func _init(px := 96, bg := Color(0.09, 0.13, 0.11), full_body := false, frame_mo
 	avatar = PlayerAvatar.new()
 	_vp.add_child(avatar)
 	avatar.anim.play("idle")
+	if framing == "jersey":
+		# Solo la camiseta 3D (la prenda del partido), sin cuerpo, de frente y con los
+		# brazos abiertos para que se lea como camiseta (Kit: escudos de club, fichas)
+		avatar.anim.stop()
+		avatar.set_garments(["top_short"])
+		for mi: MeshInstance3D in avatar._meshes: # el cuerpo (la prenda va aparte)
+			mi.visible = false
+		key.rotation_degrees = Vector3(-25.0, 15.0, 0.0)
 	_cam = Camera3D.new()
 	_cam.fov = 26.0
 	_vp.add_child(_cam)
@@ -104,6 +112,11 @@ func _process(_delta: float) -> void:
 			return
 	var k := absf(avatar.scale.y)
 	match framing:
+		"jersey":
+			_jersey_pose()
+			var j := avatar.global_position + Vector3(0.0, 1.06, 0.0) * k
+			_cam.global_position = j + Vector3(0.0, 0.42, 2.25) * k # algo desde arriba: se ve el cuello
+			_cam.look_at(j, Vector3.UP)
 		"full":
 			# Cuerpo entero, de frente y un poco de lado, con los pies dentro del cuadro
 			var c := avatar.global_position + Vector3(0.0, 1.0, 0.0) * k
@@ -136,6 +149,65 @@ func _process(_delta: float) -> void:
 			hold_frames -= 1
 		elif _frames >= 3:
 			_take_snapshot()
+
+
+## Pose de reposo con los brazos bajados (en cruz la camiseta parecía una T).
+var _collar: Node3D
+## Color del ribete del cuello de la camiseta sola (lo pone Avatar3D.jersey).
+var collar_color := Color.WHITE
+
+
+func _jersey_pose() -> void:
+	var sk := avatar.skeleton
+	sk.reset_bone_poses()
+	if _collar == null:
+		_add_collar(sk)
+	for side: String in ["Left", "Right"]:
+		var b := ItemCatalog.find_bone(sk, side + "Arm")
+		if b >= 0:
+			sk.set_bone_pose_rotation(b, sk.get_bone_rest(b).basis.get_rotation_quaternion()
+				* Quaternion(Vector3.FORWARD, deg_to_rad(JERSEY_ARM_DEG * (1.0 if side == "Left" else -1.0))))
+
+
+const JERSEY_ARM_DEG := 35.0
+
+
+## Cuello de la camiseta sola: sin el cuerpo, el borde de arriba quedaba recto (el
+## cuello lo pinta el shader sobre la piel). Ribete + hueco oscuro del interior.
+func _add_collar(sk: Skeleton3D) -> void:
+	var neck := ItemCatalog.find_bone(sk, "Neck")
+	if neck < 0:
+		return
+	var at := avatar.global_transform.affine_inverse() * (sk.global_transform * sk.get_bone_global_rest(neck).origin)
+	_collar = Node3D.new()
+	avatar.add_child(_collar)
+	_collar.position = at + Vector3(0.0, -0.01, 0.03)
+	var ring := TorusMesh.new()
+	ring.inner_radius = 0.072
+	ring.outer_radius = 0.1
+	var rm := StandardMaterial3D.new()
+	rm.albedo_color = collar_color
+	rm.roughness = 0.8
+	var r := MeshInstance3D.new()
+	r.mesh = ring
+	r.material_override = rm
+	r.scale = Vector3(1.2, 1.6, 1.0)
+	r.rotation.x = -0.15
+	_collar.add_child(r)
+	var hole := CylinderMesh.new()
+	hole.top_radius = 0.066
+	hole.bottom_radius = 0.066
+	hole.height = 0.01
+	var hm := StandardMaterial3D.new()
+	hm.albedo_color = Color(0.05, 0.05, 0.06)
+	hm.roughness = 1.0
+	var h := MeshInstance3D.new()
+	h.mesh = hole
+	h.material_override = hm
+	h.scale = Vector3(1.25, 1.0, 1.0)
+	h.position = Vector3(0.0, -0.006, -0.005)
+	h.rotation.x = -0.25
+	_collar.add_child(h)
 
 
 ## Guarda lo que se ve como imagen, la pone en lugar del 3D y libera el modelo.
