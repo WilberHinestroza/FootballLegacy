@@ -398,6 +398,8 @@ static func _defend(p: SoccerPlayer, m: SoccerMatch, holder: SoccerPlayer) -> vo
 	var side := 1.0 if holder.global_position.z >= 0.0 else -1.0
 	var expo: float = m.ball.exposure
 	var contain := BallContact.contain_distance(expo)
+	var press := m.press_intensity(p.team)
+	contain /= press # el que aprieta espera más cerca (y entra antes)
 	if not holder.is_human:
 		contain *= 0.8 # con la IA contra la IA se juega más al choque (la simulación avanza)
 	elif p.tackle_cooldown > 0.0:
@@ -419,7 +421,7 @@ static func _defend(p: SoccerPlayer, m: SoccerMatch, holder: SoccerPlayer) -> vo
 	# buena lectura entra más a menudo y con menos temeridad; uno débil se
 	# arriesga menos (menos faltas tontas).
 	var tackle_p := 0.05 if p.global_position.x * m.attack_dir(p.team) > 0.0 else 0.09
-	tackle_p *= AiTuning.press_bias(p.stat("decision_making"), p.stat("strength"))
+	tackle_p *= AiTuning.press_bias(p.stat("decision_making"), p.stat("strength")) * press
 	# Una decisión de entrada cada 1.5 s como mucho (antes se tiraba por frame y el
 	# defensor se quedaba entrando toda la jugada).
 	var now := Time.get_ticks_msec()
@@ -436,7 +438,7 @@ static func _defend(p: SoccerPlayer, m: SoccerMatch, holder: SoccerPlayer) -> vo
 
 ## Ayuda: solo cerca de nuestra área (a menos de 22 m) y si es el segundo más cercano.
 static func _is_second_presser(p: SoccerPlayer, m: SoccerMatch, holder: SoccerPlayer, presser: SoccerPlayer) -> bool:
-	if p.is_human or SoccerMatch.flat_dist(holder.global_position, m.goal_center(p.team)) > 22.0:
+	if p.is_human or SoccerMatch.flat_dist(holder.global_position, m.goal_center(p.team)) > 22.0 * m.press_intensity(p.team):
 		return false
 	var d := SoccerMatch.flat_dist(p.global_position, holder.global_position)
 	if d > 12.0:

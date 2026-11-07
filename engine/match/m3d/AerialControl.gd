@@ -13,6 +13,11 @@ const THIGH := "thigh"
 const INSTEP := "instep"
 const VOLLEY := "volley"
 const LET_DROP := "let_drop"
+const BICYCLE := "bicycle"
+## Chilena: altura (m) del balón y rival a más de esto (m) para poder tumbarse.
+const BICYCLE_MIN := 1.35
+const BICYCLE_MAX := 2.3
+const BICYCLE_RIVAL := 1.0
 const CONTROLS := [CHEST, THIGH, INSTEP]
 
 ## Más rápido que esto (m/s) no se puede amortiguar: cabezazo o despeje.
@@ -34,9 +39,13 @@ const VOLLEY_MAX := 1.25
 ## cerca de la portería rival para rematar, `def_box` = en su área, `control` 0..1,
 ## `roll` 0..1 (una tirada por balón).
 static func choose(y: float, speed: float, rival_d: float, own_pass: bool, att_box: bool,
-		def_box: bool, control: float, roll: float) -> String:
+		def_box: bool, control: float, roll: float, back_to_goal := false, flair := 0.0) -> String:
 	# Rematar: cerca del arco rival el balón se ataca, no se controla
 	if att_box:
+		# De espaldas y a la altura justa: el atrevido se tumba y la engancha de chilena
+		if back_to_goal and y >= BICYCLE_MIN and y <= BICYCLE_MAX and rival_d > BICYCLE_RIVAL \
+				and roll < bicycle_chance(flair):
+			return BICYCLE
 		if y >= VOLLEY_MIN and y <= VOLLEY_MAX and rival_d > 0.9:
 			return VOLLEY
 		if y > 1.4:
@@ -59,6 +68,11 @@ static func choose(y: float, speed: float, rival_d: float, own_pass: bool, att_b
 	if y >= THIGH_MIN:
 		return THIGH
 	return INSTEP
+
+
+## Probabilidad de intentar la chilena (`flair` 0..1 = regate y técnica).
+static func bicycle_chance(flair: float) -> float:
+	return lerpf(0.08, 0.55, clampf(flair, 0.0, 1.0))
 
 
 static func is_control(choice: String) -> bool:

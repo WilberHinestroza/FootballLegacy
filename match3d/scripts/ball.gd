@@ -3,6 +3,7 @@ extends RigidBody3D
 ## Balón con física real. Cuando un jugador lo controla, se "pega" delante de sus pies
 ## (regate) y deja de caer; al chutar o pasar vuelve a ser libre.
 
+const Weather = preload("res://engine/match/m3d/Weather.gd")
 const RADIUS := 0.15 # un balón real mide 0.11; algo más grande para que se vea en el móvil
 const TOUCH_EVERY := 2.8 # metros entre toques al conducir
 const ROLL_RESIST := 0.9 # m/s² que pierde rodando por el césped (además del aire)
@@ -233,7 +234,8 @@ func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
 		var spd := hv.length()
 		if spd > 0.01:
 			# Solo frena los balones lentos: los pases calculados no se quedan cortos
-			var dec := minf(spd, ROLL_RESIST * state.step * clampf((7.0 - spd) / 4.0, 0.0, 1.0))
+			var resist := ROLL_RESIST * Weather.roll_resist_mult(FieldBuilder.weather)
+			var dec := minf(spd, resist * state.step * clampf((7.0 - spd) / 4.0, 0.0, 1.0))
 			state.linear_velocity = lv - hv / spd * dec
 			var roll := Vector3(hv.z, 0.0, -hv.x) / RADIUS
 			state.angular_velocity = state.angular_velocity.lerp(roll, minf(1.0, 10.0 * state.step))

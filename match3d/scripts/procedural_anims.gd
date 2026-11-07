@@ -24,9 +24,9 @@ var _hip_h := 1.0              # altura de la cadera en metros
 
 static func build_all(anim: AnimationPlayer, skel: Skeleton3D, owner: Node3D) -> void:
 	var lib := anim.get_animation_library("")
-	if lib == null or lib.has_meta("procedural_v5") or not anim.has_animation("idle"):
+	if lib == null or lib.has_meta("procedural_v6") or not anim.has_animation("idle"):
 		return
-	lib.set_meta("procedural_v5", true)
+	lib.set_meta("procedural_v6", true)
 	var b := ProceduralAnims.new()
 	b._setup(anim, skel, owner)
 	b._add(lib, "walk", b._walk(1.05, 1.0, 0.0))
@@ -48,6 +48,7 @@ static func build_all(anim: AnimationPlayer, skel: Skeleton3D, owner: Node3D) ->
 	b._add(lib, "dragback", b._dragback())
 	b._add(lib, "instep_trap", b._instep_trap())
 	b._add(lib, "volley", b._volley())
+	b._add(lib, "bicycle", b._bicycle())
 
 
 func _add(lib: AnimationLibrary, n: String, a: Animation) -> void:
@@ -656,4 +657,41 @@ func _volley() -> Animation:
 	_key_bone(a, "Head", func(p: float) -> Quaternion: return rx(18.0) * rz(-curve(tilt, p * L) * 0.4))
 	_balance_arms(a, K, 1.0, 40.0)
 	_key_hips(a, func(p: float) -> Vector3: return Vector3(-0.08 * K.call(p), -0.04 * K.call(p), 0.0))
+	return a
+
+
+## Chilena (1,6 s; contacto 0,36 s): de espaldas a la portería, la izquierda impulsa
+## hacia arriba, el cuerpo se tumba hacia atrás en el aire y la derecha llega por
+## encima de la cabeza en tijera. Cae de espaldas con los brazos abiertos para
+## amortiguar, se queda un instante en el suelo y se incorpora.
+const BICYCLE_CONTACT := 0.36
+
+func _bicycle() -> Animation:
+	var L := 1.6
+	var a := _blank(L, false)
+	var lie := _hip_h - 0.2
+	var tilt := [[0.0, 0.0], [0.12, 28.0], [0.36, 105.0], [0.55, 96.0], [0.75, 88.0], [1.05, 85.0], [1.32, 38.0], [L, 0.0]]
+	var rth := [[0.0, 0.0], [0.14, 25.0], [0.24, -25.0], [0.36, 70.0], [0.5, 55.0], [0.75, 30.0], [1.05, 20.0], [L, 0.0]]
+	var rkn := [[0.0, 6.0], [0.14, 20.0], [0.24, 80.0], [0.36, 8.0], [0.5, 15.0], [0.75, 25.0], [1.05, 30.0], [L, 6.0]]
+	var lth := [[0.0, 0.0], [0.12, 70.0], [0.24, 60.0], [0.36, -10.0], [0.55, 10.0], [0.75, 30.0], [1.05, 20.0], [L, 0.0]]
+	var lkn := [[0.0, 6.0], [0.12, 60.0], [0.24, 40.0], [0.36, 20.0], [0.75, 30.0], [1.05, 30.0], [L, 6.0]]
+	# Al levantarse: rodillas al pecho (como sentarse) y arriba
+	var rise := [[0.0, 0.0], [1.0, 0.0], [1.25, 1.0], [1.45, 0.55], [L, 0.0]]
+	var spine := [[0.0, 0.0], [0.3, 10.0], [0.4, 20.0], [0.7, 10.0], [1.05, 5.0], [1.35, 25.0], [L, 0.0]]
+	var head := [[0.0, 0.0], [0.36, 30.0], [0.7, 20.0], [1.2, 25.0], [L, 0.0]]
+	var arms := [[0.0, 0.0], [0.2, 1.0], [0.9, 1.0], [1.3, 0.4], [L, 0.0]]
+	var hy := [[0.0, 0.0], [0.08, -0.08], [0.2, 0.15], [0.36, 0.3], [0.55, 0.0], [0.72, -lie], [1.05, -lie], [1.3, -_hip_h * 0.55], [L, 0.0]]
+	var hz := [[0.0, 0.0], [0.36, -0.15], [0.72, -0.35], [1.05, -0.35], [1.4, -0.15], [L, 0.0]]
+	var R := func(p: float) -> float: return curve(rise, p * L)
+	_key_bone(a, "Hips", func(p: float) -> Quaternion: return rx(-curve(tilt, p * L)))
+	_key_bone(a, "RightUpLeg", func(p: float) -> Quaternion: return rx(-(curve(rth, p * L) + 70.0 * R.call(p))))
+	_key_bone(a, "RightLeg", func(p: float) -> Quaternion: return rx(curve(rkn, p * L) + 100.0 * R.call(p)))
+	_key_bone(a, "RightFoot", func(p: float) -> Quaternion: return rx(-20.0 * clampf(curve(rth, p * L) / 70.0, 0.0, 1.0)))
+	_key_bone(a, "LeftUpLeg", func(p: float) -> Quaternion: return rx(-(curve(lth, p * L) + 70.0 * R.call(p))))
+	_key_bone(a, "LeftLeg", func(p: float) -> Quaternion: return rx(curve(lkn, p * L) + 100.0 * R.call(p)))
+	_key_bone(a, "Spine", func(p: float) -> Quaternion: return rx(curve(spine, p * L)))
+	_key_bone(a, "Spine1", func(p: float) -> Quaternion: return rx(curve(spine, p * L) * 0.5))
+	_key_bone(a, "Head", func(p: float) -> Quaternion: return rx(curve(head, p * L)))
+	_balance_arms(a, func(p: float) -> float: return curve(arms, p * L), 0.0, 55.0)
+	_key_hips(a, func(p: float) -> Vector3: return Vector3(0.0, curve(hy, p * L), curve(hz, p * L)))
 	return a

@@ -33,12 +33,17 @@ static var SMOKE_SHADER: Shader:
 			_smoke_shader.code = SMOKE_SHADER_CODE
 		return _smoke_shader
 static var _smoke_shader: Shader
+const Weather = preload("res://engine/match/m3d/Weather.gd")
 static var time_of_day := -1
+## Clima (Weather.CLEAR / Weather.RAIN); -1 = al azar en build().
+static var weather := -1
 
 
 static func build(root: Node3D) -> Array[Area3D]:
 	if time_of_day < 0:
 		time_of_day = randi() % 3
+	if weather < 0:
+		weather = Weather.pick(time_of_day, randf())
 	_apply_stars()
 	_environment(root)
 	_pitch(root)
@@ -126,13 +131,21 @@ static func _environment(root: Node3D) -> void:
 			sun_rot = Vector3(-62.0, -20.0, 0.0)
 			sun_energy = 1.05
 			ambient = 0.55
+	var rain := weather == Weather.RAIN
+	if rain:
+		# Lluvia: cielo encapotado, sol tapado y luz fría y plana
+		top = top.lerp(Color(0.36, 0.39, 0.45) * (0.35 if time_of_day == 2 else 1.0), 0.8)
+		horizon = horizon.lerp(Color(0.58, 0.61, 0.66) * (0.4 if time_of_day == 2 else 1.0), 0.75)
+		sun_color = sun_color.lerp(Color(0.85, 0.9, 1.0), 0.6)
+		sun_energy *= 0.55 if time_of_day != 2 else 0.85
+		ambient *= 0.95
 	var sky_mat := ProceduralSkyMaterial.new()
 	sky_mat.sky_top_color = top
 	sky_mat.sky_horizon_color = horizon
 	sky_mat.ground_horizon_color = horizon.lerp(Color(0.3, 0.35, 0.3), 0.5)
 	sky_mat.ground_bottom_color = Color(0.2, 0.28, 0.2) * (0.3 if time_of_day == 2 else 1.0)
-	if time_of_day == 2:
-		sky_mat.sun_angle_max = 0.0 # sin disco solar de noche
+	if time_of_day == 2 or rain:
+		sky_mat.sun_angle_max = 0.0 # sin disco solar de noche (ni con nubes)
 	var sky := Sky.new()
 	sky.sky_material = sky_mat
 
@@ -158,6 +171,11 @@ static func _environment(root: Node3D) -> void:
 	env.fog_enabled = true
 	env.fog_light_color = horizon.lerp(Color(0.5, 0.55, 0.6), 0.4)
 	env.fog_density = 0.0035 if time_of_day != 2 else 0.005
+	if rain:
+		env.fog_density = 0.0065 # cortina de agua: la grada del fondo se difumina
+		env.fog_light_color = horizon * 0.75
+		env.adjustment_saturation = 1.0
+		env.adjustment_contrast = 1.1
 	env.fog_sky_affect = 0.0
 
 	var we := WorldEnvironment.new()
@@ -192,6 +210,7 @@ static func _grass(stripes: bool) -> ShaderMaterial:
 	m.set_shader_parameter("stripe_width", SoccerMatch.FIELD_LENGTH / 12.0)
 	m.set_shader_parameter("stripes_on", 1.0 if stripes else 0.0)
 	m.set_shader_parameter("wear", 1.0 if stripes else 0.0)
+	m.set_shader_parameter("wet", 1.0 if weather == Weather.RAIN else 0.0)
 	if not stripes:
 		m.set_shader_parameter("dark_col", Color(0.2, 0.47, 0.19))
 	return m

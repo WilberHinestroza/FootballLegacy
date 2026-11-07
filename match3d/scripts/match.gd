@@ -13,6 +13,7 @@ enum State { SIMULATING, MOMENT_INTRO, MOMENT, MOMENT_RESULT, ENDED, WALKOUT, RE
 ## armado (BUILDUP: construir y dar el pase clave) y defensa (DEFENSE, KEEPER).
 enum Moment { ATTACK, DEFENSE, PENALTY, COUNTER, CROSS, CORNER, FREE_KICK, KEEPER, BUILDUP }
 
+const Weather = preload("res://engine/match/m3d/Weather.gd")
 const FoulRules = preload("res://engine/match/FoulResolver.gd")
 const AiTuning = preload("res://engine/match/m3d/AiTuning.gd")
 const ShotZone = preload("res://engine/match/m3d/ShotZone.gd")
@@ -312,6 +313,7 @@ func _ready() -> void:
 		FieldBuilder.time_of_day = int(config.time_of_day)
 	elif not Engine.has_meta("keep_time_of_day"):
 		FieldBuilder.time_of_day = -1 # día, atardecer o noche al azar en cada partido
+	FieldBuilder.weather = int(config.get("weather", Engine.get_meta("force_weather", -1))) # -1 = al azar (Weather.pick)
 	# Estadio del club local: estrellas (1-5), colores y cuánta gente viene
 	FieldBuilder.stars = int(config.get("stadium_stars", 4))
 	FieldBuilder.home_color = Color(String(config.get("stadium_home_color", "#db2129")))
@@ -325,6 +327,8 @@ func _ready() -> void:
 	var goal_areas := FieldBuilder.build(self)
 	FieldBuilder.build_tifo(self, String(config.get("home_name", "LOCAL")))
 	_goal_areas = goal_areas
+	if FieldBuilder.weather == Weather.RAIN:
+		_setup_rain()
 	goal_areas[0].body_entered.connect(_on_goal_area_entered.bind(0))
 	goal_areas[1].body_entered.connect(_on_goal_area_entered.bind(1))
 
@@ -551,6 +555,7 @@ func _physics_process(delta: float) -> void:
 	if state == State.SIMULATING or state == State.MOMENT:
 		_check_ball_escaped()
 	_update_camera(delta)
+	_follow_rain()
 	_camera_declutter()
 	_update_aim_zone()
 	_apply_shake(delta)
@@ -3740,9 +3745,21 @@ func _refresh_rating() -> void:
 	_hud.set_rating(r, change)
 
 
+## La grada reacciona al desenlace: "¡uuuh!" a la ocasión fallada (más fuerte si
+## dio en el palo) y aplausos a la parada de tu portero.
+func _crowd_reacts(text: String) -> void:
+	if _moment_goal >= 0:
+		return
+	if is_attacking_moment() and text in ["¡PARADA!", "¡Fuera!", "¡FUERA!", "¡PARADA DEL PORTERO!", "¡AL PALO!"]:
+		SoundFx.play("ooh", -2.0 if ball.last_hit_post else -5.0)
+	elif not is_attacking_moment() and text in ["¡PARADÓN!", "¡PARADA!"]:
+		SoundFx.play("applause", -5.0)
+
+
 func _finish_moment(text: String) -> void:
 	if state == State.MOMENT_RESULT:
 		return # ya cerrada: evita doble conteo si el balón entra y vence el timer
+	_crowd_reacts(text)
 	_cancel_cross_zone()
 	_reset_play_chain()
 	_hud.hide_preplay_choices()
@@ -3883,6 +3900,8 @@ func _update_react_facing(delta: float) -> void:
 
 
 func on_shot(_shooter: SoccerPlayer) -> void:
+	if _shooter != null and ball.global_position.y < 0.5:
+		turf_puff(ball.global_position, 0.7)
 	# El penalti del usuario en la tanda se resuelve como una jugada normal,
 	# pero no debe sumar tiros ni tiros a puerta a las estadísticas del partido.
 	if _shootout_in_user_kick:
@@ -5313,6 +5332,10 @@ func _update_possession(delta: float) -> void:
 				if ac == AerialControl.VOLLEY and d < 1.15 and vol_h:
 					_volley(p)
 					return
+				if ac == AerialControl.BICYCLE and d < 1.3 and bpos.y >= AerialControl.BICYCLE_MIN - 0.1 \
+						and bpos.y <= AerialControl.BICYCLE_MAX + 0.15:
+					_bicycle(p)
+					return
 				if AerialControl.is_control(ac) and ball_spd <= AerialControl.MAX_CONTROL_SPEED:
 					# Lo decidió bajar con el cuerpo: pecho, muslo o empeine
 					reach = 1.0
@@ -5413,8 +5436,11 @@ func aerial_choice_for(p: SoccerPlayer) -> String:
 	var own := ball.last_touch != null and ball.last_touch.team == p.team
 	var goal := opponent_goal_center(p.team)
 	var att := own and flat_dist(p.global_position, goal) < 18.0 and absf(p.global_position.z) < 16.0
+	# De espaldas: el balón no va hacia la portería rival (viene de cara o cruzado)
+	var back := fv.normalized().dot(flat(goal - p.global_position).normalized()) < 0.25
 	var c := AerialControl.choose(y, v.length(), nearest_opponent_distance(p, p.global_position), own,
-			att, in_own_box(p.team, p.global_position), p.stat("control"), randf())
+			att, in_own_box(p.team, p.global_position), p.stat("control"), randf(), back,
+			p.stat("dribbling") * 0.6 + p.stat("control") * 0.4)
 	_aerial_choice[p] = c
 	return c
 
@@ -5441,6 +5467,46 @@ func _volley(p: SoccerPlayer) -> void:
 	shake(0.25)
 	if state == State.MOMENT and p.team == 0:
 		_hud.show_message("¡VOLEA!", 0.7)
+
+
+## Chilena: de espaldas, se tumba en el aire y le pega por encima de la cabeza. El
+## balance sale de DecisionResolver.m3d_bicycle; el jugador se queda en el suelo un
+## momento (no puede seguir la jugada al instante: es el precio del lujo).
+func _bicycle(p: SoccerPlayer) -> void:
+	var goal := opponent_goal_center(p.team)
+	var aim := goal
+	if p == human and _header_aim != Vector3.ZERO:
+		aim = p.global_position + _header_aim * flat(goal - p.global_position).length()
+	else:
+		var keeper: SoccerPlayer = teams[1 - p.team][0]
+		var away := -signf(keeper.global_position.z - goal.z)
+		aim.z = (away if away != 0.0 else 1.0) * randf_range(0.8, GOAL_WIDTH * 0.5 - 0.6)
+	_header_aim = Vector3.ZERO
+	var by := ball.global_position.y
+	var vr: Dictionary = DecisionResolver.m3d_bicycle(p.stat("shooting"), p.stat("dribbling"),
+			p.stat("composure"), by)
+	var dir := flat(aim - p.global_position).normalized().rotated(Vector3.UP, randf_range(-1.0, 1.0) * float(vr.spread))
+	# De espaldas a la portería: mira hacia el balón y le pega hacia atrás
+	p.facing = -dir
+	p.rotation.y = atan2(-dir.x, -dir.z)
+	p.play_action_from("bicycle", ProceduralAnims.BICYCLE_CONTACT - 0.08, 1.0, 1.45)
+	p.stun_timer = maxf(p.stun_timer, 1.25)
+	ball.kick(p, dir * float(vr.speed) + Vector3.UP * float(vr.lift), 0.0, "shot")
+	on_shot(p)
+	shake(0.35)
+	if p.team == 0 and state in [State.MOMENT, State.MOMENT_INTRO]:
+		_hud.show_message("¡CHILENA!", 0.9)
+		_bicycle_slowmo()
+
+
+## Un instante a cámara lenta para la chilena del equipo del usuario (vuelve a la
+## velocidad que hubiera, que en un momento clave ya va algo frenada).
+func _bicycle_slowmo() -> void:
+	var prev := Engine.time_scale
+	Engine.time_scale = prev * 0.45
+	await get_tree().create_timer(0.35, true, false, true).timeout
+	if is_equal_approx(Engine.time_scale, prev * 0.45):
+		Engine.time_scale = prev
 
 
 func _header(p: SoccerPlayer, quality := 1.0) -> void:
@@ -5551,6 +5617,8 @@ func request_tackle(t: SoccerPlayer, slide := false) -> void:
 		return
 	t.tackle_cooldown = 0.9
 	t.lunge()
+	if slide:
+		turf_puff(t.global_position + t.facing * 0.6, 1.0)
 	var holder := ball.owner_player
 	if holder == null or holder.team == t.team or holder.is_keeper:
 		return
@@ -6071,6 +6139,10 @@ func formation_target(p: SoccerPlayer, bpos: Variant = null, poss: int = -2) -> 
 	if attacking and role == "DF":
 		x = maxf(x, minf(bx - 30.0, 0.0))
 	var z := clampf(base.z * 0.85 + b.z * s * 0.3, -FIELD_WIDTH * 0.5 + 1.5, FIELD_WIDTH * 0.5 - 1.5)
+	# Extremos abiertos: al atacar, el de banda se pega a la cal para estirar al rival
+	# (antes el balón lo arrastraba hacia dentro y todo se jugaba por el centro)
+	if attacking and role != "DF" and absf(base.z) > FIELD_WIDTH * 0.3:
+		z = signf(base.z) * clampf(absf(base.z) * 1.08, FIELD_WIDTH * 0.3, FIELD_WIDTH * 0.5 - 2.5) + b.z * s * 0.12
 	return to_world(p.team, Vector3(x, 0.0, z))
 
 
@@ -6087,6 +6159,108 @@ func team_mentality(team: int) -> float:
 		var late := clampf((minute - 65.0) / 25.0, 0.0, 1.0)
 		m += (-5.0 if diff > 0 else 7.0) * late * (1.0 if absi(diff) == 1 else 0.6)
 	return m
+
+
+## Golpe fuerte o barrida: salta un poco de césped (o agua, si llueve). Dos
+## emisores que se turnan, de un solo disparo: barato también en el móvil.
+var _puffs: Array[CPUParticles3D] = []
+var _puff_i := 0
+
+
+func turf_puff(pos: Vector3, strength: float) -> void:
+	if _puffs.is_empty():
+		var wet := FieldBuilder.weather == Weather.RAIN
+		for k in 2:
+			var e := CPUParticles3D.new()
+			e.one_shot = true
+			e.emitting = false
+			e.amount = 14
+			e.lifetime = 0.55
+			e.explosiveness = 0.95
+			e.local_coords = false
+			e.direction = Vector3.UP
+			e.spread = 50.0
+			e.initial_velocity_min = 1.8
+			e.initial_velocity_max = 3.6
+			e.gravity = Vector3(0.0, -9.0, 0.0)
+			e.scale_amount_min = 0.5
+			e.scale_amount_max = 1.0
+			var q := QuadMesh.new()
+			q.size = Vector2(0.05, 0.05)
+			var mat := StandardMaterial3D.new()
+			mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+			mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+			mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+			mat.albedo_color = Color(0.85, 0.9, 1.0, 0.55) if wet else Color(0.27, 0.5, 0.2, 0.95)
+			q.material = mat
+			e.mesh = q
+			e.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			add_child(e)
+			_puffs.append(e)
+	var e := _puffs[_puff_i]
+	_puff_i = (_puff_i + 1) % _puffs.size()
+	e.global_position = Vector3(pos.x, 0.05, pos.z)
+	e.initial_velocity_max = lerpf(2.4, 4.2, clampf(strength, 0.0, 1.0))
+	e.restart()
+
+
+## Lluvia: gotas alrededor de la cámara (en el mundo, no pegadas a ella, para que
+## caigan rectas al girar) y su sonido de fondo.
+var _rain: CPUParticles3D
+
+
+func _setup_rain() -> void:
+	_rain = CPUParticles3D.new()
+	_rain.amount = 360 if OS.has_feature("mobile") else 700
+	_rain.lifetime = 0.9
+	_rain.local_coords = false
+	_rain.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+	_rain.emission_box_extents = Vector3(15.0, 1.0, 15.0)
+	_rain.direction = Vector3(0.08, -1.0, 0.04)
+	_rain.spread = 2.0
+	_rain.initial_velocity_min = 16.0
+	_rain.initial_velocity_max = 20.0
+	_rain.gravity = Vector3(0.0, -6.0, 0.0)
+	var q := QuadMesh.new()
+	q.size = Vector2(0.012, 0.45)
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.billboard_mode = BaseMaterial3D.BILLBOARD_FIXED_Y
+	mat.albedo_color = Color(0.8, 0.85, 0.93, 0.22)
+	q.material = mat
+	_rain.mesh = q
+	_rain.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(_rain)
+	SoundFx.start_loop("rain", -13.0)
+
+
+func _follow_rain() -> void:
+	if _rain == null or _camera == null:
+		return
+	var cp := _camera.global_position
+	# Bajo techo (vestuario, túnel) no llueve
+	_rain.visible = state != State.LOCKER and absf(cp.x) < 64.0 and absf(cp.z) < 50.0
+	var fwd := flat(-_camera.global_transform.basis.z).normalized()
+	_rain.global_position = cp + fwd * 9.0 + Vector3.UP * 9.0
+
+
+## Cuánto aprieta el equipo sin balón (DecisionResolver.m3d_press_intensity).
+var _team_skill := []
+
+
+func press_intensity(team: int) -> float:
+	if _team_skill.is_empty():
+		for t in 2:
+			var sum := 0.0
+			var n := 0
+			for q: SoccerPlayer in teams[t]:
+				if not q.is_keeper:
+					sum += (q.stat("decision_making") + q.stat("speed") + q.stat("strength")) / 3.0
+					n += 1
+			_team_skill.append(sum / maxf(n, 1))
+	return DecisionResolver.m3d_press_intensity(team_mentality(team),
+			float(_team_skill[team]) - float(_team_skill[1 - team]))
 
 
 ## Formación en coordenadas locales (ataca hacia +X, portería propia en x = -52.5).

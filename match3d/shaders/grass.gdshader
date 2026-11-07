@@ -9,6 +9,7 @@ uniform float stripe_width = 4.6667;
 uniform float half_length = 28.0;
 uniform float stripes_on = 1.0;
 uniform float wear = 1.0; // calvas delante de las porterías
+uniform float wet = 0.0;  // lluvia: más oscuro y brillante, con charcos
 
 varying vec3 wpos;
 
@@ -50,7 +51,10 @@ void fragment() {
 	float dx = half_length - abs(wpos.x);
 	float worn = wear * exp(-pow(dx - 1.5, 2.0) * 0.12 - wpos.z * wpos.z * 0.05);
 	c = mix(c, vec3(0.36, 0.44, 0.22), clamp(worn * (0.3 + n * 0.5), 0.0, 0.35));
+	// Mojado: la hierba se oscurece y refleja la luz; en las zonas más bajas, charcos
+	float puddle = smoothstep(0.66, 0.8, noise(wpos.xz * 0.13 + 7.0)) * wet;
+	c *= mix(1.0, 0.74, wet) * mix(1.0, 0.8, puddle);
 	ALBEDO = c;
-	ROUGHNESS = 0.95;
-	SPECULAR = 0.2;
+	ROUGHNESS = mix(mix(0.95, 0.6, wet), 0.18, puddle);
+	SPECULAR = mix(0.2, 0.38, wet);
 }

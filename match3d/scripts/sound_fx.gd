@@ -13,11 +13,12 @@ var _pool: Array[AudioStreamPlayer] = []
 var _next := 0
 var _crowd: AudioStreamPlayer
 var _crowd_target := -14.0
+var _loops := {}
 
 
 func _ready() -> void:
 	instance = self
-	for k in ["kick", "touch", "catch", "post", "net", "whistle", "whistle_end", "cheer"]:
+	for k in ["kick", "touch", "catch", "post", "net", "whistle", "whistle_end", "cheer", "ooh", "applause"]:
 		_stream(k) # se generan al empezar, no a mitad de jugada
 	for i in 10:
 		var p := AudioStreamPlayer.new()
@@ -50,6 +51,18 @@ static func play(sfx: String, volume_db := 0.0, pitch := 1.0) -> void:
 	p.volume_db = volume_db
 	p.pitch_scale = pitch * randf_range(0.96, 1.04)
 	p.play()
+
+
+## Sonido de fondo en bucle (la lluvia); otra llamada con el mismo nombre no lo duplica.
+static func start_loop(sfx: String, volume_db := 0.0) -> void:
+	if instance == null or instance._loops.has(sfx):
+		return
+	var p := AudioStreamPlayer.new()
+	p.stream = _stream(sfx)
+	p.volume_db = volume_db
+	instance.add_child(p)
+	p.play()
+	instance._loops[sfx] = p
 
 
 ## Volumen del murmullo del público (dB).
@@ -93,6 +106,32 @@ static func _make(sfx: String) -> AudioStreamWAV:
 		"cheer":
 			s = _lowpass(_render(3.5, func(t: float, n: float) -> float:
 				return n * minf(t * 4.0, 1.0) * exp(-maxf(t - 0.6, 0.0) * 0.9) * (0.8 + 0.2 * sin(t * 9.0))), 0.35)
+		"ooh":
+			# "¡Uuuh!" de la grada: muchas voces graves a la vez, sube y se apaga
+			var fr: Array[float] = []
+			var ph: Array[float] = []
+			for k in 12:
+				fr.append(randf_range(165.0, 320.0))
+				ph.append(randf() * TAU)
+			s = _lowpass(_render(1.7, func(t: float, n: float) -> float:
+				var env := smoothstep(0.0, 0.3, t) * exp(-maxf(t - 0.45, 0.0) * 2.3)
+				var v := 0.0
+				for k in fr.size():
+					v += sin(TAU * fr[k] * t + ph[k])
+				return (v / fr.size() * 0.75 + n * 0.4) * env), 0.3)
+		"applause":
+			s = _render(2.6, func(t: float, n: float) -> float:
+				var env := smoothstep(0.0, 0.15, t) * exp(-maxf(t - 1.0, 0.0) * 1.6)
+				var claps := absf(sin(t * 41.0) * sin(t * 57.3) * sin(t * 73.1))
+				return n * (0.3 + 0.7 * claps) * env * 0.8)
+		"rain":
+			loop = true
+			s = _lowpass(_render(3.0, func(_t: float, n: float) -> float: return n), 0.6)
+			var rfade := int(RATE * 0.2)
+			for i in rfade:
+				var k := float(i) / rfade
+				s[i] = s[i] * k + s[s.size() - rfade + i] * (1.0 - k)
+			s = s.slice(0, s.size() - rfade)
 		"crowd":
 			loop = true
 			s = _lowpass(_render(4.0, func(t: float, n: float) -> float:

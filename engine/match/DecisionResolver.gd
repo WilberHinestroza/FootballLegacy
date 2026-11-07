@@ -1158,3 +1158,19 @@ static func m3d_volley(shooting: float, composure: float, ball_y: float) -> Dict
 		"spread": (1.0 - skill) * 0.16 + (1.0 - comfort) * 0.12,
 		"lift": lerpf(2.5, 0.6, comfort)} # mal cogida, se va hacia arriba
 
+
+## Chilena: velocidad (m/s), error angular (rad) y elevación. Más difícil que la
+## volea: la técnica pesa más y lo ideal es que llegue a ~1,8 m.
+static func m3d_bicycle(shooting: float, dribbling: float, composure: float, ball_y: float) -> Dictionary:
+	var comfort: float = clampf(1.0 - absf(ball_y - 1.8) / 0.6, 0.0, 1.0)
+	var skill: float = clampf(shooting * 0.45 + dribbling * 0.35 + composure * 0.2, 0.0, 1.0)
+	return {"speed": lerpf(14.0, 24.0, skill) * lerpf(0.75, 1.0, comfort),
+		"spread": (1.0 - skill) * 0.22 + (1.0 - comfort) * 0.14,
+		"lift": lerpf(1.2, -1.5, comfort)} # bien cogida, va hacia abajo
+
+
+## Presión del equipo sin balón (0,75..1,35): quien pierde al final aprieta (la
+## mentalidad en metros que adelanta líneas) y el equipo mejor físicamente y en
+## lectura presiona más alto. `skill_diff` = media propia − media rival (0..1).
+static func m3d_press_intensity(mentality_m: float, skill_diff: float) -> float:
+	return clampf(1.0 + mentality_m * 0.035 + skill_diff * 0.8, 0.75, 1.35)
