@@ -118,6 +118,73 @@ func _ready() -> void:
 	_refresh_mode_buttons()
 	_render_picker()
 	_show_picker()
+	_build_my_tournaments()
+
+
+## TUS TORNEOS (8-nov, rediseño estilo consola): tu liga, tu copa y la
+## continental de tu zona, a un toque, arriba del explorador del mundo.
+func _build_my_tournaments() -> void:
+	if WorldTickEngine.season.is_empty():
+		return
+	var my_id: int = int(WorldTickEngine.season.get("league_id", -1))
+	var mine: LeagueData = null
+	for l in WorldTickEngine.world.get("leagues", []):
+		if l.league_id == my_id:
+			mine = l
+			break
+	if mine == null:
+		return
+	var player := SaveManager.load_player()
+	var club: ClubData = WorldFactory.find_club(WorldTickEngine.world, player.club_id) if player != null else null
+	var base: Color = Color(club.primary_color_hex) if club != null and club.primary_color_hex != "" else Styles.GREEN
+	var accent: Color = base.lightened(0.35) if base.get_luminance() < 0.18 else base
+	if _land_on:
+		var bd := UiKit.club_backdrop(base)
+		add_child(bd)
+		move_child(bd, 0)
+	var row := HBoxContainer.new()
+	row.name = "MyTournaments"
+	row.add_theme_constant_override("separation", 10)
+	# Tu liga, con tu puesto
+	var table: Array = WorldTickEngine.user_league_table()
+	var my_row: Dictionary = {} if table.is_empty() or player == null else LeagueTable.row_for(table, player.club_id)
+	var pos_txt: String = ("%dº · %d pts" % [int(my_row.get("pos", 0)), int(my_row.get("pts", 0))]) if not my_row.is_empty() else "Ver la tabla"
+	row.add_child(_my_tile("Tu liga", mine.league_name, pos_txt, Icons.PX_STANDINGS, accent, func() -> void:
+		_national_stage = "country"
+		_on_league_chosen(mine)))
+	# Tu copa nacional
+	row.add_child(_my_tile("Tu copa", "Copa de %s" % mine.country, "Ver el cuadro", Icons.PX_CUP, Styles.GOLD, func() -> void:
+		_selected_country = mine.country
+		_on_country_cup_chosen()))
+	# Continental de tu zona
+	var conf: String = Confederations.confederation_of(mine.country)
+	if conf != "":
+		row.add_child(_my_tile("Continental", Confederations.tier_name(conf, 1), "Grupos y cruces", Icons.PX_WORLD, Styles.BLUE, func() -> void:
+			_on_confederation_chosen(conf, 1)))
+	picker_panel.add_child(row)
+	picker_panel.move_child(row, 0)
+	if _land_on and picker_panel.visible:
+		$Root/Margin/VBox/TitleLabel.visible = false
+
+
+func _my_tile(title: String, big: String, small: String, icon: String, accent: Color, cb: Callable) -> Control:
+	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 10)
+	var ic := Icons.px_rect(icon, 36)
+	ic.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	h.add_child(ic)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 0)
+	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	h.add_child(v)
+	var b := UiKit.tile_text(big, 15, Color.WHITE, true)
+	b.clip_text = true
+	v.add_child(b)
+	v.add_child(UiKit.tile_text(small, 12, Color(0.75, 0.77, 0.82)))
+	var t := UiKit.tile(title, accent, h, cb, 74)
+	t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	t.size_flags_vertical = Control.SIZE_FILL
+	return t
 
 func _refresh_mode_buttons() -> void:
 	var buttons: Array = [leagues_mode_button, continental_mode_button, ranking_mode_button]
@@ -829,7 +896,8 @@ func _set_comp_header_legacy(logo: Control, text: String, trophy: Control = null
 
 func _show_picker() -> void:
 	picker_panel.visible = true
-	$Root/Margin/VBox/TitleLabel.visible = true
+	# En horizontal la franja "Tus torneos" ya encabeza: sin título, más países a la vista
+	$Root/Margin/VBox/TitleLabel.visible = not (_land_on and picker_panel.has_node("MyTournaments"))
 	detail_panel.visible = false
 
 func _show_detail() -> void:

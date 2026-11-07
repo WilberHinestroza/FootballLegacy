@@ -1196,6 +1196,11 @@ func _refresh_press() -> void:
 	_press_dots = null
 	_press_idx = 0
 	_press_paused = false
+	if _mosaic_on:
+		if _press_timer != null:
+			_press_timer.stop()
+		_press_newspaper()
+		return
 	# La zona de prensa RESERVA su espacio SIEMPRE (haya o no noticia) para
 	# que no salten los elementos de abajo del Hub (pedido de Wilber).
 	press_box.custom_minimum_size = Vector2(0, 120)
@@ -1399,17 +1404,19 @@ func _refresh_standings() -> void:
 	var table := WorldTickEngine.user_league_table()
 	if table.is_empty():
 		return
-	var widths := [22, 96, 26, 28, 28, 32, 32]
+	var widths: Array = [26, 300, 34, 34, 34, 40, 40] if _mosaic_on else [22, 96, 26, 28, 28, 32, 32]
 	var hspace := Control.new()
 	hspace.custom_minimum_size = Vector2(18, 1)
 	DataTable.add_row(_standings_box, ["#", "Club", "PJ", "GF", "GC", "+/-", "Pts"], widths, true, false, Callable(), Color.TRANSPARENT, hspace)
 	var n: int = table.size()
 	var shown := {}
 	var to_show: Array = []
-	for i in range(mini(4, n)):
+	# En el mosaico la tabla va en un panel grande: la liga entera
+	var top_n: int = n if _mosaic_on else mini(4, n)
+	for i in range(top_n):
 		to_show.append(table[i])
 	var mine: Dictionary = LeagueTable.row_for(table, _user_club_id())
-	if not mine.is_empty() and int(mine["pos"]) > 4:
+	if not mine.is_empty() and int(mine["pos"]) > top_n:
 		to_show.append(mine)
 	var league_id: int = int(WorldTickEngine.season.get("league_id", -1))
 	var league: LeagueData = null
@@ -1886,6 +1893,8 @@ func _build_mosaic(left: VBoxContainer, right: VBoxContainer, tabs_box: Control)
 		grid.add_child(tl)
 	# Prensa · Tabla · Objetivos: el cuadro con pestañas de antes, ahora encima
 	_build_panel_overlay(tabs_box)
+	_refresh_press()
+	_refresh_standings()
 	_refresh_mosaic()
 
 
@@ -1917,10 +1926,10 @@ func _build_panel_overlay(tabs_box: Control) -> void:
 	var card := PanelContainer.new()
 	card.add_theme_stylebox_override("panel", Styles.card_accent(_accent))
 	card.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	card.offset_left = 170
-	card.offset_right = -170
-	card.offset_top = 70
-	card.offset_bottom = -70
+	card.offset_left = 70
+	card.offset_right = -70
+	card.offset_top = 72    # debajo de la barra de arriba (si no, tapa las pestañas)
+	card.offset_bottom = -10
 	_panel_overlay.add_child(card)
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 8)
@@ -2115,3 +2124,83 @@ func _match_side(crest: Control, n: String) -> VBoxContainer:
 	l.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	v.add_child(l)
 	return v
+
+
+## PRENSA en el mosaico (8-nov, Wilber: "en la de prensa se pueden mostrar
+## diferentes las noticias"): como la portada de un periódico. La principal en
+## grande con su entradilla; las demás en dos columnas. Tocar abre Noticias.
+const PRESS_PAPER_MAX := 9
+
+func _press_newspaper() -> void:
+	press_box.custom_minimum_size = Vector2.ZERO
+	if _player == null or _player.press_feed.is_empty():
+		var empty := UiKit.tile_text("Sin novedades de la prensa por ahora.", 14, Styles.GRAY_TEXT)
+		empty.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		press_box.add_child(empty)
+		return
+	press_box.add_child(_press_story(_player.press_feed[0], true))
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 8)
+	grid.add_theme_constant_override("v_separation", 8)
+	for i in range(1, mini(PRESS_PAPER_MAX, _player.press_feed.size())):
+		var st := _press_story(_player.press_feed[i], false)
+		st.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		grid.add_child(st)
+	press_box.add_child(grid)
+	var all := Button.new()
+	all.text = "Ver todas en Noticias"
+	all.focus_mode = Control.FOCUS_NONE
+	all.custom_minimum_size = Vector2(0, 38)
+	Styles.styled_button(all, Styles.pill_outlined(Styles.GRAY_TEXT), Color.WHITE)
+	all.pressed.connect(func() -> void: get_tree().change_scene_to_file("res://scenes/News/News.tscn"))
+	press_box.add_child(all)
+
+
+func _press_story(entry: Dictionary, lead: bool) -> PanelContainer:
+	var accent: Color = Styles.sentiment_color(entry.get("sentiment", ""))
+	var panel := PanelContainer.new()
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.11, 0.12, 0.15) if lead else Color(0.09, 0.1, 0.12)
+	sb.set_corner_radius_all(10)
+	sb.border_width_left = 4
+	sb.border_color = accent
+	sb.content_margin_left = 14
+	sb.content_margin_right = 12
+	sb.content_margin_top = 10 if lead else 8
+	sb.content_margin_bottom = 10 if lead else 8
+	panel.add_theme_stylebox_override("panel", sb)
+	var vb := VBoxContainer.new()
+	vb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	vb.add_theme_constant_override("separation", 4)
+	panel.add_child(vb)
+	var top := HBoxContainer.new()
+	top.add_theme_constant_override("separation", 6)
+	vb.add_child(top)
+	top.add_child(MediaOutlets.logo(String(entry.get("source", "")), 22 if lead else 16))
+	var src := UiKit.tile_text(MediaOutlets.display(String(entry.get("source", ""))).to_upper(), 11, accent, true)
+	src.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	src.clip_text = true
+	top.add_child(src)
+	var ago: int = WorldTickEngine.current_epoch_day - int(entry.get("day", WorldTickEngine.current_epoch_day))
+	var when := "hoy" if ago <= 0 else ("ayer" if ago == 1 else "hace %d días" % ago)
+	var wl := UiKit.tile_text(("PORTADA · " if lead else "") + when, 11, Styles.GOLD if lead else Styles.GRAY_TEXT)
+	wl.text_overrun_behavior = TextServer.OVERRUN_NO_TRIMMING   # si no, su ancho mínimo es ~0 y desaparece
+	top.add_child(wl)
+	var head := UiKit.tile_text(String(entry.get("headline", "")), 22 if lead else 14, Color.WHITE, lead)
+	head.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	head.max_lines_visible = 2
+	vb.add_child(head)
+	var body := String(entry.get("body", ""))
+	if lead and body != "":
+		var bl := UiKit.tile_text(body, 13, Color(0.78, 0.8, 0.85))
+		bl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		bl.max_lines_visible = 3
+		vb.add_child(bl)
+	UiKit._ignore_mouse(vb)
+	var e_key: String = "%d|%s" % [int(entry.get("day", 0)), String(entry.get("headline", ""))]
+	UiScroll.on_tap(panel, func() -> void:
+		WorldTickEngine.focus_news_key = e_key
+		get_tree().change_scene_to_file("res://scenes/News/News.tscn"))
+	return panel
+
