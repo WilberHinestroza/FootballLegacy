@@ -514,6 +514,7 @@ func _physics_process(delta: float) -> void:
 			_check_moment_outcome(delta)
 		State.MOMENT_RESULT:
 			_freeze_players()
+			_update_react_facing(delta)
 			_timer -= delta
 			if _timer <= 0.0:
 				_back_to_simulation()
@@ -3610,6 +3611,81 @@ func _finish_moment(text: String) -> void:
 	_hud.set_hint("")
 	_hud.show_message(text, 2.0)
 	_hud.add_feed("%d'  %s" % [int(minute), text])
+	_moment_reactions(ok)
+
+
+## Tras una jugada clave sin gol nadie se queda de piedra: el que hace la falta
+## protesta al árbitro, el compañero del caído le reclama, tras un fallo tuyo
+## te lamentas (y alguien te anima) y si la robas tú, puño al aire.
+var _foul_pair: Array = []
+var _react_face := {} # SoccerPlayer -> punto hacia el que se va girando
+
+
+func _moment_reactions(ok: bool) -> void:
+	_react_face.clear()
+	var pair := _foul_pair
+	_foul_pair = []
+	if _moment_goal >= 0 or star == null or not star.visible:
+		return # el gol tiene su propia celebración
+	if pair.size() == 2:
+		var fouler: SoccerPlayer = pair[0]
+		var victim: SoccerPlayer = pair[1]
+		var ref_pos := fouler.global_position + Vector3(2.0, 0.0, 0.0)
+		if not staff.refs.is_empty():
+			ref_pos = (staff.refs[0] as Node3D).global_position
+		_react(fouler, ["argue", "argue_2"].pick_random(), 0.35, 1.8, ref_pos)
+		var mate := _nearest_of_team(victim.team, victim.global_position, [victim, fouler], 9.0)
+		if mate != null:
+			_react(mate, "yell", 0.6, 1.4, fouler.global_position)
+		return
+	if is_attacking_moment():
+		if not ok:
+			_react(star, "tired" if randf() < 0.5 else "yell", 0.4, 1.6, Vector3.INF)
+			var mate := _nearest_of_team(0, star.global_position, [star], 14.0)
+			if mate != null and randf() < 0.7:
+				_react(mate, "clap", 0.9, 1.4, star.global_position) # ánimo, la próxima entra
+			if _saved:
+				var keeper: SoccerPlayer = teams[1][0]
+				_react(keeper, "fist_pump", 0.5, 1.2, Vector3.INF)
+		return
+	if ok and ball.owner_player == star and not star.is_keeper:
+		_react(star, "fist_pump", 0.3, 1.2, Vector3.INF)
+		var mate := _nearest_of_team(0, star.global_position, [star], 14.0)
+		if mate != null:
+			_react(mate, "clap", 0.6, 1.3, star.global_position)
+	elif ok and ball.last_touch != null and ball.last_touch.team == 1 and not ball.last_touch.is_keeper:
+		_react(ball.last_touch, "tired", 0.5, 1.5, Vector3.INF) # el rival que la falló
+
+
+func _react(p: SoccerPlayer, anim: String, delay: float, dur: float, face: Vector3) -> void:
+	if p == null or not p.visible or p.is_diving():
+		return
+	if face != Vector3.INF:
+		_react_face[p] = face
+	get_tree().create_timer(delay, false).timeout.connect(func() -> void:
+		if is_instance_valid(p) and state == State.MOMENT_RESULT and not p.is_acting():
+			p.play_action(anim, 1.0, dur))
+
+
+func _nearest_of_team(team: int, point: Vector3, exclude: Array, max_d: float) -> SoccerPlayer:
+	var best: SoccerPlayer = null
+	var best_d := max_d
+	for q: SoccerPlayer in teams[team]:
+		if q.is_keeper or not q.visible or exclude.has(q):
+			continue
+		var d := flat_dist(q.global_position, point)
+		if d < best_d:
+			best = q
+			best_d = d
+	return best
+
+
+func _update_react_facing(delta: float) -> void:
+	for p: SoccerPlayer in _react_face:
+		if is_instance_valid(p):
+			var to := flat(((_react_face[p] as Vector3) - p.global_position))
+			if to.length() > 0.3:
+				p.ease_facing(to.normalized(), delta, 4.0)
 
 
 func on_shot(_shooter: SoccerPlayer) -> void:
@@ -5351,6 +5427,7 @@ Cortas la jugada a base de falta"
 		staff.show_card(fouler, fouler == star and sent_off) # el árbitro va y se la enseña
 		_card_cam_t = 2.8
 		_card_fouler = fouler
+	_foul_pair = [fouler, victim]
 	_finish_moment(text)
 
 
