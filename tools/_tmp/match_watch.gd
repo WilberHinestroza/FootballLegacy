@@ -38,12 +38,73 @@ func _ready() -> void:
 	m._end_walkout()
 	if m.state == m.State.CUTSCENE:
 		m._end_cutscene()
+	if args.has("subout"):
+		m._moments.clear()
+		await get_tree().create_timer(1.5).timeout
+		m.minute = 70.0
+		m._sub_off_star(70)
+		for k in 12:
+			await get_tree().create_timer(0.6).timeout
+			print("SUB t=%d state=%s walk=%s z=%.1f nombre=%s" % [k, m.State.keys()[m.state], m._sub_walk,
+				m.star.global_position.z, m._names[0][m.star.index]])
+			if DisplayServer.get_name() != "headless":
+				get_viewport().get_texture().get_image().save_png("res://build/sub_%02d.png" % k)
+		get_tree().quit(0)
+		return
+	if args.has("half"):
+		m._moments.clear()
+		await get_tree().create_timer(1.0).timeout
+		m._start_halftime_walk()
+		for k in 14:
+			await get_tree().create_timer(0.7).timeout
+			print("HALF t=%.1f state=%s visibles=%d" % [m._outro_t, m.State.keys()[m.state],
+				m.players.filter(func(q: SoccerPlayer) -> bool: return q.visible).size()])
+			if DisplayServer.get_name() != "headless":
+				get_viewport().get_texture().get_image().save_png("res://build/half_%02d.png" % k)
+		m._locker_wait = 0.0
+		await get_tree().create_timer(1.5).timeout
+		print("HALF despues: state=%s visibles=%d ball=%s" % [m.State.keys()[m.state],
+			m.players.filter(func(q: SoccerPlayer) -> bool: return q.visible).size(), m.ball.visible])
+		get_tree().quit(0)
+		return
 	if OS.get_cmdline_user_args().has("outro"):
 		m._moments.clear()
 		await get_tree().create_timer(1.0).timeout
 		m.score = [0, 1]
 		m.minute = 90.0
 		m._finish_match()
+		if args.has("shake"):
+			print("PAIRS %d state=%s" % [m._outro_shake.size() / 2, m.State.keys()[m.state]])
+			for q: SoccerPlayer in m.players:
+				if q.team == 1 and q.visible:
+					print("  rival d=%.1f" % SoccerMatch.flat_dist(q.global_position, m.star.global_position))
+			for k in 16:
+				await get_tree().create_timer(0.5).timeout
+				var ph := {}
+				for q in m._outro_shake:
+					var key: String = String(m._outro_shake[q].phase)
+					ph[key] = int(ph.get(key, 0)) + 1
+				var sd: Dictionary = m._outro_shake.get(m.star, {})
+				var dd := -1.0
+				if not sd.is_empty():
+					dd = SoccerMatch.flat_dist(m.star.global_position, (sd.partner as SoccerPlayer).global_position)
+				print("SHAKE t=%.1f %s star=%s d=%.2f" % [m._outro_t, ph, sd.get("phase", "-"), dd])
+				if String(sd.get("phase", "")) == "shake" and DisplayServer.get_name() != "headless":
+					var cam := Camera3D.new()
+					m.add_child(cam)
+					var pp: SoccerPlayer = sd.partner
+					var mid := (m.star.global_position + pp.global_position) * 0.5
+					var side := SoccerMatch.flat(pp.global_position - m.star.global_position).normalized().cross(Vector3.UP)
+					cam.global_position = mid + side * 3.2 + Vector3.UP * 1.3
+					cam.look_at(mid + Vector3.UP * 1.1)
+					cam.make_current()
+					m._hud.visible = false
+					await RenderingServer.frame_post_draw
+					await RenderingServer.frame_post_draw
+					get_viewport().get_texture().get_image().save_png("res://build/shake_%d.png" % k)
+					m._camera.make_current()
+					m._hud.visible = true
+					cam.queue_free()
 	elif OS.get_cmdline_user_args().has("goal"):
 		m._moments.clear()
 		await get_tree().create_timer(1.5).timeout

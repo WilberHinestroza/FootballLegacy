@@ -128,6 +128,9 @@ func _ready() -> void:
 	m.entered = false
 	m._halftime_pending = true
 	m._sim_step(0.0)
+	# Antes del vestuario, los equipos caminan al túnel; tocar la salta.
+	_check(m.state == m.State.OUTRO and m._halftime_walk, "el descanso no arrancó con la caminata al túnel")
+	m._on_tapped(Vector2.ZERO)
 	_check(m.state == m.State.LOCKER and m._locker != null, "descanso no abrió el camerino con el usuario fuera de cancha")
 	await get_tree().create_timer(2.6).timeout
 	_check(m._hud.choices_visible(), "el míster no mostró opciones en el vestuario")

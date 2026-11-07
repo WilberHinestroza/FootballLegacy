@@ -545,6 +545,8 @@ func _physics_process(delta: float) -> void:
 			_update_var_review(delta)
 		State.CUTSCENE:
 			_run_ai()
+			if _sub_walk:
+				_sub_walk_step()
 			_update_possession(delta)
 			_cut_timer -= delta
 			if _cut_timer <= 0.0:
@@ -638,7 +640,7 @@ func _sim_step(delta: float) -> void:
 		minute = 45.0
 		_hud.add_feed("45'  Descanso")
 		if _wants_locker():
-			_start_locker()
+			_start_halftime_walk()
 			return
 	if _extra_time_break_pending:
 		_extra_time_break_pending = false
@@ -969,7 +971,7 @@ func _finish_ambient_goal() -> void:
 		minute = 45.0
 		_hud.add_feed("45'  Descanso")
 		if _wants_locker():
-			_start_locker()
+			_start_halftime_walk()
 	elif extra_break_pending:
 		_extra_time_break_pending = false
 		minute = 105.0
@@ -1763,6 +1765,7 @@ func _start_outro() -> void:
 	order.sort_custom(func(a: SoccerPlayer, b: SoccerPlayer) -> bool:
 		return flat_dist(a.global_position, mouth_v) < flat_dist(b.global_position, mouth_v))
 	var deep := FieldBuilder.TUNNEL_ROWS * FieldBuilder.ROW_DEPTH + 1.5
+	_pair_handshakes(order)
 	for rank in order.size():
 		var p: SoccerPlayer = order[rank]
 		# Cuatro carriles en el pasillo (dos por equipo): en fila india se atascaban
@@ -1804,6 +1807,12 @@ func _start_outro() -> void:
 					p.play_action(drop, 1.0, down_t))
 		else:
 			p.set_meta("outro_down", 0.0)
+		if _outro_shake.has(p):
+			# Primero el saludo con el rival; el aplauso y la salida, después
+			var sh: Dictionary = _outro_shake[p]
+			sh.start = float(p.get_meta("outro_down", 0.0)) + 0.3
+			clap_d = maxf(clap_d, sh.start + 6.0)
+			_outro_delay[p] = maxf(float(_outro_delay[p]), clap_d + 1.0)
 		get_tree().create_timer(maxf(clap_d, 0.0), false).timeout.connect(func() -> void:
 			if is_instance_valid(p) and state == State.OUTRO:
 				p.play_action(act, 1.0, 1.2)) # el giro a la grada lo hace _update_outro, de a poco
@@ -1843,6 +1852,9 @@ func _update_outro(delta: float) -> void:
 	for p: SoccerPlayer in players:
 		if not p.visible or not _outro_target.has(p):
 			continue
+		if _outro_shake.has(p) and _update_handshake(p, delta):
+			pending += 1
+			continue
 		if _outro_t < float(_outro_delay.get(p, 0.0)):
 			p.move_input = Vector3.ZERO
 			p.sprinting = false
@@ -1872,11 +1884,168 @@ func _update_outro(delta: float) -> void:
 		p.move_input *= float(_outro_pace.get(p, OUTRO_PACE)) * lerpf(1.0, 2.2, far) * _walk_pace(p) / WALK_PACE
 		_keep_spacing(p)
 		pending += 1
+	if _halftime_walk:
+		if pending == 0 or _outro_t > HALFTIME_WALK_SECONDS:
+			_end_halftime_walk()
+		return
 	if pending == 0 or _outro_t > 24.0:
 		_finish_outro()
 
 
+## Descanso: antes del vestuario, unos segundos de los equipos caminando hacia el
+## túnel (mismo plano que la despedida: primero tú, luego el general). Reutiliza el
+## estado OUTRO con `_halftime_walk`; al acabar entra al vestuario (_start_locker).
+var _halftime_walk := false
+const HALFTIME_WALK_SECONDS := 7.0
+
+
+func _start_halftime_walk() -> void:
+	if state == State.OUTRO or state == State.LOCKER:
+		return
+	_halftime_walk = true
+	state = State.OUTRO
+	_outro_t = 0.0
+	_outro_delay.clear()
+	_outro_target.clear()
+	_outro_via.clear()
+	_outro_pace.clear()
+	_outro_shake.clear()
+	Engine.time_scale = 1.0
+	_set_human(null)
+	_hud.show_replay_button(false)
+	_hud.set_sim_visible(false)
+	_hud.set_hint("")
+	_hud.show_message("DESCANSO\n%s %d - %d %s" % [TEAM_NAMES[0], score[0], score[1], TEAM_NAMES[1]], 2.6, 0.62)
+	SoundFx.play("whistle", -3.0)
+	Haptics.hit("whistle")
+	SoundFx.set_crowd(-8.0)
+	_camera.make_current()
+	var deep := FieldBuilder.TUNNEL_ROWS * FieldBuilder.ROW_DEPTH + 1.5
+	var rank := 0
+	for p: SoccerPlayer in players:
+		if not p.visible:
+			continue
+		var col := (-1.0 if p.team == 0 else 1.0) * (0.55 if rank % 2 == 0 else 1.45)
+		rank += 1
+		_outro_target[p] = Vector3(FieldBuilder.TUNNEL_X + col, 0.0, -FIELD_WIDTH * 0.5 - FieldBuilder.SIDE_STANDS - deep)
+		_outro_via[p] = false
+		_outro_delay[p] = randf_range(0.2, 1.6) + (OUTRO_STAR_SHOT * 0.6 if p == star else 0.0)
+		_outro_pace[p] = OUTRO_PACE * randf_range(0.95, 1.25)
+		p.set_meta("outro_down", 0.0)
+		p.set_meta("ht_layers", [p.collision_layer, p.collision_mask])
+		p.stun_timer = 0.0
+		p.walk_normal = true
+		p.sad_gait = false
+	ball.owner_player = null
+	ball.freeze = true
+	ball.visible = false
+
+
+func _end_halftime_walk() -> void:
+	if not _halftime_walk:
+		return
+	_halftime_walk = false
+	for p: SoccerPlayer in players:
+		p.move_input = Vector3.ZERO
+		p.sprinting = false
+		p.walk_normal = false
+		if p.has_meta("ht_layers"):
+			var lm: Array = p.get_meta("ht_layers")
+			p.remove_meta("ht_layers")
+			p.collision_layer = int(lm[0])
+			p.collision_mask = int(lm[1])
+			p.visible = true # los que ya entraron al túnel vuelven para la 2.ª parte
+	_outro_target.clear()
+	ball.freeze = false
+	ball.visible = true
+	_start_locker()
+
+
+## Saludo al final: tú le das la mano al rival más cercano y otros cuantos se
+## saludan por parejas (ArmPose "shake"), antes de aplaudir e irse al túnel.
+var _outro_shake := {} # SoccerPlayer -> {partner, spot, phase, start, t}
+
+
+func _pair_handshakes(order: Array[SoccerPlayer]) -> void:
+	_outro_shake.clear()
+	var free: Array[SoccerPlayer] = []
+	for p: SoccerPlayer in order:
+		if not p.is_keeper:
+			free.append(p)
+	var firsts: Array[SoccerPlayer] = []
+	if star != null and free.has(star):
+		firsts.append(star)
+	for p: SoccerPlayer in free:
+		if p != star and p.team == 0 and randf() < 0.45:
+			firsts.append(p)
+	for a: SoccerPlayer in firsts:
+		if _outro_shake.has(a):
+			continue
+		var best: SoccerPlayer = null
+		var bd := 32.0 if a == star else 12.0
+		for b: SoccerPlayer in free:
+			if b.team == a.team or _outro_shake.has(b):
+				continue
+			var d := flat_dist(a.global_position, b.global_position)
+			if d < bd:
+				bd = d
+				best = b
+		if best == null:
+			continue
+		var mid := (a.global_position + best.global_position) * 0.5
+		var dir := flat(best.global_position - a.global_position).normalized()
+		if dir == Vector3.ZERO:
+			dir = Vector3.RIGHT
+		_outro_shake[a] = {"partner": best, "spot": mid - dir * 0.36, "phase": "wait", "start": 0.3, "t": 0.0}
+		_outro_shake[best] = {"partner": a, "spot": mid + dir * 0.36, "phase": "wait", "start": 0.3, "t": 0.0}
+
+
+## true mientras está con el saludo (camina al rival, espera, le da la mano).
+func _update_handshake(p: SoccerPlayer, delta: float) -> bool:
+	var sh: Dictionary = _outro_shake[p]
+	var partner: SoccerPlayer = sh.partner
+	if _outro_t < float(sh.start):
+		return false # aún reaccionando al pitazo: lo lleva el flujo normal (quieto)
+	match String(sh.phase):
+		"wait":
+			sh.phase = "go"
+		"go":
+			var spot: Vector3 = sh.spot
+			if flat_dist(p.global_position, spot) > 0.16:
+				AiBrain.move_to(p, spot, 0.05, false)
+				# Lejos se acercan trotando; el último tramo, caminando
+				var far := clampf((flat_dist(p.global_position, spot) - 3.0) / 8.0, 0.0, 1.0)
+				p.move_input *= _walk_pace(p) / WALK_PACE * lerpf(0.9, 2.0, far)
+			else:
+				p.move_input = Vector3.ZERO
+				sh.phase = "ready"
+			if _outro_t > float(sh.start) + 9.0:
+				sh.phase = "ready" # no se queda colgado si el otro no llega
+		"ready":
+			p.move_input = Vector3.ZERO
+			p.ease_facing(flat(partner.global_position - p.global_position).normalized(), delta, 5.0)
+			var other: Dictionary = _outro_shake.get(partner, {})
+			if other.is_empty() or String(other.phase) in ["ready", "shake"]:
+				sh.phase = "shake"
+				sh.t = 0.0
+				if p._avatar != null:
+					p._avatar.pose_arms("shake", 0.25)
+		"shake":
+			p.move_input = Vector3.ZERO
+			p.ease_facing(flat(partner.global_position - p.global_position).normalized(), delta, 5.0)
+			sh.t = float(sh.t) + delta
+			if float(sh.t) > 1.5:
+				if p._avatar != null:
+					p._avatar.pose_arms("", 0.3)
+				_outro_shake.erase(p)
+				return false
+	return true
+
+
 func _finish_outro() -> void:
+	if _halftime_walk:
+		_end_halftime_walk() # tocar en el descanso = directo al vestuario
+		return
 	if _outro_sent:
 		return
 	_outro_sent = true
@@ -2255,7 +2424,6 @@ func _sub_off_star(m: int) -> void:
 	_pending_free_kick = false
 	_subs_done[0] += 1
 	_sub_number = 12 + int(_subs_done[0]) * 2 + randi() % 2
-	var sub_name := ""
 	var bench: Array = (config.get("home_bench", []) as Array).duplicate()
 	var pick: Dictionary = {}
 	for d: Dictionary in bench:
@@ -2267,6 +2435,61 @@ func _sub_off_star(m: int) -> void:
 			if String(d.get("position", "")) != "GK":
 				pick = d
 				break
+	# Primero sales caminando a la banda (escena); el suplente aparece al llegar
+	if star.visible and not sent_off:
+		_sub_walk_off(m, pick)
+		return
+	_swap_out_star(m, pick)
+
+
+## Escena del cambio: caminas a la banda de los banquillos con el cartel arriba y
+## la grada aplaudiendo (más si jugaste bien); en la línea entra el suplente.
+var _sub_walk := false
+var _sub_walk_pick := {}
+var _sub_walk_m := 0
+var _sub_exit := Vector3.ZERO
+var _sub_clapped := false
+
+
+func _sub_walk_off(m: int, pick: Dictionary) -> void:
+	_sub_walk = true
+	_sub_walk_pick = pick
+	_sub_walk_m = m
+	_sub_clapped = false
+	if star.has_ball():
+		var mate := _nearest_of_team(0, star.global_position, [star], 40.0)
+		if mate != null:
+			_give_ball_now(mate)
+	_sub_exit = Vector3(clampf(star.global_position.x, -30.0, 30.0), 0.0, -FIELD_WIDTH * 0.5 - 0.6)
+	star.walk_normal = true
+	staff.substitution(0, int(profile.number), _sub_number)
+	_hud.show_substitution(TEAM_NAMES[0], profile.shirt, int(profile.number), _sub_number)
+	_hud.show_exit_button(false)
+	var r := live_rating()
+	SoundFx.play("applause", -4.0 if r >= 7.0 else (-9.0 if r >= 6.0 else -15.0))
+	_hud.show_message("Sales del campo\nla grada te despide con aplausos" if r >= 7.0 else "Sales del campo", 2.2)
+	_start_cutscene(star, 6.0, false)
+
+
+## Cada cuadro de la escena: el usuario va caminando a la banda (la IA del resto sigue).
+func _sub_walk_step() -> void:
+	var d := flat_dist(star.global_position, _sub_exit)
+	if d < 0.7:
+		_end_cutscene()
+		return
+	AiBrain.move_to(star, _sub_exit, 0.3, false)
+	star.move_input *= _walk_pace(star) / WALK_PACE * 0.75
+	star.sprinting = false
+	if not _sub_clapped and _cut_timer < 3.5:
+		_sub_clapped = true
+		star.play_action("clap", 1.0, 1.2) # aplaude a la grada
+
+
+func _swap_out_star(m: int, pick: Dictionary) -> void:
+	var sub_name := ""
+	var walked := _sub_walk
+	_sub_walk = false
+	star.walk_normal = false
 	if star.star_label:
 		star.star_label.visible = false
 	star.reset_generic_look()
@@ -2282,8 +2505,12 @@ func _sub_off_star(m: int) -> void:
 		star.apply_colors(_kits[0])
 	_names[0][star.index] = sub_name
 	_bake_kit_decals()
-	staff.substitution(0, int(profile.number), _sub_number)
-	_hud.show_substitution(TEAM_NAMES[0], profile.shirt, int(profile.number), _sub_number)
+	if walked:
+		# El suplente entra por donde saliste, hacia dentro del campo
+		star.reset_to(Vector3(_sub_exit.x, 0.0, -FIELD_WIDTH * 0.5 + 0.4), Vector3.BACK)
+	else:
+		staff.substitution(0, int(profile.number), _sub_number)
+		_hud.show_substitution(TEAM_NAMES[0], profile.shirt, int(profile.number), _sub_number)
 	_hud.add_feed("%d'  Cambio en %s: sale %s, entra %s" % [m, TEAM_NAMES[0], profile.player_name,
 			sub_name if sub_name != "" else "el %d" % _sub_number])
 	_hud.show_exit_button(false)
@@ -2359,6 +2586,8 @@ func _end_cutscene() -> void:
 		return
 	if _cut_sub and staff.user_seat != null:
 		_swap_in_star(Vector3.INF) # por si la escena se acabó antes de pisar el campo
+	if _sub_walk:
+		_swap_out_star(_sub_walk_m, _sub_walk_pick)
 	_cut_target = null
 	_cut_sub = false
 	state = State.SIMULATING
