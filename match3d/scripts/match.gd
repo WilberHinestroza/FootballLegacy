@@ -26,6 +26,8 @@ const PlayChain = preload("res://engine/match/m3d/PlayChain.gd")
 const PrePlayChoice = preload("res://engine/match/m3d/PrePlayChoice.gd")
 const Momentum = preload("res://engine/match/m3d/Momentum.gd")
 const Offside = preload("res://engine/match/m3d/Offside.gd")
+const MatchFx = preload("res://match3d/scripts/match_fx.gd")
+const OutroHandshakes = preload("res://match3d/scripts/outro_handshakes.gd")
 
 # Cancha reglamentaria (metros)
 const FIELD_LENGTH := 105.0
@@ -206,6 +208,7 @@ var _var := {}           # revisión en curso (estado VAR_REVIEW)
 var _var_cleared := false
 var _corner_exempt := false # del saque de esquina no hay fuera de juego
 var _trap_until := [0.0, 0.0]
+var fx: Node3D # efectos (match_fx.gd): lluvia y polvo de césped
 var _line_shift := [0.0, 0.0] # m que la línea defensiva de cada equipo sube (+) o recula (-)
 var _trap_next := [0.0, 0.0]
 ## Segundos de plano de la tarjeta (la cámara enfoca al árbitro y al infractor).
@@ -328,8 +331,11 @@ func _ready() -> void:
 	var goal_areas := FieldBuilder.build(self)
 	FieldBuilder.build_tifo(self, String(config.get("home_name", "LOCAL")))
 	_goal_areas = goal_areas
+	fx = MatchFx.new()
+	fx.name = "Fx"
+	add_child(fx)
 	if FieldBuilder.weather == Weather.RAIN:
-		_setup_rain()
+		fx.start_rain()
 	goal_areas[0].body_entered.connect(_on_goal_area_entered.bind(0))
 	goal_areas[1].body_entered.connect(_on_goal_area_entered.bind(1))
 
@@ -558,7 +564,7 @@ func _physics_process(delta: float) -> void:
 	if state == State.SIMULATING or state == State.MOMENT:
 		_check_ball_escaped()
 	_update_camera(delta)
-	_follow_rain()
+	fx.follow_rain(_camera, state == State.LOCKER)
 	_camera_declutter()
 	_update_aim_zone()
 	_apply_shake(delta)
@@ -1766,7 +1772,7 @@ func _start_outro() -> void:
 	order.sort_custom(func(a: SoccerPlayer, b: SoccerPlayer) -> bool:
 		return flat_dist(a.global_position, mouth_v) < flat_dist(b.global_position, mouth_v))
 	var deep := FieldBuilder.TUNNEL_ROWS * FieldBuilder.ROW_DEPTH + 1.5
-	_pair_handshakes(order)
+	_outro_shake = OutroHandshakes.pair(order, star)
 	for rank in order.size():
 		var p: SoccerPlayer = order[rank]
 		# Cuatro carriles en el pasillo (dos por equipo): en fila india se atascaban
@@ -1853,7 +1859,7 @@ func _update_outro(delta: float) -> void:
 	for p: SoccerPlayer in players:
 		if not p.visible or not _outro_target.has(p):
 			continue
-		if _outro_shake.has(p) and _update_handshake(p, delta):
+		if _outro_shake.has(p) and OutroHandshakes.update(self, p, delta):
 			pending += 1
 			continue
 		if _outro_t < float(_outro_delay.get(p, 0.0)):
@@ -1962,85 +1968,8 @@ func _end_halftime_walk() -> void:
 	_start_locker()
 
 
-## Saludo al final: tú le das la mano al rival más cercano y otros cuantos se
-## saludan por parejas (ArmPose "shake"), antes de aplaudir e irse al túnel.
+## Saludo al final (OutroHandshakes): quién con quién y en qué fase va cada uno.
 var _outro_shake := {} # SoccerPlayer -> {partner, spot, phase, start, t}
-
-
-func _pair_handshakes(order: Array[SoccerPlayer]) -> void:
-	_outro_shake.clear()
-	var free: Array[SoccerPlayer] = []
-	for p: SoccerPlayer in order:
-		if not p.is_keeper:
-			free.append(p)
-	var firsts: Array[SoccerPlayer] = []
-	if star != null and free.has(star):
-		firsts.append(star)
-	for p: SoccerPlayer in free:
-		if p != star and p.team == 0 and randf() < 0.45:
-			firsts.append(p)
-	for a: SoccerPlayer in firsts:
-		if _outro_shake.has(a):
-			continue
-		var best: SoccerPlayer = null
-		var bd := 32.0 if a == star else 12.0
-		for b: SoccerPlayer in free:
-			if b.team == a.team or _outro_shake.has(b):
-				continue
-			var d := flat_dist(a.global_position, b.global_position)
-			if d < bd:
-				bd = d
-				best = b
-		if best == null:
-			continue
-		var mid := (a.global_position + best.global_position) * 0.5
-		var dir := flat(best.global_position - a.global_position).normalized()
-		if dir == Vector3.ZERO:
-			dir = Vector3.RIGHT
-		_outro_shake[a] = {"partner": best, "spot": mid - dir * 0.36, "phase": "wait", "start": 0.3, "t": 0.0}
-		_outro_shake[best] = {"partner": a, "spot": mid + dir * 0.36, "phase": "wait", "start": 0.3, "t": 0.0}
-
-
-## true mientras está con el saludo (camina al rival, espera, le da la mano).
-func _update_handshake(p: SoccerPlayer, delta: float) -> bool:
-	var sh: Dictionary = _outro_shake[p]
-	var partner: SoccerPlayer = sh.partner
-	if _outro_t < float(sh.start):
-		return false # aún reaccionando al pitazo: lo lleva el flujo normal (quieto)
-	match String(sh.phase):
-		"wait":
-			sh.phase = "go"
-		"go":
-			var spot: Vector3 = sh.spot
-			if flat_dist(p.global_position, spot) > 0.16:
-				AiBrain.move_to(p, spot, 0.05, false)
-				# Lejos se acercan trotando; el último tramo, caminando
-				var far := clampf((flat_dist(p.global_position, spot) - 3.0) / 8.0, 0.0, 1.0)
-				p.move_input *= _walk_pace(p) / WALK_PACE * lerpf(0.9, 2.0, far)
-			else:
-				p.move_input = Vector3.ZERO
-				sh.phase = "ready"
-			if _outro_t > float(sh.start) + 9.0:
-				sh.phase = "ready" # no se queda colgado si el otro no llega
-		"ready":
-			p.move_input = Vector3.ZERO
-			p.ease_facing(flat(partner.global_position - p.global_position).normalized(), delta, 5.0)
-			var other: Dictionary = _outro_shake.get(partner, {})
-			if other.is_empty() or String(other.phase) in ["ready", "shake"]:
-				sh.phase = "shake"
-				sh.t = 0.0
-				if p._avatar != null:
-					p._avatar.pose_arms("shake", 0.25)
-		"shake":
-			p.move_input = Vector3.ZERO
-			p.ease_facing(flat(partner.global_position - p.global_position).normalized(), delta, 5.0)
-			sh.t = float(sh.t) + delta
-			if float(sh.t) > 1.5:
-				if p._avatar != null:
-					p._avatar.pose_arms("", 0.3)
-				_outro_shake.erase(p)
-				return false
-	return true
 
 
 func _finish_outro() -> void:
@@ -4218,7 +4147,7 @@ func _update_react_facing(delta: float) -> void:
 
 func on_shot(_shooter: SoccerPlayer) -> void:
 	if _shooter != null and ball.global_position.y < 0.5:
-		turf_puff(ball.global_position, 0.7)
+		fx.turf_puff(ball.global_position, 0.7)
 	# El penalti del usuario en la tanda se resuelve como una jugada normal,
 	# pero no debe sumar tiros ni tiros a puerta a las estadísticas del partido.
 	if _shootout_in_user_kick:
@@ -5939,7 +5868,7 @@ func request_tackle(t: SoccerPlayer, slide := false) -> void:
 	t.tackle_cooldown = 0.9
 	t.lunge()
 	if slide:
-		turf_puff(t.global_position + t.facing * 0.6, 1.0)
+		fx.turf_puff(t.global_position + t.facing * 0.6, 1.0)
 	var holder := ball.owner_player
 	if holder == null or holder.team == t.team or holder.is_keeper:
 		return
@@ -6483,90 +6412,6 @@ func team_mentality(team: int) -> float:
 		var late := clampf((minute - 65.0) / 25.0, 0.0, 1.0)
 		m += (-5.0 if diff > 0 else 7.0) * late * (1.0 if absi(diff) == 1 else 0.6)
 	return m
-
-
-## Golpe fuerte o barrida: salta un poco de césped (o agua, si llueve). Dos
-## emisores que se turnan, de un solo disparo: barato también en el móvil.
-var _puffs: Array[CPUParticles3D] = []
-var _puff_i := 0
-
-
-func turf_puff(pos: Vector3, strength: float) -> void:
-	if _puffs.is_empty():
-		var wet := FieldBuilder.weather == Weather.RAIN
-		for k in 2:
-			var e := CPUParticles3D.new()
-			e.one_shot = true
-			e.emitting = false
-			e.amount = 14
-			e.lifetime = 0.55
-			e.explosiveness = 0.95
-			e.local_coords = false
-			e.direction = Vector3.UP
-			e.spread = 50.0
-			e.initial_velocity_min = 1.8
-			e.initial_velocity_max = 3.6
-			e.gravity = Vector3(0.0, -9.0, 0.0)
-			e.scale_amount_min = 0.5
-			e.scale_amount_max = 1.0
-			var q := QuadMesh.new()
-			q.size = Vector2(0.05, 0.05)
-			var mat := StandardMaterial3D.new()
-			mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-			mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
-			mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-			mat.albedo_color = Color(0.85, 0.9, 1.0, 0.55) if wet else Color(0.27, 0.5, 0.2, 0.95)
-			q.material = mat
-			e.mesh = q
-			e.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-			add_child(e)
-			_puffs.append(e)
-	var e := _puffs[_puff_i]
-	_puff_i = (_puff_i + 1) % _puffs.size()
-	e.global_position = Vector3(pos.x, 0.05, pos.z)
-	e.initial_velocity_max = lerpf(2.4, 4.2, clampf(strength, 0.0, 1.0))
-	e.restart()
-
-
-## Lluvia: gotas alrededor de la cámara (en el mundo, no pegadas a ella, para que
-## caigan rectas al girar) y su sonido de fondo.
-var _rain: CPUParticles3D
-
-
-func _setup_rain() -> void:
-	_rain = CPUParticles3D.new()
-	_rain.amount = 360 if OS.has_feature("mobile") else 700
-	_rain.lifetime = 0.9
-	_rain.local_coords = false
-	_rain.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
-	_rain.emission_box_extents = Vector3(15.0, 1.0, 15.0)
-	_rain.direction = Vector3(0.08, -1.0, 0.04)
-	_rain.spread = 2.0
-	_rain.initial_velocity_min = 16.0
-	_rain.initial_velocity_max = 20.0
-	_rain.gravity = Vector3(0.0, -6.0, 0.0)
-	var q := QuadMesh.new()
-	q.size = Vector2(0.012, 0.45)
-	var mat := StandardMaterial3D.new()
-	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mat.billboard_mode = BaseMaterial3D.BILLBOARD_FIXED_Y
-	mat.albedo_color = Color(0.8, 0.85, 0.93, 0.22)
-	q.material = mat
-	_rain.mesh = q
-	_rain.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	add_child(_rain)
-	SoundFx.start_loop("rain", -13.0)
-
-
-func _follow_rain() -> void:
-	if _rain == null or _camera == null:
-		return
-	var cp := _camera.global_position
-	# Bajo techo (vestuario, túnel) no llueve
-	_rain.visible = state != State.LOCKER and absf(cp.x) < 64.0 and absf(cp.z) < 50.0
-	var fwd := flat(-_camera.global_transform.basis.z).normalized()
-	_rain.global_position = cp + fwd * 9.0 + Vector3.UP * 9.0
 
 
 ## Cuánto aprieta el equipo sin balón (DecisionResolver.m3d_press_intensity).
