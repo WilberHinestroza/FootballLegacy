@@ -64,6 +64,13 @@ var _faded := false
 var _anim_t := 0.0
 var _last_anim_speed := 0.0
 var _action_blend := false
+## Velocidad de la animación de carrera, suavizada (sin saltos de cadencia al pasar
+## de trote a carrera); -1 = fijarla de golpe la próxima vez (venía de una acción).
+var _loco_scale := -1.0
+## Fase del paso (0..1) en la que el pie izquierdo va adelantado en cada ciclo, medida
+## en los clips: al cambiar de ciclo el nuevo arranca en el mismo punto del paso.
+const GAIT_PHASE := {"walk": 0.283, "walk_sad": 0.267, "jog": 0.267, "run": 0.267,
+	"run_back": 0.8, "strafe_left": 0.683, "strafe_right": 0.267}
 var _lunge_timer := 0.0
 # Modelo animado
 var _avatar: PlayerAvatar
@@ -285,6 +292,26 @@ func _update_lean(delta: float, flat: Vector3) -> void:
 		target.y = clampf(-yaw_rate * spd * 0.012, -0.22, 0.22)
 	_lean = _lean.lerp(target, minf(1.0, 8.0 * delta))
 	_avatar.rotation = Vector3(_lean.x, 0.0, _lean.y)
+
+
+## Fase (0..1) del clip `to` que corresponde a la fase `phase` del clip `from`
+## (mismo pie adelantado). Ver GAIT_PHASE.
+## Agotado, parado y lejos del balón: se apoya en las rodillas (con margen para no
+## parpadear entre las dos posturas). Nunca el portero ni el humano con el balón cerca.
+var _tired_pose := false
+
+
+func _wants_tired_pose() -> bool:
+	if is_keeper or has_ball() or match_ref == null or match_ref.ball == null:
+		_tired_pose = false
+		return false
+	var far := SoccerMatch.flat(match_ref.ball.global_position - global_position).length() > (14.0 if _tired_pose else 20.0)
+	_tired_pose = far and energy < (0.4 if _tired_pose else 0.25)
+	return _tired_pose
+
+
+static func gait_sync(from: String, phase: float, to: String) -> float:
+	return fposmod(phase - float(GAIT_PHASE.get(from, 0.0)) + float(GAIT_PHASE.get(to, 0.0)), 1.0)
 
 
 ## Cuánto se conserva la velocidad según el ángulo del giro. `align` es el
@@ -1149,13 +1176,24 @@ func _animate_model(delta: float, speed: float) -> void:
 				target = "run_back"
 			elif absf(left) > 0.5:
 				target = "strafe_left" if left > 0.0 else "strafe_right"
+	if target == "idle" and _wants_tired_pose() and _anim.has_animation("tired"):
+		target = "tired"
 	if _anim.current_animation != target:
 		# La mezcla depende de cuánto cambió la velocidad y de si venimos de una
 		# acción: la vuelta al trote no debe cortar de golpe (P0-11).
 		var blend := locomotion_blend(_last_anim_speed, speed, _action_blend)
+		var from := String(_anim.current_animation)
+		var from_pos := _anim.current_animation_position
+		var from_len := _anim.current_animation_length
 		_anim.play(target, blend)
 		if target == "idle":
 			_anim.seek(randf() * 8.0, false) # que no respiren todos a la vez
+		elif GAIT_PHASE.has(from) and GAIT_PHASE.has(target) and from_len > 0.0:
+			# Mismo punto del paso: sin esto el clip nuevo empezaba en otro pie y
+			# durante la mezcla las piernas se cruzaban (el "tropiezo" al acelerar)
+			_anim.seek(gait_sync(from, from_pos / from_len, target) * _anim.current_animation_length, false)
+		if not GAIT_PHASE.has(from):
+			_loco_scale = -1.0
 	_action_blend = false
 	_last_anim_speed = speed
 	if target == "walk":
@@ -1174,5 +1212,9 @@ func _animate_model(delta: float, speed: float) -> void:
 	var low := clampf(energy / 0.45, 0.0, 1.0)
 	if target in ["walk", "walk_sad", "jog", "run", "run_back", "strafe_left", "strafe_right"]:
 		_anim.speed_scale *= lerpf(0.84, 1.0, low)
+		# Cadencia suave: la velocidad del clip se acerca a la buena en ~0,25 s
+		var want := _anim.speed_scale
+		_loco_scale = want if _loco_scale < 0.0 else move_toward(_loco_scale, want, delta * 4.0)
+		_anim.speed_scale = _loco_scale
 	elif target == "idle":
 		_anim.speed_scale = lerpf(1.22, 1.0, low)

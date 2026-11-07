@@ -24,9 +24,9 @@ var _hip_h := 1.0              # altura de la cadera en metros
 
 static func build_all(anim: AnimationPlayer, skel: Skeleton3D, owner: Node3D) -> void:
 	var lib := anim.get_animation_library("")
-	if lib == null or lib.has_meta("procedural_v2") or not anim.has_animation("idle"):
+	if lib == null or lib.has_meta("procedural_v3") or not anim.has_animation("idle"):
 		return
-	lib.set_meta("procedural_v2", true)
+	lib.set_meta("procedural_v3", true)
 	var b := ProceduralAnims.new()
 	b._setup(anim, skel, owner)
 	b._add(lib, "walk", b._walk(1.05, 1.0, 0.0))
@@ -36,6 +36,7 @@ static func build_all(anim: AnimationPlayer, skel: Skeleton3D, owner: Node3D) ->
 	b._add(lib, "pass_inside", b._strike(false))
 	b._add(lib, "stumble_l", b._stumble(1.0))
 	b._add(lib, "stumble_r", b._stumble(-1.0))
+	b._add(lib, "tired", b._tired())
 
 
 func _add(lib: AnimationLibrary, n: String, a: Animation) -> void:
@@ -290,6 +291,45 @@ func _stumble(s: float) -> Animation:
 	_key_hips(a, func(p: float) -> Vector3:
 		var k := curve(hit, p * L)
 		return Vector3(s * 0.12 * k, -0.05 * k, 0.0))
+	return a
+
+
+## Sin aire: inclinado hacia delante con las manos en las rodillas, respirando
+## fuerte (bucle de 2,4 s, dos respiraciones). Para el que se queda parado y agotado.
+func _tired() -> Animation:
+	var L := 2.4
+	var a := _blank(L, true)
+	var breath := func(p: float) -> float: return 0.5 - 0.5 * cos(TAU * 2.0 * p)
+	var BEND := 34.0  # tronco hacia delante (cadera + columna)
+	var THIGH := 24.0 # rodillas un poco dobladas
+	var KNEE := 34.0
+	for side: int in [0, 1]:
+		var pre := "Left" if side == 0 else "Right"
+		var s := 1.0 if side == 0 else -1.0
+		# La pelvis se inclina BEND: el muslo lo compensa para que la pierna siga
+		# vertical, más la flexión de rodilla; el pie vuelve a quedar plano
+		_key_bone(a, pre + "UpLeg", func(p: float) -> Quaternion: return rx(-(BEND + THIGH)) * rz(s * 3.0))
+		_key_bone(a, pre + "Leg", func(p: float) -> Quaternion: return rx(KNEE))
+		_key_bone(a, pre + "Foot", func(p: float) -> Quaternion: return rx(-(KNEE - THIGH) * 0.9))
+		# Brazos hacia delante y abajo, las manos apoyadas encima de la rodilla
+		_key_bone(a, pre + "Arm", func(p: float) -> Quaternion:
+			return rx(-22.0 - 3.0 * breath.call(p)) * rz(-s * 7.0))
+		_key_bone(a, pre + "ForeArm", func(p: float) -> Quaternion: return rx(-10.0))
+		_key_bone(a, pre + "Hand", func(p: float) -> Quaternion: return rx(-25.0))
+	_key_bone(a, "Hips", func(p: float) -> Quaternion: return rx(BEND))
+	# Al tomar aire el pecho se abre (sube) y los hombros se levantan un poco
+	_key_bone(a, "Spine", func(p: float) -> Quaternion: return rx(8.0 - 3.0 * breath.call(p)))
+	_key_bone(a, "Spine1", func(p: float) -> Quaternion: return rx(4.0 - 2.0 * breath.call(p)))
+	_key_bone(a, "Spine2", func(p: float) -> Quaternion: return rx(2.0 - 2.0 * breath.call(p)))
+	# Cabeza levantada mirando al juego (si no, solo mira el suelo)
+	_key_bone(a, "Neck", func(p: float) -> Quaternion: return rx(-14.0))
+	_key_bone(a, "Head", func(p: float) -> Quaternion: return rx(-16.0 + 3.0 * breath.call(p)))
+	var leg := _hip_h
+	_key_hips(a, func(p: float) -> Vector3:
+		var th := deg_to_rad(THIGH)
+		var sh := deg_to_rad(KNEE) - th
+		var bend := leg * 0.5 * ((1.0 - cos(th)) + (1.0 - cos(sh)))
+		return Vector3(0.0, -bend - 0.01 * breath.call(p), -0.06))
 	return a
 
 
