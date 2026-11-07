@@ -24,9 +24,9 @@ var _hip_h := 1.0              # altura de la cadera en metros
 
 static func build_all(anim: AnimationPlayer, skel: Skeleton3D, owner: Node3D) -> void:
 	var lib := anim.get_animation_library("")
-	if lib == null or lib.has_meta("procedural_v3") or not anim.has_animation("idle"):
+	if lib == null or lib.has_meta("procedural_v4") or not anim.has_animation("idle"):
 		return
-	lib.set_meta("procedural_v3", true)
+	lib.set_meta("procedural_v4", true)
 	var b := ProceduralAnims.new()
 	b._setup(anim, skel, owner)
 	b._add(lib, "walk", b._walk(1.05, 1.0, 0.0))
@@ -37,6 +37,8 @@ static func build_all(anim: AnimationPlayer, skel: Skeleton3D, owner: Node3D) ->
 	b._add(lib, "stumble_l", b._stumble(1.0))
 	b._add(lib, "stumble_r", b._stumble(-1.0))
 	b._add(lib, "tired", b._tired())
+	b._add(lib, "chest_trap", b._body_trap(true))
+	b._add(lib, "thigh_trap", b._body_trap(false))
 
 
 func _add(lib: AnimationLibrary, n: String, a: Animation) -> void:
@@ -330,6 +332,67 @@ func _tired() -> Animation:
 		var sh := deg_to_rad(KNEE) - th
 		var bend := leg * 0.5 * ((1.0 - cos(th)) + (1.0 - cos(sh)))
 		return Vector3(0.0, -bend - 0.01 * breath.call(p), -0.06))
+	return a
+
+
+## Control con el cuerpo de un balón a media altura (0,75 s; contacto a los 0,22 s).
+## Pecho: echa el tronco atrás y abre los brazos, y al tocar lo amortigua hacia
+## delante y abajo. Muslo: levanta el muslo derecho y lo baja con el balón.
+const TRAP_CONTACT := 0.22
+
+
+func _body_trap(chest: bool) -> Animation:
+	var L := 0.75
+	var a := _blank(L, false)
+	# Preparación hasta el contacto, amortiguación justo después, vuelta al final
+	var prep := [[0.0, 0.0], [0.16, 1.0], [0.26, 1.0], [0.45, 0.35], [L, 0.0]]
+	var give := [[0.0, 0.0], [0.2, 0.0], [0.34, 1.0], [0.55, 0.4], [L, 0.0]]
+	var P := func(p: float) -> float: return curve(prep, p * L)
+	var G := func(p: float) -> float: return curve(give, p * L)
+	if chest:
+		_key_bone(a, "Spine", func(p: float) -> Quaternion: return rx(-18.0 * P.call(p) + 12.0 * G.call(p)))
+		_key_bone(a, "Spine1", func(p: float) -> Quaternion: return rx(-8.0 * P.call(p) + 6.0 * G.call(p)))
+		_key_bone(a, "Spine2", func(p: float) -> Quaternion: return rx(-5.0 * P.call(p)))
+		_key_bone(a, "Head", func(p: float) -> Quaternion: return rx(20.0 * P.call(p) + 8.0 * G.call(p)))
+		for side: int in [0, 1]:
+			var pre := "Left" if side == 0 else "Right"
+			var sd := 1.0 if side == 0 else -1.0
+			_key_bone(a, pre + "Arm", func(p: float) -> Quaternion:
+				return rz(sd * 42.0 * P.call(p)) * rx(10.0 * P.call(p)))
+			_key_bone(a, pre + "ForeArm", func(p: float) -> Quaternion: return rx(-(15.0 + 25.0 * P.call(p))))
+			_key_bone(a, pre + "UpLeg", func(p: float) -> Quaternion: return rx(-(10.0 * P.call(p) + 14.0 * G.call(p))))
+			_key_bone(a, pre + "Leg", func(p: float) -> Quaternion: return rx(14.0 * P.call(p) + 26.0 * G.call(p)))
+			_key_bone(a, pre + "Foot", func(p: float) -> Quaternion: return rx(-(-4.0 * P.call(p) - 12.0 * G.call(p))))
+		var leg := _hip_h
+		_key_hips(a, func(p: float) -> Vector3:
+			var th := deg_to_rad(10.0 * P.call(p) + 14.0 * G.call(p))
+			var sh := deg_to_rad(14.0 * P.call(p) + 26.0 * G.call(p)) - th
+			var bend := leg * 0.5 * ((1.0 - cos(th)) + (1.0 - cos(sh)))
+			return Vector3(0.0, -bend, -0.04 * P.call(p)))
+	else:
+		# Muslo derecho arriba (horizontal al tocar), rodilla doblada; baja con el balón
+		var lift := [[0.0, 0.0], [0.18, 1.0], [0.26, 0.95], [0.5, 0.2], [L, 0.0]]
+		var U := func(p: float) -> float: return curve(lift, p * L)
+		_key_bone(a, "RightUpLeg", func(p: float) -> Quaternion: return rx(-88.0 * U.call(p)))
+		_key_bone(a, "RightLeg", func(p: float) -> Quaternion: return rx(10.0 + 82.0 * U.call(p)))
+		_key_bone(a, "RightFoot", func(p: float) -> Quaternion: return rx(18.0 * U.call(p)))
+		# Pierna de apoyo algo doblada; brazos abiertos para el equilibrio
+		_key_bone(a, "LeftUpLeg", func(p: float) -> Quaternion: return rx(-10.0 * P.call(p)))
+		_key_bone(a, "LeftLeg", func(p: float) -> Quaternion: return rx(16.0 * P.call(p)))
+		_key_bone(a, "LeftFoot", func(p: float) -> Quaternion: return rx(-6.0 * P.call(p)))
+		for side: int in [0, 1]:
+			var pre := "Left" if side == 0 else "Right"
+			var sd := 1.0 if side == 0 else -1.0
+			_key_bone(a, pre + "Arm", func(p: float) -> Quaternion: return rz(sd * (20.0 + 12.0 * side) * P.call(p)))
+			_key_bone(a, pre + "ForeArm", func(p: float) -> Quaternion: return rx(-(15.0 + 20.0 * P.call(p))))
+		_key_bone(a, "Spine", func(p: float) -> Quaternion: return rx(10.0 * P.call(p)) * rz(-4.0 * P.call(p)))
+		_key_bone(a, "Head", func(p: float) -> Quaternion: return rx(22.0 * P.call(p)))
+		var leg2 := _hip_h
+		_key_hips(a, func(p: float) -> Vector3:
+			var th := deg_to_rad(10.0 * P.call(p))
+			var sh := deg_to_rad(16.0 * P.call(p)) - th
+			var bend := leg2 * 0.5 * ((1.0 - cos(th)) + (1.0 - cos(sh)))
+			return Vector3(-0.03 * P.call(p), -bend, 0.0))
 	return a
 
 

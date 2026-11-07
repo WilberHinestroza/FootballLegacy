@@ -474,6 +474,13 @@ func _check_receive() -> void:
 	var d := to_me.length()
 	# Balón alto que viene hacia él: prepara el cabezazo (el golpe lo resuelve el partido)
 	var by := b.global_position.y
+	# Balón a media altura y no muy fuerte: lo va a controlar con el cuerpo
+	# (SoccerMatch.trap_body); se prepara con el pecho o el muslo antes de que llegue
+	if spd > 4.0 and spd <= 9.0 and by > 0.75 and by < 1.6 and d < 4.0 and d > 0.4 			and to_me.dot(bv) > d * spd * 0.85:
+		if (d - 0.5) / spd < ProceduralAnims.TRAP_CONTACT:
+			facing = -bv / spd
+			body_trap(by)
+		return
 	if spd > 4.0 and by > 1.0 and by < 3.2 and d < 4.0 and d > 0.4 and to_me.dot(bv) > d * spd * 0.85:
 		var eta := (d - 0.4) / spd
 		if eta < (HEADER_CONTACT - HEADER_FROM) / HEADER_SPEED:
@@ -490,6 +497,15 @@ func _check_receive() -> void:
 	facing = -bv / spd
 	play_action_from("receive", RECEIVE_FROM, RECEIVE_SPEED, lead + 0.3)
 	_receive_timer = lead + 0.2
+
+
+## Control con el cuerpo: pecho si el balón llega alto, muslo si llega a media altura.
+func body_trap(ball_y: float) -> void:
+	if _action_timer > 0.0 and _anim.current_animation in ["chest_trap", "thigh_trap"]:
+		return
+	var anim_name := "chest_trap" if ball_y > 1.15 else "thigh_trap"
+	if _anim.has_animation(anim_name):
+		play_action(anim_name, 1.0, 0.7)
 
 
 ## power de 0 a 1: más potencia = más rápido, más alto y algo menos preciso.
@@ -1148,6 +1164,7 @@ func _animate_model(delta: float, speed: float) -> void:
 		_avatar.look_at_point(match_ref.ball.global_position, look_w)
 	if _action_timer > 0.0:
 		_action_timer -= delta
+		_avatar.lock_feet(false)
 		return
 	var target := "idle"
 	if is_keeper and has_ball() and _anim.has_animation("keeper_catch"):
@@ -1156,6 +1173,7 @@ func _animate_model(delta: float, speed: float) -> void:
 			_anim.play("keeper_catch", 0.15)
 			_anim.seek(1.9, true)
 		_anim.speed_scale = 0.0
+		_avatar.lock_feet(false)
 		return
 	if is_keeper and not walk_normal:
 		target = "keeper_side" if speed > 1.2 else "keeper_idle"
@@ -1196,6 +1214,8 @@ func _animate_model(delta: float, speed: float) -> void:
 			_loco_scale = -1.0
 	_action_blend = false
 	_last_anim_speed = speed
+	# Parado o casi: los pies se quedan donde pisan y dan pasos cortos al girar
+	_avatar.lock_feet(target in ["idle", "tired", "keeper_idle"] and stun_timer <= 0.0)
 	if target == "walk":
 		_anim.speed_scale = clampf(speed / 1.6, 0.6, 1.1)
 	elif target == "walk_sad":

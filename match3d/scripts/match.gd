@@ -4828,6 +4828,7 @@ func _update_possession(delta: float) -> void:
 		if best:
 			if best_body:
 				ball.trap_body(best)
+				best.body_trap(bpos.y)
 			_try_receive(best, best_body)
 	elif not holder.is_keeper and holder.dodge_timer <= 0.0:
 		# Un rival pegado al balón puede robarlo por contacto

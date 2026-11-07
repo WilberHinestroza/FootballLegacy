@@ -492,6 +492,21 @@ func pose_arms(mode: String, fade := 0.35) -> void:
 
 
 
+## Pies pegados al suelo cuando está parado o casi (FootLock); false los suelta
+## (la locomoción ya mueve los pies). Solo lo usan los jugadores del partido.
+var _foot_lock: FootLock
+
+
+func lock_feet(on: bool) -> void:
+	if _foot_lock == null:
+		if not on:
+			return
+		_foot_lock = FootLock.new()
+		_foot_lock.body = self
+		skeleton.add_child(_foot_lock)
+	_foot_lock.want = on
+
+
 # ---------- mirada ----------
 
 var _look: HeadLook
