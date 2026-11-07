@@ -894,6 +894,12 @@ func set_faded(value: bool) -> void:
 
 
 ## Aspecto completo de tu jugador (colores, físico y objetos) desde el perfil.
+## Lleva (o no) el brazalete de capitán.
+func set_captain(on: bool) -> void:
+	if _avatar != null:
+		_avatar.set_captain_band(on)
+
+
 func apply_profile(p: PlayerProfile) -> void:
 	if _avatar:
 		_avatar.apply_profile(p)

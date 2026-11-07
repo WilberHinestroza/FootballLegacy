@@ -33,6 +33,7 @@ const PATTERN_3D := {
 const W_PATTERN_3D := [4, 14, 3, 1, 1, 2, 0, 11, 7, 0, 12, 6, 13, 6, 10, 0,
 		1, 2, 4, 14, 3, 6, 10, 0, 0, 14, 7, 4, 0, 13, 0, 0]
 const FOOT := {"Derecho": 0, "Izquierdo": 1, "Ambidiestro": 2}
+const SetPieceTakers = preload("res://engine/match/m3d/SetPieceTakers.gd")
 const POS_INDEX := {"GK": 0, "DF": 1, "MF": 2, "ST": 3}
 
 ## ¿Este partido se juega en 3D? Convocado (titular o en el banco), de club o
@@ -288,6 +289,9 @@ static func build_config(on_finish: Callable) -> Dictionary:
 				"%s|%s" % [fixture.get("home_club_id", ""), fixture.get("away_club_id", "")], wseed)) / float(Venue.capacity(home_club)) if home_club != null else 0.8,
 		"ball_design": ball_idx,
 		"home_players": _roster(us.starting_xi, p, wseed),
+		# Lanzadores designados por el DT y capitán de cada once (SetPieceTakers)
+		"home_set_pieces": SetPieceTakers.for_xi(us.starting_xi, p),
+		"away_set_pieces": SetPieceTakers.for_xi(them.starting_xi, null),
 		"home_bench": _roster(us.bench, p, wseed),   # suplentes: el que entra si pides salir
 		"start_energy": clampf((100.0 - p.fatigue_physical) / 100.0, 0.3, 1.0),
 		"away_players": _roster(them.starting_xi, null, wseed),

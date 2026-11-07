@@ -93,3 +93,22 @@ static func nearest_id(point: Vector3, zones: Array) -> String:
 			best_d = d
 			best = String(z.get("id", ""))
 	return best
+
+
+## Córner que sacas tú con el dedo (8-nov): adónde va el centro y a qué altura.
+## `ground` = el punto del césped donde acabó tu gesto; `speed_frac` = rapidez del
+## gesto (0 lento .. 1 muy rápido); `passing` 0..1. Rápido = tenso y bajo; lento =
+## bombeado. Con poco pase, el balón cae algo lejos de donde apuntaste.
+## Devuelve {"point": Vector3, "height": float}.
+static func corner_swipe(ground: Vector3, goal: Vector3, speed_frac: float, passing: float) -> Dictionary:
+	var dir := signf(goal.x) if goal.x != 0.0 else 1.0
+	var p := ground
+	# Dentro del área (no más allá de la línea de fondo ni a la banda)
+	p.x = clampf(p.x * dir, absf(goal.x) - 16.0, absf(goal.x) - 1.0) * dir
+	p.z = clampf(p.z, -16.0, 16.0)
+	var miss := (1.0 - clampf(passing, 0.0, 1.0)) * 2.6
+	p += Vector3(randf_range(-miss, miss), 0.0, randf_range(-miss, miss))
+	p.y = 0.0
+	var height := lerpf(2.3, 1.45, clampf(speed_frac, 0.0, 1.0))
+	return {"point": p, "height": height}
+

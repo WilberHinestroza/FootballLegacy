@@ -620,6 +620,48 @@ func set_accessories(acc: Dictionary) -> void:
 		_build_accessory(holder, id)
 
 
+## Brazalete de capitán en el brazo izquierdo (8-nov). `color` = el del brazalete.
+func set_captain_band(on: bool, color := Color(1.0, 0.82, 0.1)) -> void:
+	if _items.has("captain"):
+		for n: Node in _items["captain"]:
+			n.queue_free()
+		_items.erase("captain")
+	if not on:
+		return
+	var holder := _holder("LeftArm")
+	if holder == null:
+		return
+	_items["captain"] = [holder.get_parent()]
+	var band := CylinderMesh.new()
+	band.top_radius = 0.135
+	band.bottom_radius = 0.135
+	band.height = 0.12
+	band.cap_top = false
+	band.cap_bottom = false
+	band.radial_segments = 14
+	band.rings = 1
+	var mat := _acc_mat(color, 0.0, 0.5)
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mat.emission_enabled = true # que resalte también a la sombra y de lejos
+	mat.emission = color * 0.35
+	# A lo largo del brazo (del hombro al codo, en los ejes del cuerpo), por debajo de la manga
+	var ua := ItemCatalog.find_bone(skeleton, "LeftArm")
+	var fa := ItemCatalog.find_bone(skeleton, "LeftForeArm")
+	var m := skeleton.transform
+	var par := skeleton.get_parent()
+	while par != null and par != self and par is Node3D:
+		m = (par as Node3D).transform * m
+		par = par.get_parent()
+	var seg := m * skeleton.get_bone_global_rest(fa).origin - m * skeleton.get_bone_global_rest(ua).origin
+	var dir := seg.normalized() if seg.length() > 0.001 else Vector3.RIGHT
+	var mi := MeshInstance3D.new()
+	mi.mesh = band
+	mi.material_override = mat
+	mi.basis = Basis(Quaternion(Vector3.UP, dir))
+	mi.position = seg * 0.55
+	holder.add_child(mi)
+
+
 ## Nodo pegado al hueso con los ejes del jugador (+Y arriba, +Z delante) y en metros,
 ## con el origen en el hueso: lo que cuelgue de él sigue al hueso al animarse.
 func _holder(bone_name: String) -> Node3D:

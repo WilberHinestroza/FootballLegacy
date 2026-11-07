@@ -84,3 +84,37 @@ static func power_scale(q: float) -> float:
 ## La puntería empeora cuando el contacto es malo.
 static func accuracy_scale(q: float) -> float:
 	return lerpf(0.4, 1.0, clampf(q, 0.0, 1.0))
+
+
+# ---------- Cabezazo de TU jugador (8-nov) ----------
+# "Siguen siendo difíciles y raros": la ventana de arriba (1,55-1,98 m, bajando y a
+# <0,9 m) exige estar clavado bajo el balón. Al jugador que controlas se le da algo
+# de margen — como en cualquier juego de fútbol, el que manejas "llega" — y si un
+# rival está más cerca, se decide un duelo por fuerza en vez de ganarlo siempre él.
+
+## Alcance extra (m) del jugador que controlas.
+const ASSIST_REACH := 0.35
+## Franja de altura ampliada para tu jugador (m).
+const ASSIST_MIN_HEIGHT := 1.4
+const ASSIST_MAX_HEIGHT := 2.1
+## Tolerancia de altura ampliada (multiplica height_tolerance).
+const ASSIST_TOLERANCE := 1.35
+
+
+## ¿Tu jugador puede cabecear ya? (también con el balón casi en lo alto de su curva)
+static func in_window_assisted(ball_y: float, vy: float) -> bool:
+	return vy < 2.5 and ball_y >= ASSIST_MIN_HEIGHT and ball_y <= ASSIST_MAX_HEIGHT
+
+
+## Calidad del cabezazo de tu jugador, con su margen de altura y alcance.
+static func quality_assisted(ball_y: float, dist: float, strength := 0.5, composure := 0.5) -> float:
+	var ideal := ideal_height(strength)
+	var half := height_tolerance(strength) * ASSIST_TOLERANCE
+	var hq := clampf(1.0 - absf(ball_y - ideal) / half, 0.0, 1.0)
+	return hq * distance_quality(maxf(dist - ASSIST_REACH, 0.0), composure)
+
+
+## Duelo aéreo con un rival más cerca del balón: probabilidad de que lo ganes tú.
+static func duel_win_chance(my_strength: float, rival_strength: float) -> float:
+	return clampf(0.62 + (my_strength - rival_strength) * 0.6, 0.35, 0.88)
+

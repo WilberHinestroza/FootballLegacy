@@ -29,6 +29,7 @@ const Offside = preload("res://engine/match/m3d/Offside.gd")
 const MatchFx = preload("res://match3d/scripts/match_fx.gd")
 const OutroHandshakes = preload("res://match3d/scripts/outro_handshakes.gd")
 const SwipeIntent = preload("res://engine/match/m3d/SwipeIntent.gd")
+const SetPieceTakers = preload("res://engine/match/m3d/SetPieceTakers.gd")
 
 # Cancha reglamentaria (metros)
 const FIELD_LENGTH := 105.0
@@ -232,6 +233,7 @@ var _shot_pending := false
 var _shot_timer := 0.0
 var _saved := false
 var _last_header_ms := -10000
+var _last_tap_ms := -10000 # último toque tuyo al césped (para no pisar tu orden)
 var _penalty_kicked := false
 var _rebound_done := false
 var _penalty_guess := 0.0
@@ -430,6 +432,7 @@ func _ready() -> void:
 	_hud.gesture.swiped.connect(_on_swiped)
 
 	_setup_render_quality()
+	_assign_takers()
 	_restart()
 
 
@@ -543,8 +546,8 @@ func _physics_process(delta: float) -> void:
 				_opening_room()
 				_apply_preplay_choice()
 				_launch_arrival()
-				if _cross_pending:
-					_hud.show_cross_zones(true)
+				if _cross_pending and _cross_carrier != star:
+					_hud.show_cross_zones(true) # (tu córner se saca con el dedo, sin botones)
 		State.MOMENT:
 			_moment_timer -= delta
 			_update_human(delta)
@@ -3184,7 +3187,9 @@ func _setup_play() -> bool:
 			var corner := Vector3(-FIELD_LENGTH * 0.5 + 0.4, 0.0, side * (FIELD_WIDTH * 0.5 - 0.4))
 			possession_team = 1
 			_place_team_for(Vector3(-30.0, 0.0, 0.0), 1)
-			var taker := _nearest_of_role(1, corner, ["MF"], [])
+			var taker: SoccerPlayer = _takers[1].get("corner")
+			if taker == null:
+				taker = _nearest_of_role(1, corner, ["MF"], [])
 			_place(taker, corner + Vector3(0.6, 0.0, -side * 0.3))
 			taker.facing = flat(Vector3(-46.0, 0.0, 0.0) - corner).normalized()
 			_box_battle(6, 6, [taker])
@@ -3208,7 +3213,9 @@ func _setup_play() -> bool:
 		"penalti_contra":
 			var spot := Vector3(-FIELD_LENGTH * 0.5 + PENALTY_DIST, 0.0, 0.0)
 			possession_team = 1
-			var kicker := _nearest_of_role(1, spot, ["ST"], [])
+			var kicker: SoccerPlayer = _takers[1].get("penalty")
+			if kicker == null:
+				kicker = _nearest_of_role(1, spot, ["ST"], [])
 			if kicker == null:
 				kicker = _nearest_of_role(1, spot, ["MF"], [])
 			_place(kicker, spot + Vector3(0.7, 0.0, 0.0))
@@ -3218,7 +3225,7 @@ func _setup_play() -> bool:
 				if p != kicker and not p.is_keeper:
 					others.append(p)
 			for i in others.size():
-				_place(others[i], Vector3(-FIELD_LENGTH * 0.5 + BOX_DEPTH + 1.5 + (i % 3) * 1.5, 0.0, -14.0 + i * 1.5))
+				_place(others[i], _penalty_wait_spot(i, -1.0))
 			_place(teams[1][0], goal_center(1) + Vector3(-1.5, 0.0, 0.0))
 			_place(star, goal_center(0) + Vector3(0.4, 0.0, 0.0))
 			star.facing = Vector3.RIGHT
@@ -3229,7 +3236,9 @@ func _setup_play() -> bool:
 			var spot := Vector3(-FIELD_LENGTH * 0.5 + randf_range(19.0, 26.0), 0.0, randf_range(-11.0, 11.0))
 			possession_team = 1
 			_place_team_for(spot, 1)
-			var kicker := _nearest_of_role(1, spot, ["MF", "ST"], [])
+			var kicker: SoccerPlayer = _takers[1].get("free_kick")
+			if kicker == null:
+				kicker = _nearest_of_role(1, spot, ["MF", "ST"], [])
 			_place(kicker, spot + Vector3(0.7, 0.0, 0.0))
 			var to_goal := flat(goal_center(0) - spot).normalized()
 			kicker.facing = to_goal
@@ -3431,7 +3440,9 @@ func _rival_play(p: SoccerPlayer, set_piece: bool) -> void:
 		_give_ball_now(p)
 	play_carrier = p
 	play.set_piece = set_piece
-	p.ai_timer = float(play.get("rival_delay", 1.2))
+	# A balón parado, la espera cuenta desde que arranca la jugada (no durante el
+	# cartel de presentación): antes sacaban nada más empezar.
+	p.ai_timer = float(play.get("rival_delay", 1.2)) + (_timer if set_piece else 0.0)
 	_set_human(star)
 
 
@@ -3441,6 +3452,24 @@ func do_rival_action(p: SoccerPlayer) -> void:
 	var goal := goal_center(0)
 	var half := GOAL_WIDTH * 0.5 - 0.6
 	match String(play.get("rival_action", "")):
+		"mate_corner":
+			p.cross_to(star) # el córner, a tu cabeza
+		"mate_pen":
+			# Tu compañero designado tira el penalti (el portero rival adivina un lado)
+			var g := opponent_goal_center(0)
+			var sd := 1.0 if randf() < 0.5 else -1.0
+			p.shoot_at(g + Vector3(0.0, 0.0, sd * randf_range(1.0, half)),
+					clampf(randf_range(0.72, 0.9) * lerpf(0.85, 1.12, p.stat("shooting")), 0.3, 1.0))
+		"mate_fk":
+			# Directo por encima de la barrera si está cerca; si no, centro a tu cabeza
+			var g := opponent_goal_center(0)
+			if flat_dist(p.global_position, g) < 28.0 and randf() < 0.65:
+				var far := -signf(p.global_position.z) if absf(p.global_position.z) > 0.5 else (1.0 if randf() < 0.5 else -1.0)
+				var aim := g + Vector3(0.0, 0.0, far * randf_range(1.5, half))
+				var dir := flat(aim - p.global_position).normalized()
+				p.shoot_vector(dir * randf_range(21.0, 24.0) + Vector3.UP * randf_range(6.6, 7.2), far * randf_range(0.0, 0.5))
+			else:
+				p.cross_to(star)
 		"shoot":
 			var aim := goal + Vector3(0.0, 0.0, randf_range(-half, half))
 			var base_power := randf_range(0.72, 0.9) if bool(play.get("penalty", false)) else randf_range(0.6, 0.95)
@@ -3652,7 +3681,7 @@ func _on_cross_zone_selected(zone_id: String) -> void:
 func _update_cross_zone(delta: float) -> void:
 	if not _cross_pending:
 		return
-	if moment_type != Moment.CROSS or _cross_carrier == null \
+	if (moment_type != Moment.CROSS and moment_type != Moment.CORNER) or _cross_carrier == null \
 			or not is_instance_valid(_cross_carrier) or not _cross_carrier.has_ball():
 		_cancel_cross_zone()
 		return
@@ -3679,12 +3708,51 @@ func _execute_cross(zone_id: String) -> void:
 	_cross_zone = zone_id
 	_cross_auto = 0.0
 	_hud.hide_cross_zones()
+	if _cross_carrier == star:
+		_deliver_star_cross(point, height) # no lo sacaste a tiempo: sale solo
+		_hud.show_message("CENTRO AL %s" % CrossZone.label_for(zone_id), 0.7)
+		return
 	# Tu jugador ataca la zona elegida (sin salirse del campo).
 	_move_target = _clamp_to_field(point)
 	_tackle_target = null
 	_reset_move_boost()
 	_cross_carrier.cross_to_point(point, height)
 	_hud.show_message("CENTRO AL %s" % CrossZone.label_for(zone_id), 0.7)
+
+
+## Tu córner con el dedo: el gesto marca adónde va el centro y su rapidez, si va
+## tenso o bombeado (CrossZone.corner_swipe). Remata el mejor cabeceador de los tuyos.
+func _corner_swipe(points: PackedVector2Array, duration: float) -> void:
+	if not star.has_ball() or points.size() < 2:
+		return
+	var vp_h := get_viewport().get_visible_rect().size.y
+	var len_frac := (points[points.size() - 1] - points[0]).length() / maxf(vp_h, 1.0)
+	if len_frac < 0.06:
+		return # un toque, no un gesto
+	var speed_frac := clampf((len_frac / maxf(duration, 0.05) - 0.8) / 2.2, 0.0, 1.0)
+	var c: Dictionary = CrossZone.corner_swipe(_ground_point(points[points.size() - 1]),
+			opponent_goal_center(0), speed_frac, star.stat("passing"))
+	_cross_pending = false
+	_cross_auto = 0.0
+	_cross_carrier = null
+	_deliver_star_cross(c.point, float(c.height))
+	_hud.show_message("¡CENTRO TENSO!" if speed_frac > 0.6 else ("¡CENTRO BOMBEADO!" if speed_frac < 0.25 else "¡CENTRO!"), 0.7)
+
+
+## Tu centro (córner o desde la banda) al punto `point`: ataca la zona el mejor
+## cabeceador de los tuyos en el área y, si marca, es asistencia tuya.
+func _deliver_star_cross(point: Vector3, height: float) -> void:
+	var best: SoccerPlayer = null
+	for mt_p: SoccerPlayer in teams[0]:
+		if mt_p == star or mt_p.is_keeper or not in_own_box(1, mt_p.global_position):
+			continue
+		if best == null or mt_p.stat("strength") > best.stat("strength"):
+			best = mt_p
+	if best != null:
+		best.set_meta("run_to", _clamp_to_field(point))
+		best.set_meta("run_until", Time.get_ticks_msec() + 3000)
+	_star_passed_to = best
+	star.cross_to_point(point, height)
 
 
 ## P1-10 · Cancela la espera de zona (fin de jugada, cambio de momento, etc.).
@@ -3702,14 +3770,42 @@ func _setup_corner() -> void:
 	var corner := Vector3(FIELD_LENGTH * 0.5 - 0.4, 0.0, side * (FIELD_WIDTH * 0.5 - 0.4))
 	possession_team = 0
 	_place_team_for(Vector3(30.0, 0.0, 0.0), 0)
-	var taker := _nearest_of_role(0, corner, ["MF"], [star])
+	if user_takes("corner"):
+		# Eres el lanzador: al banderín, eliges la zona del centro y remata un compañero
+		_place(star, corner + Vector3(-0.6, 0.0, -side * 0.3))
+		star.facing = flat(Vector3(46.0, 0.0, 0.0) - corner).normalized()
+		_crowd_box(0, 5, [star])
+		_crowd_box(1, 7, [], false)
+		for o: SoccerPlayer in teams[1]:
+			if not o.is_keeper and flat_dist(o.global_position, corner) < 9.2:
+				_place(o, corner + flat(o.global_position - corner).normalized() * 9.4)
+		_give_ball_now(star)
+		_set_piece_ready = true
+		_set_human(star)
+		_cross_pending = true
+		_cross_carrier = star
+		_cross_zone = ""
+		_cross_auto = 7.0 # si no lo sacas, sale solo al primer palo
+		play["mate_taker"] = true
+		play["user_corner"] = true
+		play["title"] = "¡TE TOCA SACAR EL CÓRNER!"
+		play["hint"] = "Desliza desde el balón hacia donde quieres el centro\nrápido = tenso y bajo · lento = bombeado"
+		return
+	var taker := set_piece_taker("corner")
+	if taker == null or taker == star:
+		taker = _nearest_of_role(0, corner, ["MF"], [star])
 	_place(taker, corner + Vector3(-0.6, 0.0, -side * 0.3))
 	taker.facing = flat(Vector3(46.0, 0.0, 0.0) - corner).normalized()
 	_place(star, Vector3(randf_range(41.0, 45.0), 0.0, randf_range(-5.0, 5.0)))
 	_crowd_box(0, 4, [star, taker])
 	_crowd_box(1, 7, [])
 	_give_ball_now(taker)
-	taker.ai_timer = 1.4
+	play_carrier = taker
+	play["set_piece"] = true
+	play["rival_action"] = "mate_corner"
+	if taker == set_piece_taker("corner"):
+		_mate_set_piece_title("corner", taker)
+	taker.ai_timer = _timer + 1.4
 	_set_piece_ready = true
 	_set_human(star)
 
@@ -3723,16 +3819,22 @@ func _setup_free_kick() -> void:
 		spot = Vector3(FIELD_LENGTH * 0.5 - randf_range(19.0, 27.0), 0.0, randf_range(-12.0, 12.0))
 	possession_team = 0
 	_place_team_for(spot, 0)
-	_crowd_box(0, 3, [star])
+	var kicker := star
+	if not user_takes("free_kick"):
+		kicker = set_piece_taker("free_kick")
+		_mate_set_piece_title("free_kick", kicker)
+	_crowd_box(0, 3, [star, kicker])
 	_crowd_box(1, 5, [])
 	var goal := opponent_goal_center(0)
 	var to_goal := flat(goal - spot).normalized()
-	_place(star, spot - to_goal * 0.7)
-	star.facing = to_goal
+	_place(kicker, spot - to_goal * 0.7)
+	kicker.facing = to_goal
+	if kicker != star:
+		_place(star, Vector3(randf_range(40.0, 45.0), 0.0, randf_range(-6.0, 6.0)))
 	# Barrera de 4 a 9,15 m, tapando el palo más cercano
 	var right := to_goal.cross(Vector3.UP)
 	var wall_center := spot + to_goal * 9.15 + right * signf(spot.z) * 0.6
-	var used: Array = [star]
+	var used: Array = [star, kicker]
 	for i in 4:
 		var w := _nearest_of_role(1, wall_center, ["MF", "ST", "DF"], used)
 		used.append(w)
@@ -3741,15 +3843,20 @@ func _setup_free_kick() -> void:
 		_wall.append(w)
 	# Nadie a menos de 9 m del balón
 	for p in players:
-		if p != star and not (p in _wall) and flat_dist(p.global_position, spot) < 9.5:
+		if p != kicker and not (p in _wall) and flat_dist(p.global_position, spot) < 9.5:
 			_place(p, spot + flat(p.global_position - spot).normalized() * 9.5)
-	_give_ball_now(star)
+	_give_ball_now(kicker)
 	_set_piece_ready = true
+	if kicker != star:
+		play_carrier = kicker
+		play["set_piece"] = true
+		play["rival_action"] = "mate_fk"
+		kicker.ai_timer = _timer + 1.6
 	_set_human(star)
 
 
 ## Mete `count` jugadores del equipo `team` en el área rival del equipo 0 (la de +X).
-func _crowd_box(team: int, count: int, exclude: Array) -> void:
+func _crowd_box(team: int, count: int, exclude: Array, mark_star := true) -> void:
 	var used := exclude.duplicate()
 	if _arrival_from != null:
 		used.append(_arrival_from) # el que te la va a pasar se queda donde está
@@ -3761,7 +3868,7 @@ func _crowd_box(team: int, count: int, exclude: Array) -> void:
 		used.append(p)
 		_place(p, spot)
 	# Marcaje en el área: un defensor pegado a tu jugador
-	if team == 1:
+	if team == 1 and mark_star:
 		var m := _nearest_of_role(1, star.global_position, ["DF"], [])
 		if m:
 			_place(m, star.global_position + Vector3(1.2, 0.0, randf_range(-0.8, 0.8)))
@@ -3789,16 +3896,30 @@ func _setup_defense() -> void:
 
 func _setup_penalty() -> void:
 	var spot := Vector3(FIELD_LENGTH * 0.5 - PENALTY_DIST, 0.0, 0.0)
-	_place(star, spot - Vector3(0.7, 0.0, 0.0))
+	var kicker := star
+	if not _shootout_in_user_kick and not user_takes("penalty"):
+		kicker = set_piece_taker("penalty")
+		_mate_set_piece_title("penalty", kicker)
+	_place(kicker, spot - Vector3(0.7, 0.0, 0.0))
 	_place(teams[1][0], goal_center(1) + Vector3(-0.4, 0.0, 0.0))
 	_place(teams[0][0], goal_center(0) + Vector3(1.5, 0.0, 0.0))
 	var others: Array = []
 	for p in players:
-		if p != star and not p.is_keeper:
+		if p != kicker and not p.is_keeper:
 			others.append(p)
+	others.erase(star)
+	if kicker != star:
+		others.push_front(star) # tú, el primero de la fila: el mejor sitio para el rechace
 	for i in others.size():
-		_place(others[i], Vector3(FIELD_LENGTH * 0.5 - BOX_DEPTH - 1.5 - (i % 3) * 1.5, 0.0, -14.0 + i * 1.5))
-	_give_ball_now(star)
+		_place(others[i], _penalty_wait_spot(i, 1.0))
+		(others[i] as SoccerPlayer).facing = flat(spot - others[i].global_position).normalized()
+	if kicker != star:
+		_set_piece_ready = true
+		play_carrier = kicker
+		play["set_piece"] = true
+		play["rival_action"] = "mate_pen"
+		kicker.ai_timer = _timer + 1.3 # tras la presentación de la jugada
+	_give_ball_now(kicker)
 	_set_human(star)
 	var half := GOAL_WIDTH * 0.5
 	_penalty_guess = [-(half - 1.4), -(half - 2.6), 0.0, half - 2.6, half - 1.4].pick_random()
@@ -4139,7 +4260,12 @@ func _finish_moment(text: String) -> void:
 	# ¿El fallo fue tuyo? Si tu pase llegó al compañero y él no la metió, no (tu pase
 	# ya suma como pase clave); si la perdiste o la tiraste fuera tú, sí.
 	var my_fail := not ok and not (is_attacking_moment() and _star_pass_received)
-	if ok:
+	# Balón parado que cobra un compañero: si no marcaste ni asististe, no es tuya
+	var watched := bool(play.get("mate_taker", false)) and int(match_stats.me.goals) == int(_hl_base[0]) \
+			and int(match_stats.me.assists) == int(_hl_base[1])
+	if watched:
+		pass
+	elif ok:
 		match_stats.me.moments_ok += 1
 	elif my_fail:
 		match_stats.me.moments_fail += 1
@@ -4733,6 +4859,9 @@ func _check_ball_escaped() -> void:
 # ---------- gestos ----------
 
 func _on_tapped(pos: Vector2) -> void:
+	_last_tap_ms = Time.get_ticks_msec()
+	if state == State.MOMENT and _cross_pending and _cross_carrier == star:
+		return # sacando el córner: se saca deslizando el dedo
 	if state == State.WALKOUT:
 		if bool(config.get("walkout_skip", true)):
 			_end_walkout() # tocar = saltar la salida
@@ -4935,6 +5064,9 @@ func _shot_dir_assist(dir: Vector3, to_goal: Vector3) -> Vector3:
 
 func _on_swiped(points: PackedVector2Array, duration: float) -> void:
 	if state != State.MOMENT or human == null:
+		return
+	if _cross_pending and _cross_carrier == star:
+		_corner_swipe(points, duration) # tu córner: con el dedo
 		return
 	if _shootout_in_user_kick and _penalty_kicked:
 		return # el penalti de la tanda ya se ejecutó; no hay segundo remate
@@ -5369,6 +5501,16 @@ func _update_human_orders(delta := 0.0) -> void:
 		return
 	if moment_type == Moment.KEEPER and _update_human_keeper():
 		return
+	if _penalty_waiting() or (_cross_pending and _cross_carrier == human):
+		human.move_input = Vector3.ZERO # balón parado: nadie entra antes del golpeo
+		return
+	if ball.owner_player == null and ball.global_position.y > 0.9 and ball.linear_velocity.y < 6.0 \
+			and ball.last_touch != null and ball.last_touch.team == human.team and ball.last_touch != human \
+			and Time.get_ticks_msec() - _last_tap_ms > 600:
+		var meet: Variant = _aerial_meet_point(human)
+		if meet != null and flat_dist(meet, human.global_position) < 9.0:
+			_move_target = meet # va al remate: donde el centro baja a la altura de su cabeza
+			_tackle_target = null
 	if _tackle_target != null:
 		var to := flat(_tackle_target.global_position - human.global_position)
 		if to.length() < 1.6:
@@ -5555,9 +5697,11 @@ func _run_ai() -> void:
 			p.move_input = Vector3.ZERO
 			p.sprinting = false
 			continue
-		if in_moment and moment_type == Moment.PENALTY:
+		if in_moment and moment_type == Moment.PENALTY and (p.is_keeper or not _penalty_kicked):
 			if p.is_keeper and p.team == 1:
 				_keeper_penalty(p)
+			elif p == play_carrier and ball.owner_player == p:
+				AiBrain.think(p, self) # el lanzador designado (no eres tú) ejecuta
 			else:
 				p.move_input = Vector3.ZERO
 				p.sprinting = false
@@ -5658,6 +5802,8 @@ func _update_possession(delta: float) -> void:
 		# P1-11 · Cabezazo con timing: solo en la franja de la cabeza y con el
 		# balón bajando. El más cercano tiene prioridad, pero si llega tarde o
 		# está lejos el contacto no sale (o sale flojo).
+		if _try_human_header(bpos, body_reachable):
+			return
 		if HeaderTiming.in_window(bpos.y, ball.linear_velocity.y) \
 				and not body_reachable and Time.get_ticks_msec() - _last_header_ms > 900:
 			var header_p: SoccerPlayer = null
@@ -5725,7 +5871,7 @@ func _update_possession(delta: float) -> void:
 				ball.trap_body(best)
 				best.body_trap(bpos.y)
 			_try_receive(best, best_body)
-	elif not holder.is_keeper and holder.dodge_timer <= 0.0:
+	elif not holder.is_keeper and holder.dodge_timer <= 0.0 and not _set_piece_ready:
 		# Un rival pegado al balón puede robarlo por contacto
 		for p: SoccerPlayer in teams[1 - holder.team]:
 			# Con la entrada en enfriamiento (inicio de tu jugada, "aguantar") tampoco
@@ -5845,6 +5991,9 @@ func aerial_choice_for(p: SoccerPlayer) -> String:
 ## Volea: le pega en el aire hacia la portería (lejos del portero; con el dedo, a
 ## donde apuntaste). La fuerza y el error salen de DecisionResolver.m3d_volley.
 func _volley(p: SoccerPlayer) -> void:
+	if state == State.MOMENT and p.team == 0 and p != star and ball.last_touch == star:
+		_star_passed_to = p # remata tu centro / tu córner: si entra, asistencia tuya
+		_star_pass_received = true # y si no entra, el fallo no es tuyo
 	var goal := opponent_goal_center(p.team)
 	var aim := goal
 	if p == human and _header_aim != Vector3.ZERO:
@@ -5872,6 +6021,9 @@ func _volley(p: SoccerPlayer) -> void:
 ## balance sale de DecisionResolver.m3d_bicycle; el jugador se queda en el suelo un
 ## momento (no puede seguir la jugada al instante: es el precio del lujo).
 func _bicycle(p: SoccerPlayer) -> void:
+	if state == State.MOMENT and p.team == 0 and p != star and ball.last_touch == star:
+		_star_passed_to = p # remata tu centro / tu córner: si entra, asistencia tuya
+		_star_pass_received = true # y si no entra, el fallo no es tuyo
 	var goal := opponent_goal_center(p.team)
 	var aim := goal
 	if p == human and _header_aim != Vector3.ZERO:
@@ -5910,7 +6062,56 @@ func _bicycle_slowmo() -> void:
 		Engine.time_scale = prev
 
 
+## Tu jugador cabecea si llega (HeaderTiming con margen). Un rival más cerca del
+## balón le disputa el salto: duelo por fuerza.
+func _try_human_header(bpos: Vector3, body_reachable: bool) -> bool:
+	var h := human
+	if h == null or h.is_keeper or state != State.MOMENT or body_reachable or h.stun_timer > 0.0 \
+			or Time.get_ticks_msec() - _last_header_ms <= 900 or not ball.can_be_picked_by(h):
+		return false
+	if not HeaderTiming.in_window_assisted(bpos.y, ball.linear_velocity.y):
+		return false
+	var ac := aerial_choice_for(h)
+	if ac != "" and ac != AerialControl.HEADER:
+		return false # este balón lo baja con el cuerpo o le pega de volea
+	var hd := flat_dist(h.global_position, bpos)
+	var q := HeaderTiming.quality_assisted(bpos.y, hd, h.stat("strength"), h.stat("composure"))
+	if not HeaderTiming.can_contact(q):
+		return false
+	_last_header_ms = Time.get_ticks_msec()
+	for o: SoccerPlayer in teams[1 - h.team]:
+		if o.is_keeper or o.stun_timer > 0.0:
+			continue
+		var od := flat_dist(o.global_position, bpos)
+		if od < hd - 0.3 and od < HeaderTiming.MAX_DISTANCE:
+			if randf() >= HeaderTiming.duel_win_chance(h.stat("strength"), o.stat("strength")):
+				_header(o, HeaderTiming.quality(bpos.y, od, o.stat("strength"), o.stat("composure")))
+				_hud.show_message("¡TE GANÓ EL SALTO!", 0.6)
+				return true
+			break
+	_header(h, q)
+	return true
+
+
+## Dónde (en el suelo) el balón que viene por el aire pasará a la altura de tu cabeza
+## bajando; null si no baja a esa altura en los próximos 2,5 s.
+func _aerial_meet_point(p: SoccerPlayer) -> Variant:
+	var b := ball.global_position
+	var v := ball.linear_velocity
+	var head := HeaderTiming.ideal_height(p.stat("strength"))
+	var prev_y := b.y
+	for i in range(1, 50):
+		var at := SoccerBall.predict(b, v, i * 0.05)
+		if at.y <= head and prev_y > head and at.y < prev_y:
+			return _clamp_to_field(flat(at))
+		prev_y = at.y
+	return null
+
+
 func _header(p: SoccerPlayer, quality := 1.0) -> void:
+	if state == State.MOMENT and p.team == 0 and p != star and ball.last_touch == star:
+		_star_passed_to = p # remata tu centro / tu córner: si entra, asistencia tuya
+		_star_pass_received = true # y si no entra, el fallo no es tuyo
 	var goal := opponent_goal_center(p.team)
 	var to_goal := flat(goal - p.global_position)
 	var vel: Vector3
@@ -6828,6 +7029,77 @@ func _apply_rosters() -> void:
 				p.set_stats(d.stats)
 			if d.get("look") is Dictionary:
 				p.apply_look(d.look)
+
+
+## Lanzadores designados y capitán de cada equipo (SetPieceTakers, desde la config):
+## _takers[equipo] = {"penalty": SoccerPlayer, "free_kick": …, "corner": …, "captain": …}.
+## Sin config (pruebas), vacío: tú tiras faltas y penaltis y el córner lo saca un medio.
+var _takers := [{}, {}]
+
+
+func _assign_takers() -> void:
+	for t in 2:
+		_takers[t] = {}
+		var d: Dictionary = config.get(["home_set_pieces", "away_set_pieces"][t], {})
+		for kind: String in d:
+			var who := String(d[kind])
+			for p: SoccerPlayer in teams[t]:
+				if who != "" and _name_of(p) == who:
+					_takers[t][kind] = p
+					break
+		var cap: SoccerPlayer = _takers[t].get("captain")
+		if cap != null:
+			cap.set_captain(true)
+	if not _takers[0].is_empty() and _hud != null:
+		var parts: Array = []
+		for kind: String in ["captain", "penalty", "free_kick", "corner"]:
+			var p: SoccerPlayer = _takers[0].get(kind)
+			if p != null:
+				parts.append("%s: %s" % [SetPieceTakers.LABELS[kind], "TÚ" if p == star else _name_of(p)])
+		_hud.add_feed(" · ".join(parts))
+
+
+## Lanzador designado de tu equipo para "penalty" / "free_kick" / "corner" (null = sin designar).
+func set_piece_taker(kind: String) -> SoccerPlayer:
+	var p: SoccerPlayer = _takers[0].get(kind)
+	if p == null or not p.visible or (sent_off and p == star):
+		return null
+	return p
+
+
+## ¿Te toca cobrarlo a ti? Sin designación, faltas y penaltis sí (como siempre).
+func user_takes(kind: String) -> bool:
+	var p := set_piece_taker(kind)
+	if p == null:
+		return kind != "corner"
+	return p == star and _bench_until <= 0.0
+
+
+## Penalti: dónde espera el i-ésimo jugador. Fuera del área Y fuera de la media luna
+## (a más de 9,15 m del punto), repartidos a los dos lados del arco. `dir` = +1 si se
+## tira a la portería de +X, -1 a la de -X.
+func _penalty_wait_spot(i: int, dir: float) -> Vector3:
+	var sd := 1.0 if i % 2 == 0 else -1.0
+	var k := i / 2
+	var x := FIELD_LENGTH * 0.5 - BOX_DEPTH - 0.7 - float(k % 2) * 1.4
+	return Vector3(x * dir, 0.0, sd * (9.4 + k * 1.3))
+
+
+## ¿Penalti aún sin tirar? Hasta el golpeo nadie se mueve (ni entra al área).
+func _penalty_waiting() -> bool:
+	return state == State.MOMENT and moment_type == Moment.PENALTY and not _penalty_kicked \
+			and ball.owner_player != null
+
+
+## El balón parado lo cobra un compañero: tú, al área a por el rechace o el remate.
+func _mate_set_piece_title(kind: String, p: SoccerPlayer) -> void:
+	var what: String = {"penalty": "PENALTI", "free_kick": "TIRO LIBRE", "corner": "CÓRNER"}[kind]
+	play["mate_taker"] = true
+	play["title"] = "%s · LO COBRA %s" % [what, _name_of(p).to_upper()]
+	if kind == "penalty":
+		play["hint"] = "Lanzador designado por el DT\nEspera fuera del área: cuando patee, corre a por el rechace"
+	else:
+		play["hint"] = "Lanzador designado por el DT\nTú, al área: toca el césped para moverte y atento al rechace"
 
 
 func _name_of(p: SoccerPlayer) -> String:

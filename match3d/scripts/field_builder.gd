@@ -267,10 +267,11 @@ static func _lines(root: Node3D) -> void:
 		var spot_x := s * (L * 0.5 - SoccerMatch.PENALTY_DIST)
 		add_mesh(root, spot, Vector3(spot_x, 0.01, 0.0), Color.WHITE)
 		# Semicírculo del área: solo la parte fuera del área grande
-		var r := 3.6
+		# (8-nov: el radio era 3,6 m, nunca asomaba fuera del área y no se veía)
+		var r := 9.15
 		var edge := (bd - SoccerMatch.PENALTY_DIST) / r # coseno donde corta la línea del área
 		var a := acos(clampf(edge, -1.0, 1.0))
-		_arc(root, Vector3(spot_x, 0.0, 0.0), r, PI - a if s > 0.0 else -a, PI + a if s > 0.0 else a, 14, t)
+		_arc(root, Vector3(spot_x, 0.0, 0.0), r, PI - a if s > 0.0 else -a, PI + a if s > 0.0 else a, 20, t)
 		# Esquinas
 		for zs: float in [-1.0, 1.0]:
 			var corner := Vector3(s * L * 0.5, 0.0, zs * W * 0.5)
