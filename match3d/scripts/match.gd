@@ -3812,6 +3812,9 @@ var _celeb_dancing := false
 var _celeb_then := Callable()
 var _celeb_mates: Array[SoccerPlayer] = []
 var _celeb_cheered: Dictionary = {}
+## 8-nov: los que encajaron ya no se quedan de estatua: portero al suelo, el central
+## que protesta, manos a las rodillas cerca del área y los de lejos vuelven cabizbajos.
+var _celeb_losers: Dictionary = {}   # SoccerPlayer -> "walk" o nombre de la animación
 var _replay_hold := false # la repetición termina en el gol: la celebración no se graba
 
 
@@ -3842,6 +3845,7 @@ func _start_goal_celebration(scorer: SoccerPlayer, team: int, then: Callable, da
 		return flat_dist(a.global_position, scorer.global_position) < flat_dist(b.global_position, scorer.global_position))
 	for i in mini(4, near.size()):
 		_celeb_mates.append(near[i])
+	_pick_loser_reactions(team)
 	_set_human(null)
 	_hud.show_replay_button(false)
 	_hud.set_hint("")
@@ -3849,9 +3853,55 @@ func _start_goal_celebration(scorer: SoccerPlayer, team: int, then: Callable, da
 	state = State.CELEBRATION
 
 
+func _pick_loser_reactions(scoring_team: int) -> void:
+	_celeb_losers.clear()
+	var own_goal := goal_center(1 - scoring_team)
+	var defs: Array = []
+	for p: SoccerPlayer in teams[1 - scoring_team]:
+		if not p.visible or p == star and sent_off:
+			continue
+		if p.is_keeper:
+			_celeb_losers[p] = ["sit_react", "kneel", "tired"].pick_random()
+			continue
+		var d := flat_dist(p.global_position, own_goal)
+		if d < 24.0:
+			defs.append(p)
+		else:
+			_celeb_losers[p] = "walk"
+	defs.sort_custom(func(a: SoccerPlayer, b: SoccerPlayer) -> bool:
+		return flat_dist(a.global_position, own_goal) < flat_dist(b.global_position, own_goal))
+	for i in defs.size():
+		var p: SoccerPlayer = defs[i]
+		if i == 0 and randf() < 0.6:
+			_celeb_losers[p] = ["argue", "argue_2"].pick_random()
+		else:
+			_celeb_losers[p] = "kneel" if randf() < 0.15 else "tired"
+
+
+func _update_loser_reactions() -> void:
+	for p: SoccerPlayer in _celeb_losers:
+		if not is_instance_valid(p):
+			continue
+		var r: String = _celeb_losers[p]
+		if r == "walk":
+			# Hacia su campo, despacio y con la cabeza gacha
+			p.sad_gait = true
+			var back := Vector3(0.0, 0.0, p.global_position.z * 0.8)
+			var to := flat(back - p.global_position)
+			if to.length() > 2.0:
+				p.move_input = to.normalized() * 0.32
+		elif _celeb_t > 0.35 + float(p.index % 4) * 0.15 and not p.is_acting():
+			# Primero se paran (un instante de incredulidad) y luego reaccionan
+			p.velocity = Vector3.ZERO
+			p.play_action(r, 1.0, 6.0)
+			if r.begins_with("argue"):
+				_celeb_losers[p] = "tired"   # protesta una vez y se queda resoplando
+
+
 func _update_celebration(delta: float) -> void:
 	_celeb_t += delta
 	_freeze_players()
+	_update_loser_reactions()
 	var s := _celeb_scorer
 	if s == null or not is_instance_valid(s):
 		_end_goal_celebration()
@@ -3893,6 +3943,11 @@ func _update_celebration(delta: float) -> void:
 
 
 func _end_goal_celebration() -> void:
+	for p: SoccerPlayer in _celeb_losers:
+		if is_instance_valid(p):
+			p.sad_gait = false
+	_celeb_losers.clear()
+	_celeb_in_cut = false
 	_celeb_mates.clear()
 	_celeb_cheered.clear()
 	_celeb_scorer = null
@@ -3909,6 +3964,24 @@ func _after_moment_celebration() -> void:
 
 
 ## Primero un travelling por delante mientras corre al banderín; luego, plano de frente.
+var _celeb_in_cut := false
+var _celeb_hard_cut := false
+
+
+## A quién enseña el corte: el portero o el que protesta/resopla más cerca de su portería.
+func _celeb_cutaway() -> SoccerPlayer:
+	var best: SoccerPlayer = null
+	var best_d := INF
+	for p: SoccerPlayer in _celeb_losers:
+		if not is_instance_valid(p) or not p.visible or String(_celeb_losers[p]) == "walk":
+			continue
+		var d := flat_dist(p.global_position, goal_center(p.team)) - (8.0 if p.is_keeper else 0.0)
+		if d < best_d:
+			best_d = d
+			best = p
+	return best
+
+
 func _celebration_camera(delta: float) -> void:
 	_update_occlusion(false)
 	var s := _celeb_scorer
@@ -3918,7 +3991,22 @@ func _celebration_camera(delta: float) -> void:
 	var tp: Vector3
 	var tl: Vector3
 	var fov := 48.0
-	if _celeb_dancing:
+	# 8-nov: corte de tele a mitad del festejo: el que encajó (portero en el suelo,
+	# el central que protesta) durante 1,4 s, y vuelta al goleador. Corte seco.
+	var cut := _celeb_cutaway()
+	var in_cut := cut != null and _celeb_dancing and _celeb_dance > 3.0  and _celeb_t > _celeb_dance * 0.42 and _celeb_t < _celeb_dance * 0.42 + 1.4
+	if in_cut != _celeb_in_cut:
+		_celeb_in_cut = in_cut
+		_celeb_hard_cut = true
+	if in_cut:
+		var cp := cut.global_position
+		var f := flat(cut.facing).normalized()
+		if f == Vector3.ZERO:
+			f = Vector3.BACK
+		tp = cp + f * 3.0 + f.cross(Vector3.UP) * 1.2 + Vector3(0.0, 1.35, 0.0)
+		tl = cp + Vector3(0.0, 0.75, 0.0)
+		fov = 40.0
+	elif _celeb_dancing:
 		tp = p + _celeb_face * 4.0 + Vector3(0.0, 1.45, 0.0)
 		tl = p + Vector3(0.0, 1.05, 0.0)
 		fov = 42.0
@@ -3932,6 +4020,11 @@ func _celebration_camera(delta: float) -> void:
 		tp = p + flat(s.velocity) * 0.5 + perp * 7.0 + dir * 3.0 + Vector3(0.0, 2.4, 0.0)
 		tl = p + flat(s.velocity) * 0.25 + Vector3(0.0, 1.0, 0.0)
 	var k := minf(1.0, (2.2 if _celeb_dancing else 4.0) * delta)
+	if _celeb_hard_cut:
+		_celeb_hard_cut = false
+		_cam_pos = tp
+		_cam_look = tl
+		_camera.fov = fov
 	_cam_pos = _cam_pos.lerp(tp, k)
 	_cam_look = _cam_look.lerp(tl, minf(1.0, 9.0 * delta))
 	_camera.fov = lerpf(_camera.fov, fov, k)
@@ -5554,6 +5647,7 @@ func formation_target(p: SoccerPlayer, bpos: Variant = null, poss: int = -2) -> 
 	if role == "DF" and not attacking:
 		bxx = _df_base_mean(p.team) # defensa en línea: todos a la misma altura
 	var x: float = bxx + (bx + 5.0) * float(ROLE_SHIFT[role]) + (float(ROLE_PUSH[role]) if attacking else -3.0)
+	x += team_mentality(p.team) * (0.6 if role == "ST" else 1.0)
 	if role == "DF" and not attacking and _now_s() < float(_trap_until[p.team]):
 		x += 3.5 # salen todos a la vez: el delantero queda en fuera de juego
 	x = clampf(x, float(ROLE_MIN_X[role]), float(ROLE_MAX_X[role]))
@@ -5562,6 +5656,21 @@ func formation_target(p: SoccerPlayer, bpos: Variant = null, poss: int = -2) -> 
 		x = maxf(x, minf(bx - 30.0, 0.0))
 	var z := clampf(base.z * 0.85 + b.z * s * 0.3, -FIELD_WIDTH * 0.5 + 1.5, FIELD_WIDTH * 0.5 - 1.5)
 	return to_world(p.team, Vector3(x, 0.0, z))
+
+
+## Cuántos metros adelanta (o atrasa) sus líneas el equipo según la charla del
+## descanso y el marcador (8-nov): quien pierde en el tramo final se va arriba y quien
+## gana se repliega a defender la ventaja. Antes la táctica solo cambiaba las cuentas
+## de la simulación y en el césped no se notaba.
+func team_mentality(team: int) -> float:
+	var m := 0.0
+	if team == 0:
+		m += [4.0, 0.0, -4.0][clampi(_tactic, 0, 2)] if minute >= 45.0 else 0.0
+	var diff: int = int(score[team]) - int(score[1 - team])
+	if diff != 0 and minute > 65.0:
+		var late := clampf((minute - 65.0) / 25.0, 0.0, 1.0)
+		m += (-5.0 if diff > 0 else 7.0) * late * (1.0 if absi(diff) == 1 else 0.6)
+	return m
 
 
 ## Formación en coordenadas locales (ataca hacia +X, portería propia en x = -52.5).

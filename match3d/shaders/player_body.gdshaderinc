@@ -610,6 +610,62 @@ vec3 kit_base(float x, float ax, float f, float dn) {
 		c = mix(c, a * 0.8, pk * 0.35);
 		return mix(c, b, max(placket, edge));
 	}
+	// 8-nov: 36 pata de gallo, 37 flores, 38 leopardo, 39 rombos (argyle),
+	// 40 punto trenzado, 41 rayas de rugby anchas con cuello liso
+	if (shirt_pattern == 36) {
+		// Pata de gallo: cuadro diagonal con "dientes" en las esquinas
+		vec2 g = vec2(x, f) / 0.022;
+		vec2 c2 = fract(g);
+		vec2 id = floor(g);
+		float chk = mod(id.x + id.y, 2.0);
+		float tooth = below(abs(c2.x - c2.y), 0.22) * (1.0 - chk);
+		return mix(a, b, clamp(chk * below(c2.x + c2.y, 1.4) + tooth, 0.0, 1.0));
+	}
+	if (shirt_pattern == 37) {
+		// Flores: pétalos redondos (5) alrededor de un botón claro, en tresbolillo
+		vec2 g = vec2(x / 0.07 + (front ? 0.0 : 13.0), f / 0.07);
+		g.x += mod(floor(g.y), 2.0) * 0.5;
+		vec2 c2 = fract(g) - 0.5;
+		float r = length(c2);
+		float ang = atan(c2.y, c2.x);
+		float petal = below(r, 0.24 + 0.1 * cos(ang * 5.0));
+		float leaf = below(length(c2 - vec2(0.33, -0.28)), 0.09);
+		vec3 c = mix(a, b, petal);
+		c = mix(c, mix(a, vec3(0.15, 0.45, 0.2), 0.6), leaf * (1.0 - petal));
+		return mix(c, vec3(0.98, 0.9, 0.5), below(r, 0.07));
+	}
+	if (shirt_pattern == 38) {
+		// Leopardo: manchas irregulares con anillo oscuro y centro tostado
+		float n = boot_noise(q * 2.2);
+		vec2 g = vec2(x / 0.05, f / 0.05) + vec2(n, n * 0.7) * 0.6;
+		vec2 c2 = fract(g) - 0.5;
+		float r = length(c2 * vec2(1.0, 1.3));
+		float ring = below(abs(r - 0.25), 0.08) * step(0.25, fract(sin(dot(floor(g), vec2(12.9, 78.2))) * 437.5));
+		vec3 c = mix(a, a * 0.75 + b * 0.25, below(r, 0.2));
+		return mix(c, b, ring);
+	}
+	if (shirt_pattern == 39) {
+		// Rombos de jersey: rombos grandes de los dos colores y rayas finas cruzadas
+		float u = x / 0.06 + (front ? 0.0 : 0.5);
+		float v = f / 0.085;
+		float dm = abs(fract(u) - 0.5) + abs(fract(v) - 0.5);
+		vec3 c = mix(a, b, below(dm, 0.5) * mod(floor(u) + floor(v), 2.0));
+		float lines = max(below(abs(fract(u + v) - 0.5), 0.03), below(abs(fract(u - v) - 0.5), 0.03));
+		return mix(c, vec3(0.92), lines * 0.7);
+	}
+	if (shirt_pattern == 40) {
+		// Punto trenzado: ochos en columnas y canalé abajo
+		float col = fract(x / 0.045);
+		float rib = below(f, SHIRT_BOTTOM + 0.035);
+		float braid = abs(sin((f / 0.03 + (col < 0.5 ? 0.0 : 1.57)) * 3.1416)) * below(abs(col - 0.5), 0.32);
+		vec3 c = a * (0.86 + braid * 0.2) * (0.94 + 0.06 * below(fract(x / 0.012), 0.5));
+		return mix(c, b * (0.9 + 0.1 * below(fract(x / 0.01), 0.5)), rib);
+	}
+	if (shirt_pattern == 41) {
+		// Rugby: rayas horizontales anchas y cuello/canesú liso del segundo color
+		vec3 c = mix(a, b, below(fract(f / 0.09), 0.5));
+		return mix(c, vec3(0.96), below(f, 1.0) * (1.0 - below(f, 0.69)) * (front ? below(ax, 0.03) : 0.0));
+	}
 	return a;
 }
 

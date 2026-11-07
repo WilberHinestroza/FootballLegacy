@@ -63,6 +63,15 @@ const STREET := {
 	"tecnica": ["#22252b", "#1c1c20", true, 31, "#ff6a1a", 6, ""],
 	"sobrecamisa": ["#3e5a36", "#6d7078", true, 32, "#141414", 3, "#2b2b30"],
 	"diplomatico": ["#1d2333", "#1d2333", true, 9, "#8a1c2b", 4, "#c9ccd6"],
+	# 8-nov: estampados nuevos del shader (36-41)
+	"pata_gallo": ["#ece6d8", "#3a3a40", true, 36, "#1c1c22", 4, "#6d7078"],
+	"floral": ["#1f3d5a", "#d8c7a0", false, 37, "#f28aa0", 0, ""],
+	"leopardo": ["#c99a52", "#141414", true, 38, "#2a1a0e", 0, ""],
+	"rombos": ["#2f4466", "#8b7d5a", true, 39, "#b3222c", 7, ""],
+	"jersey_ochos": ["#e9e2cf", "#3b5a86", true, 40, "#d8cfb8", 2, ""],
+	"rugby": ["#1f3566", "#e6dcc6", true, 41, "#d4af37", 0, ""],
+	"cargo_arena": ["#d8cfb8", "#a08a60", false, 0, "", 5, "#7c6a48"],
+	"pana_vino": ["#5a1f3a", "#6b3f22", true, 40, "#4a1830", 7, ""],
 }
 
 ## Zapatos de calle -> [color, suela]. "" = los de siempre con ropa de calle.
@@ -71,6 +80,9 @@ const SHOES := {
 	"zapatillas_blancas": ["#f2f2f4", "#c9ccd2"],
 	"mocasines": ["#6b3f22", "#24160d"],
 	"botas_chelsea": ["#2b211b", "#0e0c0b"],
+	"zapatillas_retro": ["#e8e2d0", "#b3222c"],
+	"botas_trabajo": ["#8a5a2b", "#2a1a0e"],
+	"zapatillas_negras": ["#18181c", "#f2f2f4"],
 }
 ## Pantalones cortos de calle (bermudas): no llegan al tobillo.
 const SHORT_BOTTOMS := ["hawaiana"]

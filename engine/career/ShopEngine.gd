@@ -266,6 +266,11 @@ const COSMETIC_PRICE := {
 	"tecnica": [1.6, 40],
 	"sobrecamisa": [1.5, 38],
 	"diplomatico": [3.2, 75],
+	# 8-nov: estampados nuevos y zapatos de calle
+	"pata_gallo": [2.6, 65], "floral": [0.9, 22], "leopardo": [1.4, 35],
+	"rombos": [1.2, 30], "jersey_ochos": [1.1, 28], "rugby": [1.0, 25],
+	"cargo_arena": [0.8, 20], "pana_vino": [1.3, 32],
+	"zapatillas_retro": [0.8, 20], "botas_trabajo": [1.2, 30], "zapatillas_negras": [0.7, 18],
 	# 7-nov: guayos con diseños locos
 	"guayos_tormenta": [2.2, 55], "guayos_galaxia": [2.8, 70], "guayos_tigre": [2.0, 50],
 	"guayos_camo": [1.8, 45], "guayos_fuego": [2.2, 55], "guayos_hielo": [1.8, 45],

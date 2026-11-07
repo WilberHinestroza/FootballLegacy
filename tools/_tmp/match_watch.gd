@@ -25,13 +25,20 @@ func _ready() -> void:
 	m._end_walkout()
 	if m.state == m.State.CUTSCENE:
 		m._end_cutscene()
-	m._moments = [{"minute": m.minute + 6.0, "kind": m.Moment.ATTACK}]
+	if OS.get_cmdline_user_args().has("goal"):
+		m._moments.clear()
+		await get_tree().create_timer(1.5).timeout
+		m._start_ambient_goal(1, int(m.minute), "")
+	else:
+		m._moments = [{"minute": m.minute + 6.0, "kind": m.Moment.ATTACK}]
 	var k := 1
 	var t0 := Time.get_ticks_msec()
 	var started := false
 	m.moment_started.connect(func(_t): started = true)
-	while k < 40 and (Time.get_ticks_msec() - t0) < 60000:
-		await get_tree().create_timer(0.6).timeout
+	while k < 26 and (Time.get_ticks_msec() - t0) < 60000:
+		await get_tree().create_timer(0.6 if m.state != m.State.CELEBRATION else 0.4).timeout
+		if m.state == m.State.CELEBRATION and m._celeb_dance < 6.0:
+			m._celeb_dance = 6.0
 		_shot(k)
 		print("shot %02d estado %s min %.1f balón %s" % [k, m.State.keys()[m.state], m.minute,
 			m.ball.owner_player.name if m.ball.owner_player != null else "-"])

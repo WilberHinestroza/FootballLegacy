@@ -197,8 +197,8 @@ static func _with_ball(p: SoccerPlayer, m: SoccerMatch) -> void:
 				if mate:
 					p.pass_ball(mate)
 					return
-		# Chutar si está cerca y con buen ángulo
-		elif dist < 18.0 and absf(p.global_position.z) < 13.0 \
+		# Chutar si está cerca y con buen ángulo (perdiendo al final, también de lejos)
+		elif dist < (24.0 if m.team_mentality(p.team) > 3.0 else 18.0) and absf(p.global_position.z) < 13.0 \
 				and randf() < AiTuning.shot_chance(p.stat("shooting"), p.stat("composure"), dist):
 			# Al palo contrario al portero (con algo de azar)
 			var side := SoccerMatch.GOAL_WIDTH * 0.5 - 0.6
@@ -228,8 +228,12 @@ static func _with_ball(p: SoccerPlayer, m: SoccerMatch) -> void:
 				p.pass_ball(mate)
 				return
 
-	# Regatear hacia la portería apartándose de los rivales cercanos
+	# Ganando por uno en los últimos minutos: al banderín a esconder el balón
 	var move := dir_goal
+	if _kill_clock(p, m, dist):
+		var flag := goal + Vector3(-m.attack_dir(p.team) * 1.5, 0.0, signf(p.global_position.z + 0.01) * (SoccerMatch.FIELD_WIDTH * 0.5 - 1.0))
+		move = SoccerMatch.flat(flag - p.global_position).normalized()
+	# Regatear hacia la portería apartándose de los rivales cercanos
 	for o: SoccerPlayer in m.teams[1 - p.team]:
 		var off := SoccerMatch.flat(p.global_position - o.global_position)
 		var d := off.length()
@@ -240,6 +244,16 @@ static func _with_ball(p: SoccerPlayer, m: SoccerMatch) -> void:
 		move.z -= signf(p.global_position.z) * (4.0 - edge_z) * 0.5
 	p.move_input = SoccerMatch.flat(move).normalized()
 	p.sprinting = m.nearest_opponent_distance(p, p.global_position) > 4.0
+
+
+## ¿Toca perder tiempo? Solo fuera de tus jugadas, ganando por uno pasado el 85' y ya
+## en campo rival por la banda.
+static func _kill_clock(p: SoccerPlayer, m: SoccerMatch, dist: float) -> bool:
+	if m.state != SoccerMatch.State.SIMULATING or m.minute < 85.0:
+		return false
+	if int(m.score[p.team]) - int(m.score[1 - p.team]) != 1:
+		return false
+	return dist < 30.0 and absf(p.global_position.z) > 12.0
 
 
 static func _defend(p: SoccerPlayer, m: SoccerMatch, holder: SoccerPlayer) -> void:

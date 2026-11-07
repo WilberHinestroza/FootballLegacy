@@ -385,6 +385,11 @@ func on_gained_ball() -> void:
 
 # ---------- portero: estiradas ----------
 
+## Haciendo una acción con animación propia (tiro, festejo, reacción...).
+func is_acting() -> bool:
+	return _action_timer > 0.0
+
+
 func is_diving() -> bool:
 	return not _dive.is_empty()
 
@@ -1244,7 +1249,9 @@ func _animate_model(delta: float, speed: float) -> void:
 	# Cansancio visible: zancada más corta y respiración más agitada con poca energía.
 	var low := clampf(energy / 0.45, 0.0, 1.0)
 	if target in ["walk", "walk_sad", "jog", "run", "run_back", "strafe_left", "strafe_right"]:
-		_anim.speed_scale *= lerpf(0.84, 1.0, low)
+		# 8-nov: antes además se frenaba el clip (x0,84) con poca energía, pero el
+		# cansancio ya baja la velocidad real y el clip sale de ella: frenarlo otra vez
+		# dejaba la cadencia por debajo del avance y los pies patinaban.
 		# Cadencia suave: la velocidad del clip se acerca a la buena en ~0,25 s
 		var want := _anim.speed_scale
 		_loco_scale = want if _loco_scale < 0.0 else move_toward(_loco_scale, want, delta * 4.0)
