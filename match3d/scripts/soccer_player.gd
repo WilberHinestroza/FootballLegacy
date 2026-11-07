@@ -42,6 +42,9 @@ var tackle_cooldown := 0.0
 var ai_timer := 0.0   # retraso entre decisiones de la IA
 var hold_timer := 0.0 # tiempo que el portero retiene el balón
 var dodge_timer := 0.0 # mientras dura el regate no le pueden robar
+var stumble_timer := 0.0 # desequilibrado tras un choque de hombros (BallContact)
+## Tipo del último golpeo a puerta: clean / jammed / stretched / twisted (BallContact.strike)
+var last_strike := "clean"
 var energy := 1.0      # baja al esprintar; la resistencia (stamina) decide cuánto
 ## Estadísticas con los mismos nombres y escala (0-100) que PlayerData de FootballCareer.
 var stats := {}
@@ -81,6 +84,8 @@ const KICKS := {
 ## así que el juego mueve el cuerpo por el camino que hacía la cadera (medido en Blender, cada 0.1 s,
 ## en alturas del jugador): `side` = hacia su lado natural, `fwd` = hacia delante.
 ## `hands` = dónde quedan las manos en el contacto respecto al punto de salida.
+## Aviso cuando tu golpeo no sale limpio (BallContact.strike)
+const STRIKE_NOTES := {"jammed": "Golpe mordido", "stretched": "Se te fue largo", "twisted": "Golpe forzado"}
 const BODY_H := 1.78
 const DIVES := {
 	"low": {"anim": "keeper_dive", "from": 0.4, "speed": 1.5, "contact": 1.0, "natural": 1.0,
@@ -141,6 +146,7 @@ func _physics_process(delta: float) -> void:
 	ai_timer = maxf(ai_timer - delta, 0.0)
 	hold_timer = maxf(hold_timer - delta, 0.0)
 	dodge_timer = maxf(dodge_timer - delta, 0.0)
+	stumble_timer = maxf(stumble_timer - delta, 0.0)
 	_receive_timer = maxf(_receive_timer - delta, 0.0)
 
 	if is_diving():
@@ -168,6 +174,8 @@ func _physics_process(delta: float) -> void:
 	var desired := move_input.limit_length(1.0) * speed
 	if stun_timer > 0.0:
 		desired = Vector3.ZERO
+	if stumble_timer > 0.0:
+		desired *= BallContact.STUMBLE_SPEED
 	if _receive_timer > 0.0:
 		desired *= 0.35 # frena para controlar
 	_jockey = _should_jockey(desired)
@@ -466,8 +474,11 @@ func shoot_at(target: Vector3, power: float) -> void:
 		dir = facing
 	var precision := stat("shooting") * 0.6 + stat("composure") * 0.25 + stat("stamina") * 0.15
 	var fatigue := _shot_fatigue()
-	dir = dir.rotated(Vector3.UP, randf_range(-0.06, 0.06) * (0.5 + power) * (1.5 - precision) * (1.0 + fatigue))
+	var q := strike_quality(dir)
+	var err_k: float = float(q.error) * BallContact.stumble_error(stumble_timer)
+	dir = dir.rotated(Vector3.UP, randf_range(-0.06, 0.06) * (0.5 + power) * (1.5 - precision) * (1.0 + fatigue) * err_k)
 	var spd := lerpf(13.0, 29.0, power) * lerpf(0.9, 1.08, stat("shooting")) * lerpf(0.92, 1.0, stat("stamina"))
+	spd *= float(q.power)
 	var lift := lerpf(1.0, 5.5, power) * lerpf(0.95, 1.05, stat("shooting"))
 	if is_keeper:
 		# Despeje largo con la mano
@@ -501,8 +512,16 @@ func shoot_vector(vel: Vector3, curl: float, accuracy := 0.0) -> void:
 	skill = clampf(skill + clampf(accuracy, 0.0, 0.6), 0.0, 1.0)
 	var power := clampf(vel.length() / 30.0, 0.3, 1.0)
 	var fatigue := _shot_fatigue()
-	var err := randf_range(-1.0, 1.0) * (1.0 - skill) * 0.09 * (0.5 + power) * (1.0 + fatigue)
-	var flat_v := SoccerMatch.flat(vel).rotated(Vector3.UP, err) * lerpf(0.92, 1.08, stat("shooting"))
+	var q := strike_quality(SoccerMatch.flat(vel).normalized())
+	var err_k: float = float(q.error) * BallContact.stumble_error(stumble_timer)
+	if kind == "penalty":
+		err_k = 1.0 # el penalti se golpea con el balón parado en su sitio
+		q.power = 1.0
+	var note: String = STRIKE_NOTES.get(String(q.kind), "")
+	if is_human and kind != "penalty" and note != "" and match_ref._hud != null:
+		match_ref._hud.show_message(note, 0.9, 0.26)
+	var err := randf_range(-1.0, 1.0) * (1.0 - skill) * 0.09 * (0.5 + power) * (1.0 + fatigue) * err_k
+	var flat_v := SoccerMatch.flat(vel).rotated(Vector3.UP, err) * lerpf(0.92, 1.08, stat("shooting")) * float(q.power)
 	vel = flat_v + Vector3.UP * vel.y * randf_range(1.0 - (1.0 - skill) * 0.1, 1.0 + (1.0 - skill) * 0.2)
 	_start_kick(kind, vel, curl, match_ref.on_shot.bind(self))
 
@@ -516,7 +535,7 @@ func pass_ball(target: SoccerPlayer) -> void:
 		return
 	# Pase al hueco: apunta un poco por delante del compañero (se calcula al golpear).
 	# Con poco pase (passing) el balón sale algo desviado o con la fuerza equivocada.
-	var err := randf_range(-1.0, 1.0) * (1.0 - stat("passing")) * 0.12
+	var err := randf_range(-1.0, 1.0) * (1.0 - stat("passing")) * 0.12 * BallContact.stumble_error(stumble_timer)
 	var force := 1.0 + randf_range(-1.0, 1.0) * (1.0 - stat("passing")) * 0.2
 	var aim := func() -> Vector3:
 		var lead := target.global_position + SoccerMatch.flat(target.velocity) * 0.35
@@ -536,7 +555,7 @@ func pass_ball(target: SoccerPlayer) -> void:
 func lofted_pass(target: SoccerPlayer, apex := LoftedPass.clearance_apex()) -> void:
 	if not has_ball() or is_kicking() or target == null:
 		return
-	var err := randf_range(-1.0, 1.0) * (1.0 - stat("passing")) * 0.12
+	var err := randf_range(-1.0, 1.0) * (1.0 - stat("passing")) * 0.12 * BallContact.stumble_error(stumble_timer)
 	var aim := func() -> Vector3:
 		var lead := target.global_position + SoccerMatch.flat(target.velocity) * 0.5
 		var to := SoccerMatch.flat(lead - global_position)
@@ -613,7 +632,7 @@ func rabona_pass(target: SoccerPlayer, curl: float) -> void:
 func pass_to_point(point: Vector3, target: SoccerPlayer, power := 1.0) -> void:
 	if not has_ball() or is_kicking():
 		return
-	var err := randf_range(-1.0, 1.0) * (1.0 - stat("passing")) * 0.1
+	var err := randf_range(-1.0, 1.0) * (1.0 - stat("passing")) * 0.1 * BallContact.stumble_error(stumble_timer)
 	var aim := func() -> Vector3:
 		var to := SoccerMatch.flat(point - global_position)
 		var d := maxf(to.length(), 1.0)
@@ -703,6 +722,33 @@ func stun(t: float) -> void:
 	stun_timer = maxf(stun_timer, t)
 	if t >= 0.6:
 		play_action("fall", 1.3, 1.1) # le han hecho una entrada
+
+
+## Choque de hombros perdido: se tambalea `t` segundos, empujado hacia `push`
+## (más lento y con peor pase/tiro mientras dura; ver BallContact).
+func stumble(t: float, push: Vector3) -> void:
+	if is_keeper or is_diving() or is_kicking():
+		return
+	stumble_timer = maxf(stumble_timer, t)
+	var pd := SoccerMatch.flat(push).normalized()
+	velocity += pd * 1.6
+	# Hacia qué lado se va el cuerpo respecto a donde mira (+X del personaje es su izquierda)
+	var left := facing.cross(Vector3.DOWN).dot(pd) > 0.0
+	play_action("stumble_l" if left else "stumble_r", 1.0, t + 0.15)
+
+
+## Calidad del golpeo hacia `dir` (BallContact.strike): dónde va el balón respecto al
+## pie que golpea y cuánto tiene que girarse el jugador.
+func strike_quality(dir: Vector3) -> Dictionary:
+	var off := 0.0
+	if match_ref != null and match_ref.ball != null:
+		off = SoccerMatch.flat(match_ref.ball.global_position - kick_spot()).dot(facing)
+	var turn := 0.0
+	if dir.length() > 0.01 and facing.length() > 0.01:
+		turn = rad_to_deg(SoccerMatch.flat(facing).normalized().angle_to(SoccerMatch.flat(dir).normalized()))
+	var q := BallContact.strike(off, turn)
+	last_strike = String(q.kind)
+	return q
 
 
 func lunge() -> void:

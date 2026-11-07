@@ -268,13 +268,29 @@ static func _defend(p: SoccerPlayer, m: SoccerMatch, holder: SoccerPlayer) -> vo
 			return
 		move_to(p, m.formation_target(p), 0.6, true)
 		return
-	# Presiona con un sesgo lateral para tapar el pase por dentro.
+	# Contiene perfilado entre el balón y la portería, con un sesgo lateral para tapar
+	# el pase por dentro. No se pega al rival: espera a un par de pasos y se acerca
+	# cuando el balón se le despega del pie (toque largo), que es cuando entra.
 	var own_goal := m.goal_center(p.team)
 	var line := SoccerMatch.flat(own_goal - holder.global_position).normalized()
 	var lateral := Vector3(-line.z, 0.0, line.x)
 	var side := 1.0 if holder.global_position.z >= 0.0 else -1.0
-	var target := holder.global_position + line * 0.55 + lateral * side * 0.35
-	move_to(p, target, 0.0, true)
+	var expo: float = m.ball.exposure
+	var contain := BallContact.contain_distance(expo)
+	if not holder.is_human:
+		contain *= 0.8 # con la IA contra la IA se juega más al choque (la simulación avanza)
+	var target := holder.global_position + line * contain + lateral * side * 0.35
+	var hv := SoccerMatch.flat(holder.velocity)
+	var rel := SoccerMatch.flat(p.global_position - holder.global_position)
+	if hv.length() > 3.0 and rel.length() < 6.0 and rel.dot(hv.normalized()) < -0.3:
+		# Le persigue desde atrás: en vez de ir a la estela, se pone a su altura por el
+		# lado en el que ya está, a cuerpo de distancia, para pelearle con el hombro
+		var sidev := Vector3(-hv.z, 0.0, hv.x).normalized()
+		var by := 1.0 if rel.dot(sidev) >= 0.0 else -1.0
+		target = holder.global_position + hv.normalized() * 0.3 + sidev * by * 0.8
+		move_to(p, target, 0.0, true)
+	else:
+		move_to(p, target, 0.0, SoccerMatch.flat_dist(p.global_position, target) > 2.5)
 	var dist_to_holder := SoccerMatch.flat_dist(p.global_position, holder.global_position)
 	# Probabilidad de entrada escalada por decisión y fuerza: un defensor con
 	# buena lectura entra más a menudo y con menos temeridad; uno débil se
@@ -284,7 +300,8 @@ static func _defend(p: SoccerPlayer, m: SoccerMatch, holder: SoccerPlayer) -> vo
 	# Una decisión de entrada cada 1.5 s como mucho (antes se tiraba por frame y el
 	# defensor se quedaba entrando toda la jugada).
 	var now := Time.get_ticks_msec()
-	if dist_to_holder < 1.5 and now - int(p.get_meta("tackle_ms", -100000)) > 1500 and randf() < tackle_p * 6.0:
+	tackle_p *= BallContact.tackle_urge(p.stat("decision_making"), expo)
+	if dist_to_holder < BallContact.tackle_reach(expo) and now - int(p.get_meta("tackle_ms", -100000)) > 1500 			and randf() < tackle_p * 6.0:
 		p.set_meta("tackle_ms", now)
 		# Contra ti en una jugada, a veces entran en plancha (puede ser falta a tu
 		# favor). La lectura y la sangre fría del defensor deciden el riesgo; un

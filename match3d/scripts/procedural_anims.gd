@@ -24,9 +24,9 @@ var _hip_h := 1.0              # altura de la cadera en metros
 
 static func build_all(anim: AnimationPlayer, skel: Skeleton3D, owner: Node3D) -> void:
 	var lib := anim.get_animation_library("")
-	if lib == null or lib.has_meta("procedural_v1") or not anim.has_animation("idle"):
+	if lib == null or lib.has_meta("procedural_v2") or not anim.has_animation("idle"):
 		return
-	lib.set_meta("procedural_v1", true)
+	lib.set_meta("procedural_v2", true)
 	var b := ProceduralAnims.new()
 	b._setup(anim, skel, owner)
 	b._add(lib, "walk", b._walk(1.05, 1.0, 0.0))
@@ -34,6 +34,8 @@ static func build_all(anim: AnimationPlayer, skel: Skeleton3D, owner: Node3D) ->
 	b._add(lib, "jump_cheer", b._jump())
 	b._add(lib, "shot_strike", b._strike(true))
 	b._add(lib, "pass_inside", b._strike(false))
+	b._add(lib, "stumble_l", b._stumble(1.0))
+	b._add(lib, "stumble_r", b._stumble(-1.0))
 
 
 func _add(lib: AnimationLibrary, n: String, a: Animation) -> void:
@@ -249,6 +251,45 @@ func _jump() -> Animation:
 		var bend := leg * 0.5 * ((1.0 - cos(th)) + (1.0 - cos(sh)))
 		var y: float = -bend * (1.0 - float(air.call(p))) + 0.42 * float(lift.call(p))
 		return Vector3(0.0, y, 0.06 * crouch.call(p)))
+	return a
+
+
+## Tambaleo tras un choque de hombros. `s` = +1 empujado hacia su izquierda (+X),
+## -1 hacia su derecha. El cuerpo se va hacia ese lado, la pierna de ese lado sale a
+## buscar el suelo para no caerse y los brazos se abren para recuperar el equilibrio.
+func _stumble(s: float) -> Animation:
+	var L := 0.7
+	var a := _blank(L, false)
+	var hit := [[0.0, 0.0], [0.12, 1.0], [0.34, 0.75], [L, 0.0]]
+	var step := [[0.0, 0.0], [0.1, 0.2], [0.24, 1.0], [0.45, 0.6], [L, 0.0]]
+	var push_side := "Left" if s > 0.0 else "Right"
+	var other_side := "Right" if s > 0.0 else "Left"
+	# Pierna del lado del empujón: se abre y se dobla al apoyar
+	_key_bone(a, push_side + "UpLeg", func(p: float) -> Quaternion:
+		var k := curve(step, p * L)
+		return rz(s * 16.0 * k) * rx(-14.0 * k))
+	_key_bone(a, push_side + "Leg", func(p: float) -> Quaternion: return rx(10.0 + 24.0 * curve(step, p * L)))
+	_key_bone(a, other_side + "UpLeg", func(p: float) -> Quaternion: return rx(-6.0 * curve(hit, p * L)))
+	_key_bone(a, other_side + "Leg", func(p: float) -> Quaternion: return rx(8.0 + 14.0 * curve(hit, p * L)))
+	# Tronco hacia el lado del empujón; la cabeza compensa un poco
+	_key_bone(a, "Hips", func(p: float) -> Quaternion: return rz(-s * 8.0 * curve(hit, p * L)))
+	_key_bone(a, "Spine", func(p: float) -> Quaternion:
+		var k := curve(hit, p * L)
+		return rz(-s * 13.0 * k) * rx(8.0 * k))
+	_key_bone(a, "Spine1", func(p: float) -> Quaternion: return rz(-s * 5.0 * curve(hit, p * L)))
+	_key_bone(a, "Head", func(p: float) -> Quaternion: return rz(s * 9.0 * curve(hit, p * L)))
+	# Brazos abiertos para el equilibrio (más el del lado al que se cae)
+	for side: int in [0, 1]:
+		var pre := "Left" if side == 0 else "Right"
+		var sa := 1.0 if side == 0 else -1.0
+		var amt := 28.0 if pre == push_side else 14.0
+		_key_bone(a, pre + "Arm", func(p: float) -> Quaternion:
+			var k := curve(hit, p * L)
+			return rz(sa * (amt * k + 8.0)) * rx(-10.0 * k))
+		_key_bone(a, pre + "ForeArm", func(p: float) -> Quaternion: return rx(-(20.0 + 15.0 * curve(hit, p * L))))
+	_key_hips(a, func(p: float) -> Vector3:
+		var k := curve(hit, p * L)
+		return Vector3(s * 0.12 * k, -0.05 * k, 0.0))
 	return a
 
 

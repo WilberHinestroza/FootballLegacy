@@ -228,6 +228,7 @@ var _decision_left := 0.0
 var _decision_cooldown := 0.0
 var _camera: Camera3D
 var _cam_focus := Vector3.ZERO
+var _cam_focus_v := Vector3.ZERO # velocidad del foco (muelle amortiguado de la cámara de TV)
 var _cam_pos := Vector3(0.0, 16.0, 14.0)
 var _cam_look := Vector3.ZERO
 var _cam_subject: SoccerPlayer  # a quién sigue la cámara en tercera persona
@@ -454,6 +455,7 @@ func _physics_process(delta: float) -> void:
 			if bool(config.get("ambient_ai", true)):
 				_run_ai()
 			_update_possession(delta)
+			_update_shoulder_contacts(delta)
 			_sim_step(delta)
 		State.LOCKER:
 			_freeze_players()
@@ -486,6 +488,7 @@ func _physics_process(delta: float) -> void:
 			_update_play_chain(delta)
 			_run_ai()
 			_update_possession(delta)
+			_update_shoulder_contacts(delta)
 			_check_moment_outcome(delta)
 		State.MOMENT_RESULT:
 			_freeze_players()
@@ -4990,7 +4993,7 @@ func request_tackle(t: SoccerPlayer, slide := false) -> void:
 	var holder := ball.owner_player
 	if holder == null or holder.team == t.team or holder.is_keeper:
 		return
-	if flat_dist(t.global_position, ball.global_position) > 2.0:
+	if flat_dist(t.global_position, ball.global_position) > BallContact.tackle_reach(ball.exposure) + 0.3:
 		return
 	# El árbitro solo puede cobrar en una jugada (en la simulación no hay faltas).
 	var can_foul := state == State.MOMENT
@@ -5002,6 +5005,8 @@ func request_tackle(t: SoccerPlayer, slide := false) -> void:
 			_call_foul(t, holder, false, slide) # se lo lleva por delante
 		return
 	var chance := 0.45 + (t.duel_skill(true) - holder.duel_skill(false)) * 0.6
+	# Entrar cuando el balón se le ha ido del pie (toque largo) es mucho más fácil
+	chance += BallContact.tackle_bonus(ball.exposure)
 	if t.is_human:
 		chance += 0.25 # el momento es tuyo: elegir bien cuándo entrar se premia
 	chance = clampf(chance, 0.15, 0.9)
@@ -5012,7 +5017,12 @@ func request_tackle(t: SoccerPlayer, slide := false) -> void:
 		_call_foul(t, holder, false, slide)
 		return
 	if won:
-		holder.stun(0.7)
+		if slide or t.is_keeper:
+			holder.stun(0.7) # a ras de suelo: se lo lleva y cae
+		else:
+			# Entrada de pie limpia: le quita el balón y lo deja descompensado, sin tirarlo
+			holder.stun(0.3)
+			holder.stumble(0.5, flat(holder.global_position - t.global_position))
 		if t.is_keeper:
 			_give_ball(t) # el portero sale y se lanza a sus pies
 			return
@@ -5020,6 +5030,58 @@ func request_tackle(t: SoccerPlayer, slide := false) -> void:
 		ball.last_touch = t
 	else:
 		t.stun(0.4)
+
+
+var _shoulder_acc := 0.0
+
+
+## Choque hombro con hombro: un rival que corre a la par del que lleva el balón, pegado
+## a su costado, lo empuja. El más fuerte desequilibra al otro un instante (tambaleo:
+## más lento y con peor pase/tiro); si el balón ya iba suelto, se le puede escapar.
+## Es contacto legal: no hay falta. La matemática está en BallContact.
+func _update_shoulder_contacts(delta: float) -> void:
+	_shoulder_acc += delta
+	if _shoulder_acc < 0.1:
+		return
+	_shoulder_acc = 0.0
+	var h := ball.owner_player
+	if h == null or h.is_keeper or h.is_kicking() or h.stumble_timer > 0.0 or h.stun_timer > 0.0:
+		return
+	var hv := flat(h.velocity)
+	if hv.length() < 3.0:
+		return
+	var fwd := hv.normalized()
+	var now := Time.get_ticks_msec()
+	for d: SoccerPlayer in teams[1 - h.team]:
+		if d.is_keeper or not d.visible or d.stun_timer > 0.0 or d.stumble_timer > 0.0 or d.is_kicking():
+			continue
+		var rel := flat(d.global_position - h.global_position)
+		var dist := rel.length()
+		if dist > 1.15 or dist < 0.15:
+			continue
+		# A la par: a su costado (o medio cuerpo por detrás, el que persigue para
+		# recuperar) y corriendo en la misma dirección; de frente es una entrada, no esto
+		var along := rel.dot(fwd) / dist
+		if along > 0.55 or along < -0.8 or flat(d.velocity).dot(fwd) < 0.5:
+			continue
+		if now - int(d.get_meta("shoulder_ms", -100000)) < 1500:
+			continue
+		d.set_meta("shoulder_ms", now)
+		var away := rel / dist # del que lleva el balón hacia el defensor
+		var win_p := BallContact.shoulder_win_chance(d.stat("strength"), h.stat("strength"), h.stat("control"))
+		var roll := randf()
+		SoundFx.play("touch", -8.0, 0.7)
+		if roll < win_p:
+			var margin := (win_p - roll) / maxf(win_p, 0.01)
+			var expo := ball.exposure
+			h.stumble(BallContact.stumble_time(margin), -away)
+			if BallContact.shoulder_loses_ball(expo, margin):
+				ball.release(fwd * 4.5 - away * 1.5 + Vector3.UP * 0.3, h, 0.6)
+				ball.last_touch = d
+		else:
+			var margin2 := (roll - win_p) / maxf(1.0 - win_p, 0.01)
+			d.stumble(BallContact.stumble_time(margin2), away)
+		return
 
 
 ## De vez en cuando, mientras se simula, la grada hace la ola (y la corta en las jugadas).
@@ -5266,6 +5328,7 @@ func _update_camera(delta: float) -> void:
 		_camera.global_position = _cam_pos
 		_camera.look_at(_cam_look, Vector3.UP)
 		return
+	var broadcast := false
 	if third and moment_type == Moment.KEEPER and _cam_subject != null:
 		# Portero: detrás de tu portería, mirando al campo (la jugada viene hacia ti)
 		var gz := clampf(b.z * 0.25, -3.0, 3.0)
@@ -5296,18 +5359,51 @@ func _update_camera(delta: float) -> void:
 		target_look = p + look_dir * 6.0 + Vector3(0.0, 0.3, 0.0)
 		target_fov = 65.0
 	else:
-		# Cámara de transmisión: alta en la banda de enfrente de los banquillos
-		_cam_focus = Vector3(clampf(b.x, -FIELD_LENGTH * 0.5 + 14.0, FIELD_LENGTH * 0.5 - 14.0), 0.0, b.z * 0.4)
+		# Cámara de transmisión: alta en la banda de enfrente de los banquillos.
+		# El foco no va pegado al balón: con dueño mira un poco por delante de él (se ve
+		# el espacio hacia donde ataca) y con el balón volando lo sigue con un muelle
+		# amortiguado, algo más lento cuanto más rápido va (en un pase largo no pega el
+		# latigazo y da tiempo a leer adónde cae).
+		var raw := flat(b)
+		var holder := ball.owner_player
+		var lag := 0.45
+		if holder != null:
+			raw = flat(holder.global_position).lerp(raw, 0.6) + flat(holder.facing) * 3.0
+		else:
+			var bv := flat(ball.linear_velocity)
+			raw += bv.limit_length(12.0) * 0.18
+			lag = lerpf(0.45, 0.8, clampf((bv.length() - 8.0) / 14.0, 0.0, 1.0))
+		raw.x = clampf(raw.x, -FIELD_LENGTH * 0.5 + 14.0, FIELD_LENGTH * 0.5 - 14.0)
+		raw.z *= 0.4
+		if _cam_focus == Vector3.ZERO and _cam_focus_v == Vector3.ZERO:
+			_cam_focus = raw
+		_cam_focus = _smooth_damp(_cam_focus, raw, lag, delta)
 		target_pos = Vector3(_cam_focus.x * 0.85, 21.0, _cam_focus.z + 34.0)
 		target_look = _cam_focus + Vector3(0.0, 0.0, -2.0)
 		target_fov = 48.0
-	var k := minf(1.0, 4.0 * delta)
+		broadcast = true
+	# La de TV ya va suavizada por su muelle: aquí solo se funde rápido con el plano anterior
+	var k := minf(1.0, (7.0 if broadcast else 4.0) * delta)
 	_cam_pos = _cam_pos.lerp(target_pos, k)
 	_cam_look = _cam_look.lerp(target_look, k)
 	_camera.fov = lerpf(_camera.fov, target_fov, k)
 	_camera.global_position = _cam_pos
 	_camera.look_at(_cam_look, Vector3.UP)
 	_update_occlusion(third and _cam_subject != null)
+
+
+## Muelle críticamente amortiguado (como SmoothDamp): llega a `target` en unos
+## `smooth_time` segundos sin rebotar y sin tirones, guardando la velocidad en _cam_focus_v.
+func _smooth_damp(cur: Vector3, target: Vector3, smooth_time: float, dt: float) -> Vector3:
+	if dt <= 0.0:
+		return cur
+	var omega := 2.0 / maxf(smooth_time, 0.01)
+	var x := omega * dt
+	var e := 1.0 / (1.0 + x + 0.48 * x * x + 0.235 * x * x * x)
+	var change := cur - target
+	var temp := (_cam_focus_v + change * omega) * dt
+	_cam_focus_v = (_cam_focus_v - temp * omega) * e
+	return target + (change + temp) * e
 
 
 ## Vuelve semitransparentes a los jugadores que tapan a tu jugador o al balón.

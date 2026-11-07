@@ -8,11 +8,15 @@ const TOUCH_EVERY := 2.8 # metros entre toques al conducir
 const ROLL_RESIST := 0.9 # m/s² que pierde rodando por el césped (además del aire)
 
 var _touch_phase := 0.0
+## Cuán suelto va el balón al conducir (0 pegado al pie .. 1 toque largo recién dado).
+## Lo leen los defensores para elegir cuándo entrar (BallContact).
+var exposure := 0.0
 
 var owner_player: SoccerPlayer = null:
 	set(value):
 		owner_player = value
 		gravity_scale = 0.0 if value != null else 1.0
+		exposure = 0.0
 var last_touch: SoccerPlayer = null
 var last_kick_kind := "" # "shot", "penalty", "pass", "throw": para contar bien los tiros a puerta
 var sot_counted := false  # ya sumó este remate como tiro a puerta (evita duplicados)
@@ -201,7 +205,12 @@ func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
 				_touch_phase -= 1.0
 				SoundFx.play("touch", -14.0)
 			var run := clampf((spd - 0.5) / 3.0, 0.0, 1.0)
-			var ahead := 0.42 + run * 0.85 * pow(1.0 - _touch_phase, 2.0)
+			# Esprintando el toque es más largo; el buen regateador lo lleva más pegado
+			var sprint_k := clampf((spd - SoccerPlayer.SPEED) / (SoccerPlayer.SPRINT_SPEED - SoccerPlayer.SPEED), 0.0, 1.0)
+			var touch := BallContact.touch_length(p.stat("dribbling"), p.stat("control"), sprint_k)
+			var extra := run * BallContact.TOUCH_BASE * touch * pow(1.0 - _touch_phase, 2.0)
+			exposure = BallContact.exposure(extra)
+			var ahead := 0.42 + extra
 			target = p.global_position + p.facing * ahead
 			# En el pie izquierdo: del lado de la cámara, para que el cuerpo no lo tape
 			target -= p.facing.cross(Vector3.UP) * 0.15
