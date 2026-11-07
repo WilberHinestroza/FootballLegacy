@@ -22,6 +22,7 @@ const ROW_HALF := 0.6 # media fila: la primera fila de grada está centrada en l
 
 var _match: SoccerMatch
 var _kits: Array = [{}, {}]
+var _photo_cams: Array = []           # [avatar, cámara]: la cámara de fotos va en sus manos
 var _followers: Array[Node3D] = []   # giran hacia el balón (cámaras, fotógrafos, banquillo)
 var _coaches: Array[Node3D] = []
 var _coach_home: Array[Vector3] = []
@@ -133,7 +134,11 @@ func build(m: SoccerMatch, shirts: Array, coach_names: Array, kits: Array = [{},
 			var ph := _person({"shirt_color": Color(0.15, 0.15, 0.18), "shirt_pattern": 8, "shirt_color2": PRESS,
 					"long_sleeves": true, "long_pants": true, "shorts_color": Color(0.2, 0.22, 0.28)}, "kneel")
 			ph.position = Vector3(s * (L * 0.5 + 2.0), 0.0, z + randf_range(-0.3, 0.3))
-			_add_camera(ph, Vector3(0.0, 1.05, 0.3), 0.6)
+			var pcam := _add_camera(ph, Vector3(0.0, 1.05, 0.3), 0.55)
+			var pav: PlayerAvatar = ph.get_meta("avatar")
+			pav.pose_arms("cam_photo", 0.01)
+			_set_pose_seed(pav)
+			_photo_cams.append([pav, pcam])
 			_followers.append(ph)
 	# Recogepelotas
 	for s: float in [-1.0, 1.0]:
@@ -218,6 +223,11 @@ func _process(delta: float) -> void:
 	for f in _followers:
 		if not f.has_meta("parade"):
 			_face(f, b, delta * 3.0)
+	for pc: Array in _photo_cams:
+		var pav: PlayerAvatar = pc[0]
+		var pcam: Node3D = pc[1]
+		pcam.global_position = pav.hands_position() + pav.global_transform.basis.z.normalized() * 0.1
+		pcam.global_rotation = pav.global_rotation
 	# DT: caminan por su área técnica siguiendo el juego, y saltan con los goles
 	for i in _coaches.size():
 		var c := _coaches[i]
@@ -822,32 +832,52 @@ func _tunnel_box(size: Vector3, pos: Vector3, m: Material) -> void:
 	add_child(mi)
 
 
-## Camarógrafo con cámara sobre trípode (o al hombro).
+## Camarógrafo con cámara sobre trípode (o al hombro), con las manos en la cámara.
 func _cameraman(pos: Vector3, tripod: bool) -> void:
 	var p := _person({"shirt_color": Color(0.12, 0.12, 0.14), "long_sleeves": true, "long_pants": true,
 			"shorts_color": Color(0.22, 0.22, 0.26)})
 	p.position = pos
+	var av: PlayerAvatar = p.get_meta("avatar")
 	if tripod:
-		_add_camera(p, Vector3(0.0, 1.45, 0.45), 1.0)
+		var cam := _add_camera(p, Vector3(0.0, 1.45, 0.6), 1.0)
+		# Mando de giro hacia la mano derecha (atrás a la derecha del operador)
+		var bar := MeshInstance3D.new()
+		bar.mesh = FieldBuilder.box(Vector3(0.03, 0.03, 0.34))
+		bar.material_override = FieldBuilder.mat(Color(0.15, 0.15, 0.16))
+		bar.position = Vector3(-0.12, -0.12, -0.32)
+		bar.rotation.y = -0.45
+		cam.add_child(bar)
 		for k in 3:
 			var a := TAU * k / 3.0
 			var leg := MeshInstance3D.new()
-			leg.mesh = FieldBuilder.box(Vector3(0.04, 1.45, 0.04))
+			leg.mesh = FieldBuilder.box(Vector3(0.04, 1.35, 0.04))
 			leg.material_override = FieldBuilder.mat(Color(0.15, 0.15, 0.15))
-			leg.position = Vector3(sin(a) * 0.22, 0.7, 0.45 + cos(a) * 0.22)
-			leg.rotation = Vector3(cos(a) * 0.15, 0.0, -sin(a) * 0.15)
+			leg.position = Vector3(sin(a) * 0.24, 0.65, 0.6 + cos(a) * 0.24)
+			leg.rotation = Vector3(cos(a) * 0.17, 0.0, -sin(a) * 0.17)
 			p.add_child(leg)
+		av.pose_arms("cam_tripod", 0.01)
 	else:
-		_add_camera(p, Vector3(0.2, 1.62, 0.15), 0.8)
+		_add_camera(p, Vector3(-0.3, 1.6, 0.16), 0.8)
+		av.pose_arms("cam_shoulder", 0.01)
+	_set_pose_seed(av)
 	_followers.append(p)
 
 
-func _add_camera(parent: Node3D, at: Vector3, size: float) -> void:
+func _set_pose_seed(av: PlayerAvatar) -> void:
+	var ap := av.skeleton.get_children().filter(func(c: Node) -> bool: return c is ArmPose)
+	if not ap.is_empty():
+		(ap[0] as ArmPose).seed = randf() * 5.0
+
+
+## Cámara (cuerpo + objetivo) como un nodo: se puede mover entera (la de fotos va en las manos).
+func _add_camera(parent: Node3D, at: Vector3, size: float) -> Node3D:
+	var holder := Node3D.new()
+	holder.position = at
+	parent.add_child(holder)
 	var body := MeshInstance3D.new()
 	body.mesh = FieldBuilder.box(Vector3(0.22, 0.26, 0.5) * size)
 	body.material_override = FieldBuilder.mat(Color(0.08, 0.08, 0.09))
-	body.position = at
-	parent.add_child(body)
+	holder.add_child(body)
 	var lens := CylinderMesh.new()
 	lens.top_radius = 0.08 * size
 	lens.bottom_radius = 0.1 * size
@@ -855,9 +885,10 @@ func _add_camera(parent: Node3D, at: Vector3, size: float) -> void:
 	var lm := MeshInstance3D.new()
 	lm.mesh = lens
 	lm.material_override = FieldBuilder.mat(Color(0.18, 0.18, 0.2))
-	lm.position = at + Vector3(0.0, 0.0, 0.36 * size)
+	lm.position = Vector3(0.0, 0.0, 0.36 * size)
 	lm.rotation.x = PI * 0.5
-	parent.add_child(lm)
+	holder.add_child(lm)
+	return holder
 
 
 ## Persona con el modelo de los jugadores. `look`: parámetros del shader del cuerpo
@@ -898,7 +929,9 @@ func _person(look: Dictionary, pose := "stand") -> Node3D:
 func _pose(av: PlayerAvatar, pose: String) -> void:
 	# De rodillas / agachado (fotógrafos): animaciones de Mixamo si las trae
 	if pose == "kneel" and av.anim.has_animation("kneel"):
-		av.anim.play(["kneel", "crouch"].pick_random())
+		# Solo de rodillas: agachado ("crouch") la cabeza va tan inclinada que la
+		# cámara de fotos no llega a la cara
+		av.anim.play("kneel")
 		av.anim.seek(randf() * av.anim.current_animation_length, true)
 		return
 	# Sentado: animaciones de Mixamo si el modelo las trae (cada uno una distinta)

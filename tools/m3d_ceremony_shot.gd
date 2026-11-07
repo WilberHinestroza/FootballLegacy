@@ -34,6 +34,23 @@ func _ready() -> void:
 				RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_OBJECTS_IN_FRAME),
 				RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME),
 				find_children("*", "PlayerAvatar", true, false).size()])
+	elif kind == "staff":
+		# Primeros planos del personal de banda (camarógrafos, fotógrafos, recogepelotas)
+		var cam := Camera3D.new()
+		cam.fov = 40.0
+		m.add_child(cam)
+		cam.make_current()
+		m.set_process(false)
+		var picks: Array = m.staff._followers.slice(0, 20)
+		for f: Node3D in picks:
+			var fwd := f.global_transform.basis.z.normalized()
+			var side := f.global_transform.basis.x.normalized()
+			cam.global_position = f.global_position + fwd * 2.6 + side * 1.4 + Vector3.UP * 1.5
+			cam.look_at(f.global_position + Vector3.UP * 1.0)
+			for k in 4:
+				await RenderingServer.frame_post_draw
+			get_viewport().get_texture().get_image().save_png("res://build/m3d_cer_%s_%02d.png" % [tag, shots])
+			shots += 1
 	elif kind == "breakdown":
 		# Qué grupo pesa más: se apaga cada uno y se mide la diferencia
 		var info := func(label: String) -> void:

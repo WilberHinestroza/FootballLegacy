@@ -9,6 +9,11 @@ extends SkeletonModifier3D
 ##   "card"  - tarjeta en alto con la derecha, brazo estirado (árbitro)
 ##   "hold"  - algo delante del pecho con las dos manos (presentar el trofeo)
 ##   "shake" - la derecha al frente para darse la mano (técnicos en el túnel)
+##   "cam_tripod"   - manos en la cámara del trípode: derecha en el mando de giro,
+##                    izquierda en el zoom (camarógrafos)
+##   "cam_shoulder" - cámara al hombro derecho: derecha en el asa, izquierda en el objetivo
+##   "cam_photo"    - cámara de fotos: se la lleva a la cara, dispara y la baja (fotógrafos);
+##                    sigue a la cabeza animada (de rodillas o agachado)
 ## La entrada y la salida son suaves con `influence` (PlayerAvatar.pose_arms lo gestiona).
 
 var mode := "lift"
@@ -32,6 +37,9 @@ var _len := 0.5           # brazo + antebrazo (espacio del jugador)
 var _head_y := 1.6
 var _shoulder_x := 0.18
 var _shoulder_y := 1.3
+## Desfase del ciclo de "cam_photo" (cada fotógrafo a su ritmo).
+var seed := 0.0
+var _head_bone := -1
 
 
 func _setup() -> void:
@@ -58,6 +66,7 @@ func _measure(sk: Skeleton3D) -> void:
 	_shoulder_y = a.y
 	var head := ItemCatalog.find_bone(sk, "Head")
 	_head_y = (_m * sk.get_bone_global_rest(head).origin).y if head >= 0 else a.y + _len * 0.4
+	_head_bone = head
 
 
 func _process_modification_with_delta(delta: float) -> void:
@@ -124,11 +133,42 @@ func _targets() -> Array:
 			# Delante del pecho, separadas y adelantadas: el objeto queda a la vista
 			var hx2 := maxf(0.06, _shoulder_x * 0.42)
 			return [Vector3(hx2, _shoulder_y - 0.62 * L, 0.74 * L), Vector3(-hx2, _shoulder_y - 0.62 * L, 0.74 * L)]
+		"cam_tripod":
+			# Cámara en el trípode (StadiumStaff: centro a 1.45 m, 0.6 m delante)
+			var drift := sin(t * 0.7 + seed) * 0.015
+			return [Vector3(0.13, 1.44 + drift, 0.62), Vector3(-0.2, 1.3, 0.36 + drift)]
+		"cam_shoulder":
+			return [Vector3(-0.08, 1.52, 0.42), Vector3(-0.27, 1.43, 0.3)]
+		"cam_photo":
+			# Ciclo: a la cara ~3 s (con un pequeño temblor al disparar), abajo ~2 s
+			var head_now := _head_now()
+			var cyc := fmod(t + seed, 5.0)
+			var raised := smoothstep(0.0, 0.4, cyc) * (1.0 - smoothstep(3.0, 3.5, cyc))
+			var click := sin(t * 18.0) * 0.006 * raised
+			var eye := head_now + Vector3(0.0, -0.02 + click, _head_r() + 0.12)
+			var low := Vector3(0.0, _shoulder_now_y() - 0.25, 0.32)
+			var c2 := low.lerp(eye, raised)
+			return [c2 + Vector3(0.09, 0.0, 0.0), c2 + Vector3(-0.09, 0.0, 0.0)]
 		"shake":
 			# Apretón de manos: la derecha al frente, hacia el centro, sacudiendo un poco
 			var pump2 := sin(t * 9.0) * 0.035 * L * smoothstep(0.3, 0.6, t)
 			return [null, Vector3(-0.03 * L, top - 1.0 * L + pump2, 0.78 * L)]
 	return [null, null]
+
+
+## Centro de la cabeza según la animación (no la de reposo): de rodillas está más abajo.
+func _head_now() -> Vector3:
+	var sk := get_skeleton()
+	if sk == null or _head_bone < 0:
+		return _head_center()
+	return _m * sk.get_bone_global_pose(_head_bone).origin + PlayerAvatar.HEAD_C
+
+
+func _shoulder_now_y() -> float:
+	var sk := get_skeleton()
+	if sk == null:
+		return _shoulder_y
+	return (_m * sk.get_bone_global_pose(_arm[0]).origin).y
 
 
 ## Cabeza como esfera (espacio del jugador), con las medidas de PlayerAvatar.
