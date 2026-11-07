@@ -54,6 +54,13 @@ func _ready() -> void:
 		sub_label.text = ""
 		return
 
+	# Polémica sin respuesta pasado el plazo: cuenta como "ignorar".
+	var crng := RandomNumberGenerator.new()
+	crng.randomize()
+	if ControversyEngine.expire_if_due(_player, WorldTickEngine.season, _day, crng) != "":
+		SaveManager.save_player(_player)
+		SaveManager.save_season(WorldTickEngine.season)
+
 	_landscape_app()
 	_refresh_header()
 	_render()
@@ -134,6 +141,10 @@ func _render_feed() -> void:
 	for h in WorldPulseEngine.trends(ctx, _seed, _day):
 		trends.add_child(UiKit.chip(String(h), Color(0.45, 0.75, 1.0)))
 	detail_box.add_child(trends)
+	if _feed_mode != "mundo":
+		var cblock := _controversy_block()
+		if cblock != null:
+			detail_box.add_child(cblock)
 
 	var feed: Array
 	if _feed_mode == "mundo":
@@ -460,10 +471,74 @@ func _on_publish(option_id: String) -> void:
 	var res: Dictionary = SocialEngine.publish(_player, WorldTickEngine.season, option_id, _day, rng)
 	if not res.get("ok", false):
 		return
+	ControversyEngine.check_post(_player, WorldTickEngine.season, option_id, _day, rng)
 	SaveManager.save_player(_player)
 	SaveManager.save_season(WorldTickEngine.season)
 	_refresh_header()
 	_tab = "feed"
+	_render()
+
+
+# --- Polémica (ControversyEngine) ---
+
+## Tarjeta de la polémica: la tendencia, lo que dice la gente y tus 3 respuestas;
+## ya respondida, el desenlace unos días. null si no hay nada que mostrar.
+func _controversy_block() -> Control:
+	var season: Dictionary = WorldTickEngine.season
+	var c: Dictionary = ControversyEngine.active(season)
+	var resolved := false
+	if c.is_empty():
+		c = ControversyEngine.recent_outcome(season, _day)
+		resolved = true
+	if c.is_empty():
+		return null
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 6)
+	var card := _card(Styles.AMBER if resolved else Styles.RED)
+	var vb: VBoxContainer = card.get_child(0).get_child(0)
+	var head := Label.new()
+	head.text = ("🔥 TENDENCIA · " if not resolved else "DESENLACE · ") + String(c.get("title", ""))
+	head.add_theme_font_override("font", Styles.font_semibold())
+	head.add_theme_font_size_override("font_size", 18)
+	head.add_theme_color_override("font_color", Styles.AMBER if resolved else Styles.RED.lightened(0.2))
+	head.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	vb.add_child(head)
+	var body := Label.new()
+	body.text = String(c.get("outcome", "")) if resolved else String(c.get("text", ""))
+	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	vb.add_child(body)
+	if not resolved:
+		var left := ControversyEngine.days_left(season, _day)
+		var hint := Label.new()
+		hint.text = "Tienes %d día%s para responder; si no, cuenta como ignorarlo." % [left, "" if left == 1 else "s"]
+		hint.add_theme_color_override("font_color", Styles.GRAY_TEXT)
+		hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		vb.add_child(hint)
+		for opt: Dictionary in ControversyEngine.CHOICES:
+			var b := Button.new()
+			b.text = "%s — %s" % [opt["label"], opt["hint"]]
+			b.focus_mode = Control.FOCUS_NONE
+			b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			b.custom_minimum_size = Vector2(0, 44)
+			var col: Color = {"apologize": Styles.GREEN, "ignore": Styles.GRAY_TEXT, "double_down": Styles.RED}[String(opt["id"])]
+			Styles.styled_button(b, Styles.pill_outlined(col), Color.WHITE)
+			b.pressed.connect(_on_controversy_choice.bind(String(opt["id"])))
+			vb.add_child(b)
+	box.add_child(card)
+	if not resolved:
+		for post: Dictionary in ControversyEngine.reactions(c, _player, _seed, _day):
+			box.add_child(_post_card(post))
+	return box
+
+
+func _on_controversy_choice(choice: String) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.randomize()
+	if ControversyEngine.respond(_player, WorldTickEngine.season, choice, _day, rng) == "":
+		return
+	SaveManager.save_player(_player)
+	SaveManager.save_season(WorldTickEngine.season)
+	_refresh_header()
 	_render()
 
 # --- Mensajes (DMs) ---

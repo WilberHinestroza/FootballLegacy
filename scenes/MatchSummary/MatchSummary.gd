@@ -676,6 +676,15 @@ func _apply_match_consequences() -> CoachData:
 			soc["bonus_followers"] = int(soc.get("bonus_followers", 0)) + fbump
 			WorldTickEngine.season["social"] = soc
 			SaveManager.save_season(WorldTickEngine.season)
+		# Polémica en redes (ControversyEngine): una roja, comerte tus palabras
+		# o festejar ante el rival pueden volverse tendencia.
+		if not WorldTickEngine.season.is_empty() and bool(_result.get("user_played", false)):
+			var cctx := {"red_card": bool(_result.get("user_red_carded", false)), "rating": rating,
+				"won": bool(press_ctx.get("won", false)), "goals": goals_this_match,
+				"is_rival": bool(press_ctx.get("is_rival", false))}
+			if not ControversyEngine.check_match(_player, WorldTickEngine.season, cctx,
+					WorldTickEngine.current_epoch_day, press_rng).is_empty():
+				SaveManager.save_season(WorldTickEngine.season)
 		# Reacción del DT rival (guerra psicológica), a veces.
 		if press_rng.randf() < 0.55:
 			var mg := RivalMindGamesEngine.post_match(WorldTickEngine, _fixture, _result, _player)

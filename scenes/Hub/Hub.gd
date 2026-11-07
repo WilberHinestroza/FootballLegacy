@@ -476,7 +476,10 @@ func _refresh_dm_button() -> void:
 		return
 	var pending: bool = not SocialEngine.dm_seen_this_week(WorldTickEngine.season, WorldTickEngine.current_epoch_day) \
 		and SocialEngine.has_pending_invite(_player, WorldTickEngine.world, WorldTickEngine.world_seed, WorldTickEngine.current_epoch_day, WorldTickEngine.season)
-	_dm_button.visible = pending
+	# Polémica en redes sin responder (ControversyEngine): manda sobre los mensajes.
+	var hot: bool = not ControversyEngine.active(WorldTickEngine.season).is_empty()
+	_dm_button.text = "Eres tendencia: responde en redes" if hot else "Tenés mensajes nuevos"
+	_dm_button.visible = pending or hot
 
 ## Aviso "tenés ofertas de otros clubes" (TransferOfferEngine.inbox) — antes
 ## solo se veían entrando a Fichajes → Mis ofertas, sin que el juego avisara.
