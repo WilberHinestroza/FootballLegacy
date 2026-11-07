@@ -28,7 +28,8 @@ const SPONSORS := [
 static var home_name := ""
 
 
-## Construye todas las vallas. `boards`: [{pos, length, yaw}] con la cara hacia +Z local.
+## Construye todas las vallas. `boards`: [{pos, length, yaw, h}] con la cara hacia +Z
+## local; `h` (opcional) escala el alto (anillo LED bajo el techo).
 static func build(root: Node3D, boards: Array) -> void:
 	var tex := _atlas(root)
 	var mat := ShaderMaterial.new()
@@ -55,11 +56,12 @@ static func build(root: Node3D, boards: Array) -> void:
 	for i in boards.size():
 		var b: Dictionary = boards[i]
 		var length := float(b.length)
+		var h := float(b.get("h", 1.0))
 		var basis := Basis(Vector3.UP, float(b.yaw))
 		var pos: Vector3 = b.pos
-		mm_frame.set_instance_transform(i, Transform3D(basis * Basis.from_scale(Vector3(length, 1.0, 1.0)), pos))
+		mm_frame.set_instance_transform(i, Transform3D(basis * Basis.from_scale(Vector3(length, h, 1.0)), pos))
 		var fpos := pos + basis * Vector3(0.0, 0.0, 0.078)
-		mm_face.set_instance_transform(i, Transform3D(basis * Basis.from_scale(Vector3(length - 0.08, 1.0, 1.0)), fpos))
+		mm_face.set_instance_transform(i, Transform3D(basis * Basis.from_scale(Vector3(length - 0.08, h, 1.0)), fpos))
 		# Desfase: vecinas con anuncios distintos (el 3 es coprimo con 8)
 		mm_face.set_instance_custom_data(i, Color(float((i * 3) % SPONSORS.size()), length, 0.0, 0.0))
 	_add(root, mm_frame, null, "AdFrames")

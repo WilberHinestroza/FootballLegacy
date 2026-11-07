@@ -43,9 +43,11 @@ static func build(root: Node3D) -> Array[Area3D]:
 	_environment(root)
 	_pitch(root)
 	_lines(root)
+	_ad_list = []
 	_walls(root)
 	_banner_plan = _plan_banners()
 	_stands(root)
+	AdBoards.build(root, _ad_list)
 	_build_banners(root)
 	_extras(root)
 	_confetti(root)
@@ -358,13 +360,17 @@ const ROW_DEPTH := 1.2
 const ROW_RISE := 0.6
 
 
+## Vallas LED de este estadio: [{pos, length, yaw, h}] (ver AdBoards.build).
+static var _ad_list: Array = []
+
+
 static func _walls(root: Node3D) -> void:
 	var L := SoccerMatch.FIELD_LENGTH
 	var W := SoccerMatch.FIELD_WIDTH
 	var h := 8.0
 	var side_z := W * 0.5 + SIDE_BOARDS
 	var end_x := L * 0.5 + END_BOARDS
-	var boards: Array = []
+	var boards := _ad_list
 
 	for s: float in [-1.0, 1.0]:
 		# Muro lateral invisible + vallas publicitarias
@@ -382,7 +388,6 @@ static func _walls(root: Node3D) -> void:
 		for i in ecount:
 			var z := -(W + 2.0 * SIDE_BOARDS) * 0.5 + (i + 0.5) * seg
 			boards.append({"pos": Vector3(s * (end_x + 0.08), 0.5, z), "length": seg - 0.05, "yaw": -s * PI * 0.5})
-	AdBoards.build(root, boards)
 
 
 static func _stands(root: Node3D) -> void:
@@ -455,6 +460,17 @@ static func _stands(root: Node3D) -> void:
 		var roof_col := Color(0.82, 0.84, 0.88) if stars < 4 else home_color.lerp(Color(0.85, 0.87, 0.9), 0.55)
 		var roof := add_mesh(root, box(Vector3(side_len + 2.0, 0.3, depth + 2.0)), Vector3(0.0, roof_h, roof_z), roof_col)
 		roof.rotation.x = s * 0.1
+		# Anillo LED colgado del borde del techo, de cara al campo (4-5 estrellas)
+		if stars >= 4:
+			var front := depth * 0.5 + 1.0
+			var ring_h := 1.3
+			var ring_y := roof_h + front * sin(0.1) - 0.15 - ring_h * 0.5
+			var seg_len := 7.8
+			var n := int(floor(side_len / seg_len))
+			for k in n:
+				var rx := (k - (n - 1) * 0.5) * seg_len
+				_ad_list.append({"pos": Vector3(rx, ring_y, s * (W * 0.5 + SIDE_STANDS - 1.0 + 0.1)),
+					"length": seg_len - 0.04, "yaw": PI if s > 0.0 else 0.0, "h": ring_h})
 		for k in 9:
 			var px := lerpf(-side_len * 0.5, side_len * 0.5, k / 8.0)
 			add_mesh(root, box(Vector3(0.4, roof_h, 0.4)), Vector3(px, roof_h * 0.5, s * (W * 0.5 + SIDE_STANDS + depth - 0.3)), Color(0.6, 0.62, 0.66))
