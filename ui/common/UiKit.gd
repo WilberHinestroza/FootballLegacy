@@ -387,13 +387,14 @@ static func tile(title: String, accent: Color, body: Control, on_tap: Callable =
 	sb.shadow_offset = Vector2(0, 3)
 	sb.set_content_margin_all(0)
 	card.add_theme_stylebox_override("panel", sb)
-	# El brillo ocupa toda la tarjeta, recortado a sus esquinas redondeadas
-	# (antes quedaba un recuadro más claro adentro, con esquinas rectas)
-	card.clip_children = CanvasItem.CLIP_CHILDREN_AND_DRAW
-	var glow := TextureRect.new()
-	glow.texture = Styles.gradient_texture(Color(accent, 0.26), Color(accent, 0.0))
-	glow.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	glow.stretch_mode = TextureRect.STRETCH_SCALE
+	# Tinte del color del club en toda la tarjeta, con sus esquinas redondeadas
+	# (antes un degradado rectangular dejaba un recuadro con esquinas rectas; y
+	# recortar con clip_children rompía los escudos, que ya usan su propio recorte)
+	var glow := Panel.new()
+	var gsb := StyleBoxFlat.new()
+	gsb.bg_color = Color(accent, 0.11)
+	gsb.set_corner_radius_all(13)
+	glow.add_theme_stylebox_override("panel", gsb)
 	glow.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	card.add_child(glow)
 	var pad := MarginContainer.new()

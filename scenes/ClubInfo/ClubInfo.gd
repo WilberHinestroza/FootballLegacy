@@ -14,6 +14,8 @@ extends Control
 
 @onready var vbox: VBoxContainer = $Root/Scroll/Margin/VBox
 
+const Match3DBridge = preload("res://engine/match/m3d/Match3DBridge.gd")
+
 func _ready() -> void:
 	WorldTickEngine.load_runtime()
 	# Sin esto, cualquier hijo un pelín más ancho que la pantalla saca una
@@ -45,6 +47,10 @@ func _ready() -> void:
 			league = l
 			break
 
+	if get_viewport_rect().size.x > get_viewport_rect().size.y:
+		var bd := UiKit.club_backdrop(Color(club.primary_color_hex) if club.primary_color_hex != "" else Styles.GREEN)
+		add_child(bd)
+		move_child(bd, 0)
 	_build_banner(club, league)
 
 	var meta: Dictionary = world.get("club_meta_by_id", {})
@@ -98,7 +104,14 @@ func _build_banner(club: ClubData, league: LeagueData) -> void:
 	for away in [false, true]:
 		var kcol := VBoxContainer.new()
 		kcol.add_theme_constant_override("separation", 0)
-		var k := Kit.build_for_club_kit(club, yr, away, 52)
+		# 8-nov: con el 3D, tú modelando cada equipación (como en la previa)
+		var me: PlayerData = SaveManager.load_player()
+		var k: Control
+		if Preferences.match_3d and me != null:
+			k = Match3DBridge.portrait(me, club, 118, true, Color(0, 0, 0, 0), away)
+			k.custom_minimum_size = Vector2(92, 118)
+		else:
+			k = Kit.build_for_club_kit(club, yr, away, 52)
 		k.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 		kcol.add_child(k)
 		var kl := Label.new()
