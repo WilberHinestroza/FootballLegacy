@@ -168,6 +168,10 @@ func _build(id: String) -> ArrayMesh:
 				var mid := e + out * _R * 0.14 + Vector3.DOWN * l * 0.45
 				var tip := e + out * _R * 0.2 + Vector3.DOWN * l
 				_tube([e, mid, tip], [_R * 0.12, _R * 0.11, _R * 0.08], 5)
+	# Sombreado suave: se juntan los vértices repetidos y las normales se promedian
+	# (antes cada triángulo tenía la suya y el pelo se veía facetado, de cartón)
+	_st.index()
+	_st.generate_normals()
 	return _st.commit()
 
 
@@ -210,8 +214,8 @@ func _bump(d: Vector3, center: Vector3, width: float) -> float:
 ## Casco de pelo sobre el cuero cabelludo. vol(d) = volumen extra (en radios); en el borde
 ## baja hasta la piel. edge_scale agranda la zona cubierta; width_limit la estrecha (cresta).
 func _cap(vol: Callable, edge_scale := 1.0, width_limit := 0.0) -> void:
-	var lon := 22
-	var lat := 9
+	var lon := 36
+	var lat := 13
 	var grid := []
 	for j in lat + 1:
 		var row := []
@@ -234,8 +238,8 @@ func _cap(vol: Callable, edge_scale := 1.0, width_limit := 0.0) -> void:
 ## Cortina de pelo que cae desde el borde (de a0 a a1 grados alrededor), largo en radios.
 ## jag = puntas desiguales (mechones), bulge = abombado a media altura (no cae como una pared).
 func _curtain(a0: float, a1: float, length: float, flare: float, thick: float, jag := 0.0, bulge := 0.0) -> void:
-	var n := 26
-	var rows := 6
+	var n := 40
+	var rows := 9
 	var g := []
 	for k in rows + 1:
 		var row := []
@@ -299,6 +303,7 @@ func _tube(path: Array, radii: Array, sides: int) -> void:
 
 ## Esfera low-poly (octaedro subdividido).
 func _sphere(center: Vector3, radius: float, subdiv: int) -> void:
+	subdiv += 1 # con sombreado suave, un nivel más para que los rizos sean redondos
 	var tris := [
 		[Vector3.UP, Vector3.FORWARD, Vector3.RIGHT], [Vector3.UP, Vector3.RIGHT, Vector3.BACK],
 		[Vector3.UP, Vector3.BACK, Vector3.LEFT], [Vector3.UP, Vector3.LEFT, Vector3.FORWARD],
@@ -333,9 +338,15 @@ func _tri(a: Vector3, b: Vector3, c: Vector3, inside: Vector3) -> void:
 		b = c
 		c = tmp
 		n = -n
-	# Godot toma como cara frontal la de orden horario visto desde fuera
-	for v in [a, c, b]:
-		_st.set_normal(n)
+	# Godot toma como cara frontal la de orden horario visto desde fuera.
+	# UV: mechones que bajan desde la coronilla (u alrededor de la cabeza, v hacia
+	# abajo); color: la raíz, pegada al cuero cabelludo, algo más oscura.
+	for v: Vector3 in [a, c, b]:
+		var rel := v - _c
+		_st.set_uv(Vector2(atan2(rel.x, rel.z) / TAU * 5.0, -rel.y / _R * 0.9))
+		var depth := clampf((rel.length() - _R * 1.02) / (_R * 0.3), 0.0, 1.0)
+		var shade := lerpf(0.72, 1.0, maxf(depth, clampf(-rel.y / _R, 0.0, 1.0)))
+		_st.set_color(Color(shade, shade, shade))
 		_st.add_vertex(v)
 
 

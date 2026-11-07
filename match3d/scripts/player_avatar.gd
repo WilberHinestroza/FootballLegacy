@@ -253,9 +253,39 @@ func _init() -> void:
 		_meshes.append(mi)
 	# La equipación también va por piezas (camiseta y pantaloneta con volumen de tela)
 	set_garments(_kit_ids())
-	_hair_mat.roughness = 0.9
+	# Pelo: mechones (ruido estirado en vertical) sobre el color, raíz más oscura
+	# (color por vértice de HairBuilder) y algo de brillo
+	_hair_mat.roughness = 0.62
+	_hair_mat.metallic_specular = 0.45
+	_hair_mat.vertex_color_use_as_albedo = true
+	_hair_mat.albedo_texture = _hair_strands()
+	_hair_mat.uv1_scale = Vector3(6.0, 1.0, 1.0)
 	_hair_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 	_hair_mat.albedo_color = Color(0.35, 0.22, 0.12)
+
+
+static var _strands_tex: NoiseTexture2D
+
+## Textura de mechones compartida: ruido muy estirado a lo largo del pelo.
+static func _hair_strands() -> Texture2D:
+	if _strands_tex == null:
+		var nz := FastNoiseLite.new()
+		nz.noise_type = FastNoiseLite.TYPE_PERLIN
+		nz.frequency = 0.06
+		nz.fractal_octaves = 3
+		var tex := NoiseTexture2D.new()
+		tex.width = 256
+		tex.height = 64
+		tex.seamless = true
+		tex.noise = nz
+		tex.generate_mipmaps = true
+		# Del ruido a mechones: casi todo claro con vetas más oscuras
+		var g := Gradient.new()
+		g.set_color(0, Color(0.62, 0.62, 0.62))
+		g.set_color(1, Color(1.0, 1.0, 1.0))
+		tex.color_ramp = g
+		_strands_tex = tex
+	return _strands_tex
 
 
 ## Colores del shader de zonas (skin_color, shirt_color… y show_hair).
