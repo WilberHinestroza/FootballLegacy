@@ -104,6 +104,14 @@ func _ready() -> void:
 				for i in range(10):
 					await get_tree().process_frame
 				get_viewport().get_texture().get_image().save_png(ProjectSettings.globalize_path("res://_pixellab_preview/ui/%s.png" % v[2]))
+			# Probador 3D en vivo: chaqueta puesta, dos fotos para ver que gira
+			inst.set("_section", "estilo")
+			inst.set("_wardrobe_tab", "chaqueta")
+			inst.set("_try_on", "top_bomber")
+			inst.call("_render")
+			for k in 2:
+				await get_tree().create_timer(2.2).timeout
+				get_viewport().get_texture().get_image().save_png(ProjectSettings.globalize_path("res://_pixellab_preview/ui/Shop_probador_%d.png" % k))
 		if nm == "Squad" and inst.has_method("_show_squad_list"):
 			inst.call("_show_squad_list")
 			for i in range(10):

@@ -143,6 +143,10 @@ func _render_main_tabs() -> void:
 
 # --- Estilo (guardarropa) ---
 
+const TryOnStage = preload("res://ui/common/TryOnStage.gd")
+var _last_try := ""   # para que el gesto del probador salga solo al cambiar de prenda
+
+
 func _render_style() -> void:
 	if _wardrobe_pager.get_parent() != null:
 		_wardrobe_pager.get_parent().remove_child(_wardrobe_pager)
@@ -159,7 +163,10 @@ func _render_style() -> void:
 	preview.add_theme_stylebox_override("panel", Styles.card_flat(Color(1, 1, 1, 0.05), 16))
 	var pc := CenterContainer.new()
 	var pcfg: Dictionary = _cfg_with(_try_on) if (land and _try_on != "") else Avatar.config_for_player(_player, WorldTickEngine.world_seed)
-	pc.add_child(Avatar.build_full(pcfg, 250 if land else 168))
+	# Horizontal con 3D: probador en vivo (gira, se arrastra, gesto al probarte algo)
+	var live: Control = TryOnStage.make(pcfg, 250, _try_on != "" and _try_on != _last_try) if land else null
+	_last_try = _try_on
+	pc.add_child(live if live != null else Avatar.build_full(pcfg, 250 if land else 168))
 	preview.add_child(pc)
 	# HORIZONTAL = PROBADOR: tu jugador grande a la izquierda, prendas a la
 	# derecha. Lo de abajo se agrega a `dest` (la columna derecha).
