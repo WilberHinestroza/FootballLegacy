@@ -34,7 +34,9 @@ const HOLD_TACKLE_DELAY := 0.9
 ## Recuperación de stamina (0..1) por aguantar un momento.
 const HOLD_STAMINA_GAIN := 0.03
 ## Al arrancar tu jugada con el balón: ningún rival empieza más cerca que esto (m)…
-const OPENING_SPACE := 4.5
+const OPENING_SPACE := 6.5 # Wilber: "los rivales no deben estar tan encima para que la jugada tenga inicio"
+## En defensa: a cuánto empiezas como mínimo del rival que lleva el balón (m).
+const DEFENSE_SPACE := 5.5
 ## …y los de alrededor tardan esto (s de juego) en poder entrar. Sin esto, quieto
 ## leyendo la pantalla te lo robaban en menos de un segundo ("injugables").
 const OPENING_TACKLE_DELAY := 1.8

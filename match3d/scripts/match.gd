@@ -2475,6 +2475,7 @@ func _start_moment(kind: Moment, pl: Dictionary = {}) -> void:
 	if not _setup_play():
 		_setup_base(kind)
 	_onside_setup(kind)
+	_give_start_room()
 	var title: String = TITLES[kind] if String(play.get("title", "")) == "" else String(play.title)
 	var hint: String = HINTS[kind] if String(play.get("hint", "")) == "" else String(play.hint)
 	_hud.set_sim_visible(false)
@@ -2488,6 +2489,53 @@ func _start_moment(kind: Moment, pl: Dictionary = {}) -> void:
 		_timer = maxf(_timer, PREPLAY_INTRO_SECONDS)
 	_hud.show_preplay_choices(can_choose)
 	moment_started.emit(title)
+
+
+## Toda jugada necesita un arranque: nadie empieza encima. Se hace al COLOCAR (antes
+## se apartaba a los rivales al acabar la intro y se les veía saltar) y alrededor de
+## tu jugador, del que lleva el balón y del punto donde te llega el pase. En defensa,
+## tú empiezas a una distancia del rival con balón desde la que se puede defender.
+## Fuera: balón parado, centros, rechaces (el balón suelto es la jugada) y portero.
+func _give_start_room() -> void:
+	if moment_type in [Moment.PENALTY, Moment.FREE_KICK, Moment.CORNER, Moment.CROSS, Moment.KEEPER]:
+		return
+	if String(play.get("family", "")) in ["rechace", "centro_rival", "corner_contra", "tiro_libre_contra", "penalti_contra"]:
+		return
+	if star == null or star.is_keeper:
+		return
+	var holder := ball.owner_player
+	if is_attacking_moment():
+		var centers: Array[Vector3] = [star.global_position]
+		if holder != null and holder.team == 0 and holder != star:
+			centers.append(holder.global_position)
+		var space := PrePlayChoice.OPENING_SPACE
+		for o: SoccerPlayer in teams[1]:
+			if o.is_keeper or not o.visible:
+				continue
+			for c: Vector3 in centers:
+				var pos := _room_from(c, o.global_position, space * (1.0 if c == centers[0] else 0.75))
+				if pos != o.global_position:
+					o.reset_to(pos, flat(c - pos).normalized())
+		return
+	if holder != null and holder.team == 1:
+		var pos := _room_from(holder.global_position, star.global_position, PrePlayChoice.DEFENSE_SPACE)
+		if pos != star.global_position:
+			star.reset_to(pos, flat(holder.global_position - pos).normalized())
+
+
+## `pos` alejado de `c` hasta `space` m (en la misma dirección); si la banda o la
+## línea de fondo no dejan, se va hacia su portería (el rival se queda delante).
+func _room_from(c: Vector3, pos: Vector3, space: float) -> Vector3:
+	var off := flat(pos - c)
+	if off.length() >= space:
+		return pos
+	var dir := off.normalized() if off.length() > 0.05 else Vector3.RIGHT
+	var out := _clamp_to_field(c + dir * space)
+	if flat_dist(out, c) < space * 0.9:
+		var toward := signf(dir.x) if absf(dir.x) > 0.1 else 1.0
+		out = _clamp_to_field(c + Vector3(toward * space * 0.8, 0.0, -signf(c.z) * space * 0.6))
+	out.y = 0.0
+	return out
 
 
 ## P1-13 · ¿Tiene sentido elegir antes de la jugada? Solo en ataque abierto
@@ -2933,8 +2981,8 @@ func _launch_arrival() -> void:
 		return
 	passer.ai_timer = 0.8
 	for o: SoccerPlayer in teams[1]:
-		if not o.is_keeper and flat_dist(o.global_position, star.global_position) < 6.0:
-			o.tackle_cooldown = maxf(o.tackle_cooldown, 1.3)
+		if not o.is_keeper and flat_dist(o.global_position, star.global_position) < PrePlayChoice.OPENING_RADIUS:
+			o.tackle_cooldown = maxf(o.tackle_cooldown, PrePlayChoice.OPENING_TACKLE_DELAY)
 	if String(play.get("family", "")) == "mano_a_mano":
 		var ahead := star.global_position + flat(opponent_goal_center(0) - star.global_position).normalized() * 3.5
 		passer.pass_to_point(ahead, star, 1.0)
