@@ -88,6 +88,8 @@ func _ready() -> void:
 	# banco en esta vista, sin importar overall real ni confianza del DT.
 	var team := MatchTeam.from_club(club, squad, player, CoachRelations.start_chance(player.coach_trust), form)
 	_coach_formation = form
+	_team = team
+	_coach = coach
 	_render_formation(team, player)
 	_render_coach_card(coach, club)
 	_render_squad_list(squad, player)
@@ -566,6 +568,94 @@ func _on_player_card_back_pressed() -> void:
 
 var _land_cols: HBoxContainer = null
 var _land_detail: PanelContainer = null
+var _team: MatchTeam = null
+var _coach: CoachData = null
+
+
+## Tú y el DT, en horizontal (8-nov): quién manda, cómo juega, cuánto confía en
+## ti y qué papel tienes hoy en su once. Solo lectura: el DT decide.
+func _land_coach_strip(player: PlayerData) -> Control:
+	var card := PanelContainer.new()
+	card.add_theme_stylebox_override("panel", Styles.card_flat(Styles.CARD_DARK_2, 12))
+	var m := MarginContainer.new()
+	for side in ["left", "right"]:
+		m.add_theme_constant_override("margin_" + side, 10)
+	for side in ["top", "bottom"]:
+		m.add_theme_constant_override("margin_" + side, 8)
+	card.add_child(m)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 6)
+	m.add_child(v)
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 10)
+	v.add_child(head)
+	if _coach != null:
+		head.add_child(Styles.portrait_frame(Avatar.for_npc(_coach.coach_name, "coach", _wseed, 34), 34, Styles.BLUE))
+	var names := VBoxContainer.new()
+	names.add_theme_constant_override("separation", 0)
+	names.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	names.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	head.add_child(names)
+	var nm := Label.new()
+	nm.text = _coach.coach_name if _coach != null else "Sin entrenador"
+	nm.clip_text = true
+	nm.add_theme_font_override("font", Styles.font_semibold())
+	nm.add_theme_font_size_override("font_size", 15)
+	names.add_child(nm)
+	if _coach != null:
+		var st := Label.new()
+		st.text = "DT · %s · %s" % [_coach.style, _coach.philosophy]
+		st.clip_text = true
+		st.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		st.add_theme_font_size_override("font_size", 12)
+		st.add_theme_color_override("font_color", Styles.GRAY_TEXT)
+		names.add_child(st)
+	# Tu rol en el once de hoy
+	var role := "Fuera de la lista"
+	var role_col := Styles.RED
+	if _team != null and _team.starting_xi.has(player):
+		role = "Titular · " + _team.deployed_code(player)
+		role_col = Styles.GREEN
+	elif _team != null and _team.bench.has(player):
+		role = "Suplente"
+		role_col = Styles.AMBER
+	var role_chip := UiKit.chip(role, role_col)
+	role_chip.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	head.add_child(role_chip)
+	# Confianza del DT
+	var trust: int = clampi(player.coach_trust, 0, 100)
+	var tr := HBoxContainer.new()
+	tr.add_theme_constant_override("separation", 8)
+	v.add_child(tr)
+	var tl := Label.new()
+	tl.text = "Confianza"
+	tl.add_theme_font_size_override("font_size", 12)
+	tl.add_theme_color_override("font_color", Styles.GRAY_TEXT)
+	tr.add_child(tl)
+	var bar := ProgressBar.new()
+	bar.max_value = 100
+	bar.value = trust
+	bar.show_percentage = false
+	bar.custom_minimum_size = Vector2(0, 10)
+	bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var bcol: Color = Styles.GREEN if trust >= 65 else (Styles.AMBER if trust >= 40 else Styles.RED)
+	var bg := StyleBoxFlat.new()
+	bg.bg_color = Color(1, 1, 1, 0.08)
+	bg.set_corner_radius_all(5)
+	var fg := StyleBoxFlat.new()
+	fg.bg_color = bcol
+	fg.set_corner_radius_all(5)
+	bar.add_theme_stylebox_override("background", bg)
+	bar.add_theme_stylebox_override("fill", fg)
+	tr.add_child(bar)
+	var tv := Label.new()
+	tv.text = "%d%%" % trust
+	tv.add_theme_font_override("font", Styles.font_black())
+	tv.add_theme_font_size_override("font_size", 13)
+	tv.add_theme_color_override("font_color", bcol)
+	tr.add_child(tv)
+	return card
 
 func _landscape_squad(player: PlayerData) -> void:
 	var vp: Vector2 = get_viewport_rect().size
@@ -573,6 +663,10 @@ func _landscape_squad(player: PlayerData) -> void:
 		return
 	var vbox := formation_label.get_parent() as VBoxContainer
 	vbox.add_theme_constant_override("separation", 8)
+	# Fondo con los colores del club (el mismo del Inicio)
+	var bd := UiKit.club_backdrop(_kit_col)
+	add_child(bd)
+	move_child(bd, 0)
 	# Franja superior: [escudo + club] [formación] [pestañas].
 	var head := HBoxContainer.new()
 	head.add_theme_constant_override("separation", 16)
@@ -604,6 +698,7 @@ func _landscape_squad(player: PlayerData) -> void:
 	_land_detail = PanelContainer.new()
 	_land_detail.add_theme_stylebox_override("panel", Styles.card_flat(Styles.CARD_DARK_2, 12))
 	right.add_child(_land_detail)
+	right.add_child(_land_coach_strip(player))
 	bench_title_label.reparent(right)
 	# Suplentes en grilla de 4 (en vez de una fila con scroll de costado).
 	var bsc := ScrollContainer.new()
