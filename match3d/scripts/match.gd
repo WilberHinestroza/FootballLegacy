@@ -1207,6 +1207,7 @@ const WALK_REFS := 1.0      # los árbitros cruzan la puerta del vestuario
 const WALK_TEAMS := 3.0     # y detrás de ellos (unos metros), los equipos
 const WALK_GAP := 0.36      # segundos entre un jugador y el siguiente al salir del túnel
 const WALK_PACE := 0.6      # paso de la salida (fracción de la carrera)
+const OUTRO_STAR_SHOT := 3.2 # s de plano corto del usuario al pitazo final
 const OUTRO_PACE := 0.46    # paso de la vuelta al túnel (caminando, no al trote)
 const TUNNEL_SHOT := 5.6    # segundos de plano desde el césped mirando a la boca del túnel
 
@@ -1773,6 +1774,29 @@ func _start_outro() -> void:
 		var won := _winner_team() == p.team
 		p.sad_gait = _winner_team() >= 0 and not won
 		var act: String = (["clap", "fist_pump", "jump_cheer", "clap"] if won else ["clap"]).pick_random()
+		# Reacción al pitazo, antes del aplauso: los que pierden se caen al
+		# césped un rato, los que ganan saltan y el empate deja manos a las rodillas.
+		var drop := ""
+		var draw := _winner_team() < 0
+		var me := p == star # el plano corto del pitazo es tuyo: siempre reaccionas
+		if p.sad_gait and (me or randf() < 0.45):
+			drop = "kneel" if p.is_keeper or randf() < 0.5 else "sit_react"
+		elif won and (me or randf() < 0.35):
+			drop = "victory" if me else "jump_cheer"
+		elif draw and (me or randf() < 0.3):
+			drop = "tired"
+		if drop != "":
+			var down_t: float = 2.4 if drop in ["kneel", "sit_react"] else 1.4
+			_outro_delay[p] = maxf(float(_outro_delay[p]), down_t + 0.6 + randf_range(0.0, 0.8))
+			clap_d = maxf(clap_d, down_t + 0.1)
+			if me:
+				_outro_delay[p] = maxf(float(_outro_delay[p]), OUTRO_STAR_SHOT + 0.5)
+			p.set_meta("outro_down", down_t)
+			get_tree().create_timer(randf_range(0.1, 0.45), false).timeout.connect(func() -> void:
+				if is_instance_valid(p) and state == State.OUTRO:
+					p.play_action(drop, 1.0, down_t))
+		else:
+			p.set_meta("outro_down", 0.0)
 		get_tree().create_timer(maxf(clap_d, 0.0), false).timeout.connect(func() -> void:
 			if is_instance_valid(p) and state == State.OUTRO:
 				p.play_action(act, 1.0, 1.2)) # el giro a la grada lo hace _update_outro, de a poco
@@ -1816,7 +1840,7 @@ func _update_outro(delta: float) -> void:
 			p.move_input = Vector3.ZERO
 			p.sprinting = false
 			# Mientras esperan, se van girando hacia la grada del túnel (a aplaudir)
-			if _outro_t > 0.6:
+			if _outro_t > maxf(0.6, float(p.get_meta("outro_down", 0.0))):
 				p.ease_facing(Vector3.FORWARD, delta, 2.5)
 			pending += 1
 			continue
@@ -5392,7 +5416,23 @@ func _update_camera(delta: float) -> void:
 		return
 	if state == State.OUTRO:
 		var mouth := Vector3(FieldBuilder.TUNNEL_X, 0.0, -FIELD_WIDTH * 0.5 - FieldBuilder.SIDE_STANDS)
-		var push := clampf(_outro_t / 16.0, 0.0, 1.0)
+		# Primero un plano corto de TU jugador al pitazo (su reacción, con el
+		# marcador final encima); luego el plano general de la salida al túnel.
+		if _outro_t < OUTRO_STAR_SHOT and star != null and star.visible:
+			var sp := star.global_position
+			var f: Vector3 = star.facing if star.facing.length() > 0.1 else Vector3(attack_dir(star.team), 0.0, 0.0)
+			var side := f.cross(Vector3.UP).normalized()
+			var drift := _outro_t / OUTRO_STAR_SHOT
+			target_pos = sp + f * lerpf(4.6, 3.8, drift) + side * lerpf(1.8, 0.8, drift) + Vector3(0.0, 1.5, 0.0)
+			target_look = sp + Vector3(0.0, 2.0, 0.0) # mira por encima: el jugador queda bajo la tarjeta
+			var ks := minf(1.0, (8.0 if _outro_t < 0.1 else 3.0) * delta)
+			_cam_pos = _cam_pos.lerp(target_pos, ks)
+			_cam_look = _cam_look.lerp(target_look, ks)
+			_camera.fov = lerpf(_camera.fov, 44.0, ks)
+			_camera.global_position = _cam_pos
+			_camera.look_at(_cam_look, Vector3.UP)
+			return
+		var push := clampf((_outro_t - OUTRO_STAR_SHOT) / 14.0, 0.0, 1.0)
 		# Cámara en el césped mirando hacia la boca: desde el plano anterior,
 		# los jugadores venían por detrás de cámara y casi no se veía la salida.
 		# Alta y abierta al principio (se ve a todos yendo al túnel, sin que nadie
