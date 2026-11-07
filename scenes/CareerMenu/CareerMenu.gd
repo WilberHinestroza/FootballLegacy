@@ -10,6 +10,8 @@ extends Control
 ## prototipo de Football Legacy (capturas de Android Studio): ámbar para
 ## gestión personal, azul para competición.
 
+const Match3DBridge = preload("res://engine/match/m3d/Match3DBridge.gd")
+
 @onready var vbox: VBoxContainer = $Root/Scroll/Margin/VBox
 
 var _player: PlayerData = null
@@ -33,6 +35,10 @@ func _ready() -> void:
 	_landscape = get_viewport_rect().size.x > get_viewport_rect().size.y
 	if _landscape:
 		_split_columns()
+		var bd := UiKit.club_backdrop(Color(_club.primary_color_hex) if _club != null and _club.primary_color_hex != "" else Styles.GREEN)
+		add_child(bd)
+		move_child(bd, 0)
+		_build_hero()
 	_build_summary_card()
 	if _player != null and not _player.pending_sponsor_offer.is_empty():
 		_build_sponsor_banner()
@@ -155,6 +161,8 @@ func _go(scene_path: String) -> void:
 ## todo lo decorativo) para que toda la tarjeta sea tocable, no solo el
 ## texto.
 func _make_tile(title: String, subtitle: String, icon_path: String, badge_color: Color, target: String, disabled: bool) -> Control:
+	if _landscape:
+		return _mosaic_tile(title, subtitle, icon_path, badge_color, target, disabled)
 	var btn := Button.new()
 	# Altura FIJA (mín = máx efectivo con clip): todas las tarjetas del grid
 	# quedan iguales y el subtítulo largo nunca se derrama fuera de la
@@ -228,6 +236,55 @@ func _make_tile(title: String, subtitle: String, icon_path: String, badge_color:
 	margin.add_child(content)
 	btn.add_child(margin)
 	return btn
+
+## Horizontal (8-nov): la misma tarjeta del mosaico del Inicio (UiKit.tile).
+func _mosaic_tile(title: String, subtitle: String, icon_path: String, accent: Color, target: String, disabled: bool) -> Control:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	var ic := Icons.px_rect(icon_path, 40) if Icons.is_pixel(icon_path) else Icons.make_rect(icon_path, 28)
+	ic.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(ic)
+	var sub := UiKit.tile_text(subtitle, 12, Color(0.75, 0.77, 0.82))
+	sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	sub.max_lines_visible = 2
+	sub.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sub.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(sub)
+	var tl := UiKit.tile(title, accent, row, Callable() if disabled else _go.bind(target), 96)
+	tl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	if disabled:
+		tl.modulate = Color(1, 1, 1, 0.45)
+	return tl
+
+
+## Horizontal: tu jugador en 3D arriba de la presentación, con su nombre y media.
+func _build_hero() -> void:
+	if _player == null:
+		return
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	var fig: Control = Match3DBridge.portrait(_player, _club, 150, true, Color(0, 0, 0, 0))
+	fig.custom_minimum_size = Vector2(120, 150)
+	row.add_child(fig)
+	var col := VBoxContainer.new()
+	col.alignment = BoxContainer.ALIGNMENT_CENTER
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	col.add_theme_constant_override("separation", 4)
+	row.add_child(col)
+	var nm := UiKit.tile_text(_player.player_name, 22, Color.WHITE, true)
+	nm.clip_text = true
+	col.add_child(nm)
+	var info := UiKit.tile_text("%s · %d años · %s" % [Positions.label_of(_player.detailed_position), _player.age, _player.country],
+			13, Color(0.78, 0.8, 0.85))
+	info.clip_text = true
+	col.add_child(info)
+	var chips := HBoxContainer.new()
+	chips.add_theme_constant_override("separation", 6)
+	chips.add_child(UiKit.chip("Media %d" % _player.overall, PlayerCard.tier_color(_player.overall)))
+	chips.add_child(UiKit.chip("Potencial %d" % _player.potential, Styles.GOLD))
+	col.add_child(chips)
+	_side.add_child(row)
+
 
 func _build_sponsor_banner() -> void:
 	var btn := Button.new()

@@ -385,19 +385,26 @@ static func tile(title: String, accent: Color, body: Control, on_tap: Callable =
 	sb.shadow_color = Color(0, 0, 0, 0.35)
 	sb.shadow_size = 6
 	sb.shadow_offset = Vector2(0, 3)
-	sb.set_content_margin_all(10)
+	sb.set_content_margin_all(0)
 	card.add_theme_stylebox_override("panel", sb)
-	# Brillo del color del club arriba
+	# El brillo ocupa toda la tarjeta, recortado a sus esquinas redondeadas
+	# (antes quedaba un recuadro más claro adentro, con esquinas rectas)
+	card.clip_children = CanvasItem.CLIP_CHILDREN_AND_DRAW
 	var glow := TextureRect.new()
-	glow.texture = Styles.gradient_texture(Color(accent, 0.28), Color(accent, 0.0))
+	glow.texture = Styles.gradient_texture(Color(accent, 0.26), Color(accent, 0.0))
 	glow.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	glow.stretch_mode = TextureRect.STRETCH_SCALE
 	glow.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	card.add_child(glow)
+	var pad := MarginContainer.new()
+	pad.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	for side in ["left", "right", "top", "bottom"]:
+		pad.add_theme_constant_override("margin_" + side, 10)
+	card.add_child(pad)
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 4)
 	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	card.add_child(col)
+	pad.add_child(col)
 	if title != "":
 		var t := Label.new()
 		t.text = title.to_upper()
