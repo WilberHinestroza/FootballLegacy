@@ -415,6 +415,10 @@ func _setup_render_quality() -> void:
 	_perf_scale = 0.9 if OS.has_feature("mobile") else PERF_MAX_SCALE
 	vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR
 	vp.scaling_3d_scale = _perf_scale
+	# LOD de mallas más agresivo en el móvil (jugadores y prendas lejanos con menos
+	# triángulos; a esa distancia y en pantalla pequeña no se nota)
+	if OS.has_feature("mobile"):
+		vp.mesh_lod_threshold = 3.0
 
 
 func _process(delta: float) -> void:
@@ -446,6 +450,7 @@ func _exit_tree() -> void:
 		var vp := get_viewport()
 		if vp != null:
 			vp.scaling_3d_scale = 1.0
+			vp.mesh_lod_threshold = 1.0
 			_perf_scale = 1.0
 
 

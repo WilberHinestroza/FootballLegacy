@@ -34,6 +34,36 @@ func _ready() -> void:
 				RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_OBJECTS_IN_FRAME),
 				RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME),
 				find_children("*", "PlayerAvatar", true, false).size()])
+	elif kind == "breakdown":
+		# Qué grupo pesa más: se apaga cada uno y se mide la diferencia
+		var info := func(label: String) -> void:
+			for k in 3:
+				await RenderingServer.frame_post_draw
+			print("BREAK %-12s calls=%d prims=%d" % [label,
+				RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME),
+				RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME)])
+		get_tree().paused = true
+		await info.call("todo")
+		var sun := m.find_children("*", "DirectionalLight3D", true, false)
+		for l: DirectionalLight3D in sun:
+			l.shadow_enabled = false
+		await info.call("sin_sombra")
+		for l: DirectionalLight3D in sun:
+			l.shadow_enabled = true
+		var mms := m.find_children("*", "MultiMeshInstance3D", true, false)
+		for mm: MultiMeshInstance3D in mms:
+			print("  MM %s inst=%d tris~%d" % [mm.name, mm.multimesh.instance_count,
+				mm.multimesh.instance_count * (mm.multimesh.mesh.get_faces().size() / 3 if mm.multimesh.mesh else 0)])
+			mm.visible = false
+		await info.call("sin_multimesh")
+		for mm: MultiMeshInstance3D in mms:
+			mm.visible = true
+		var avs := find_children("*", "PlayerAvatar", true, false)
+		for av: Node3D in avs:
+			av.visible = false
+		await info.call("sin_avatares")
+		get_tree().quit(0)
+		return
 	elif kind == "match":
 		# Partido entero tal cual (sin tocar nada): una captura por segundo real con el estado
 		var secs := int(args[2]) if args.size() > 2 else 150

@@ -170,6 +170,11 @@ static func _environment(root: Node3D) -> void:
 	sun.light_color = sun_color
 	sun.shadow_enabled = true
 	sun.directional_shadow_max_distance = 45.0
+	if OS.has_feature("mobile"):
+		# 4 cascadas = los jugadores se dibujan hasta 4 veces más para la sombra.
+		# Con 2 y algo menos de alcance la sombra cerca de la cámara se ve igual.
+		sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
+		sun.directional_shadow_max_distance = 38.0
 	root.add_child(sun)
 
 
@@ -357,6 +362,8 @@ static var home_color2 := Color(0.95, 0.95, 0.95)
 static var away_color := Color(0.16, 0.38, 0.92)
 static var crowd_fill := 0.85
 const ROW_DEPTH := 1.2
+## Lado de los trozos del público (ver _stands).
+const CROWD_CHUNK := 35.0
 const ROW_RISE := 0.6
 
 
@@ -512,23 +519,37 @@ static func _stands(root: Node3D) -> void:
 		add_mesh(root, box(Vector3(0.5, eh, end_len + 26.0)), Vector3(bx, eh * 0.5, 0.0), back)
 		add_mesh(root, box(Vector3(0.7, 0.25, end_len + 26.0)), Vector3(bx, eh, 0.0), trim)
 
-	# Público con un solo MultiMesh: miles de cajitas en una sola llamada de dibujo
-	var mm := MultiMesh.new()
-	mm.transform_format = MultiMesh.TRANSFORM_3D
-	mm.use_colors = true
-	mm.mesh = _fan_mesh()
-	mm.instance_count = xforms.size()
-	for i in xforms.size():
-		mm.set_instance_transform(i, xforms[i])
-		mm.set_instance_color(i, colors[i])
-	var mmi := MultiMeshInstance3D.new()
-	mmi.multimesh = mm
+	# Público en MultiMesh por trozos de grada (~35 m): pocas llamadas de dibujo y la
+	# cámara descarta los trozos que no ve (uno solo se dibujaba siempre entero).
 	var m := ShaderMaterial.new()
 	m.shader = CROWD_SHADER
-	mmi.material_override = m
-	mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	mmi.name = "Crowd"
-	root.add_child(mmi)
+	root.set_meta("crowd_mat", m)
+	var fan := _fan_mesh()
+	var chunks := {}
+	for i in xforms.size():
+		var o := xforms[i].origin
+		var key := Vector2i(floori(o.x / CROWD_CHUNK), floori(o.z / CROWD_CHUNK))
+		if not chunks.has(key):
+			chunks[key] = []
+		chunks[key].append(i)
+	var first := true
+	for key: Vector2i in chunks:
+		var ids: Array = chunks[key]
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.use_colors = true
+		mm.mesh = fan
+		mm.instance_count = ids.size()
+		for j in ids.size():
+			mm.set_instance_transform(j, xforms[ids[j]])
+			mm.set_instance_color(j, colors[ids[j]])
+		var mmi := MultiMeshInstance3D.new()
+		mmi.multimesh = mm
+		mmi.material_override = m
+		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mmi.name = "Crowd" if first else "CrowdPart"
+		first = false
+		root.add_child(mmi, true)
 	_fan_flags(root, xforms)
 	_flashes(root, xforms)
 
@@ -538,14 +559,17 @@ static func _fan_mesh() -> Mesh:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	st.set_color(Color.WHITE)
-	_st_box(st, Vector3(0.0, 0.22, 0.0), Vector3(0.36, 0.44, 0.26))  # tronco
-	_st_box(st, Vector3(0.0, 0.44, 0.0), Vector3(0.46, 0.1, 0.27))   # hombros
-	_st_box(st, Vector3(0.0, 0.63, 0.01), Vector3(0.2, 0.22, 0.2))   # cabeza
+	# Sin las caras que nunca se ven (espalda, base; la tapa del tronco queda bajo
+	# los hombros): 22 triángulos por persona en vez de 36. Miran a +Z local.
+	var back_bottom := [Vector3(0, 0, -1), Vector3(0, -1, 0)]
+	_st_box(st, Vector3(0.0, 0.22, 0.0), Vector3(0.36, 0.44, 0.26), back_bottom + [Vector3(0, 1, 0)])  # tronco
+	_st_box(st, Vector3(0.0, 0.44, 0.0), Vector3(0.46, 0.1, 0.27), back_bottom)   # hombros
+	_st_box(st, Vector3(0.0, 0.63, 0.01), Vector3(0.2, 0.22, 0.2), back_bottom)   # cabeza
 	st.generate_normals()
 	return st.commit()
 
 
-static func _st_box(st: SurfaceTool, c: Vector3, size: Vector3) -> void:
+static func _st_box(st: SurfaceTool, c: Vector3, size: Vector3, skip: Array = []) -> void:
 	var h := size * 0.5
 	var faces := [
 		[Vector3(1, 0, 0), Vector3(0, 1, 0), Vector3(0, 0, 1)], [Vector3(-1, 0, 0), Vector3(0, 0, 1), Vector3(0, 1, 0)],
@@ -554,6 +578,8 @@ static func _st_box(st: SurfaceTool, c: Vector3, size: Vector3) -> void:
 	]
 	for f: Array in faces:
 		var n: Vector3 = f[0]
+		if skip.has(n):
+			continue
 		var u: Vector3 = f[1]
 		var v: Vector3 = f[2]
 		var p := [c + (n - u - v) * h, c + (n + u - v) * h, c + (n + u + v) * h, c + (n - u + v) * h]
@@ -758,14 +784,17 @@ static func _banner(parent: Node3D, q: Dictionary) -> void:
 
 
 static func set_crowd_wave(root: Node, value: float) -> void:
-	var n := root.get_node_or_null("Crowd") as GeometryInstance3D
-	if n:
-		(n.material_override as ShaderMaterial).set_shader_parameter("wave", value)
+	var cm := root.get_meta("crowd_mat", null) as ShaderMaterial
+	if cm:
+		cm.set_shader_parameter("wave", value)
 
 
 ## Ambiente del estadio: 0 normal, 1 celebrando un gol.
 static func set_crowd_excitement(root: Node, value: float) -> void:
-	for node_name: String in ["Crowd", "FanFlags", "Flashes"]:
+	var cm := root.get_meta("crowd_mat", null) as ShaderMaterial
+	if cm:
+		cm.set_shader_parameter("excitement", value)
+	for node_name: String in ["FanFlags", "Flashes"]:
 		var n := root.get_node_or_null(node_name) as GeometryInstance3D
 		if n:
 			(n.material_override as ShaderMaterial).set_shader_parameter("excitement", value)

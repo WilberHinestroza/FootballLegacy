@@ -33,6 +33,7 @@ var _arm_tween: Tween
 var _garments := {} # id -> MeshInstance3D (Garments)
 var _garment_ids: Array = []
 var _faded := false
+var _casts_shadow := true
 var _long_sleeves := false
 var _long_pants := false
 
@@ -291,10 +292,21 @@ func set_garments(ids: Array) -> void:
 			continue
 		mi.material_override = _mat_fade if _faded else _mat
 		_garments[id] = mi
+	if not _casts_shadow:
+		set_casts_shadow(false)
 	var c := Garments.cover_for(_garments.keys())
 	for mi in _meshes:
 		mi.set_instance_shader_parameter("cover", c)
 		mi.set_instance_shader_parameter("cover_range", Garments.BODY_RANGE)
+
+
+## Sin sombra propia (personal de banda en el móvil: se ahorra la pasada de sombras).
+## Incluye el pelo y las prendas que se pongan después.
+func set_casts_shadow(on: bool) -> void:
+	_casts_shadow = on
+	var mode := GeometryInstance3D.SHADOW_CASTING_SETTING_ON if on else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	for gi: GeometryInstance3D in find_children("*", "GeometryInstance3D", true, false):
+		gi.cast_shadow = mode
 
 
 func garment_ids() -> Array:

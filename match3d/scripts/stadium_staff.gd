@@ -889,6 +889,8 @@ func _person(look: Dictionary, pose := "stand") -> Node3D:
 	av.anim.seek(randf() * 2.0, true)
 	if pose != "stand":
 		_pose(av, pose)
+	if OS.has_feature("mobile"):
+		av.set_casts_shadow(false) # personal de banda: en el móvil sin sombra propia
 	return n
 
 

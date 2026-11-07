@@ -52,4 +52,5 @@ theme/custom_font="res://ui/fonts/Poppins-Regular.ttf"
 
 renderer/rendering_method="mobile"
 textures/vram_compression/import_etc2_astc=true
+lights_and_shadows/directional_shadow/size.mobile=2048
 environment/defaults/default_clear_color=Color(0.043, 0.043, 0.043, 1)
