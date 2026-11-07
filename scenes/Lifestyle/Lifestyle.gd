@@ -26,7 +26,63 @@ func _ready() -> void:
 	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_SHOW_NEVER
 	_player = SaveManager.load_player()
 	_build_hero()
+	_land = get_viewport_rect().size.x > get_viewport_rect().size.y
+	if _land:
+		_build_land_menu()
 	_render()
+
+## HORIZONTAL estilo consola: a la izquierda tu casa y el menú de secciones, a
+## la derecha solo la sección elegida (antes era una lista larga en dos columnas).
+var _land := false
+var _land_page := "social"
+var _land_menu: VBoxContainer = null
+const _LAND_PAGES := [["social", "Vida social"], ["wellbeing", "Bienestar"], ["home", "Casa y coche"],
+	["staff", "Staff personal"], ["money", "Finanzas"]]
+
+func _build_land_menu() -> void:
+	var vb: VBoxContainer = $Margin/VBox
+	var row := HBoxContainer.new()
+	row.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	row.add_theme_constant_override("separation", 16)
+	vb.add_child(row)
+	vb.move_child(row, scroll.get_index())
+	var left := VBoxContainer.new()
+	left.custom_minimum_size.x = 270
+	left.add_theme_constant_override("separation", 8)
+	row.add_child(left)
+	if _hero_card != null:
+		UiKit.hero_to_column(_hero_card)
+		_hero_card.reparent(left)
+	_land_menu = VBoxContainer.new()
+	_land_menu.add_theme_constant_override("separation", 6)
+	left.add_child(_land_menu)
+	scroll.reparent(row)
+	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	back_button.visible = false   # "volver" está en la barra de arriba
+	var bd := UiKit.club_backdrop(Styles.PURPLE.darkened(0.2))
+	add_child(bd)
+	move_child(bd, 0)
+	_refresh_land_menu()
+
+func _refresh_land_menu() -> void:
+	for c in _land_menu.get_children():
+		c.queue_free()
+	for p in _LAND_PAGES:
+		var b := Button.new()
+		b.text = String(p[1])
+		b.custom_minimum_size.y = 40
+		b.focus_mode = Control.FOCUS_NONE
+		Styles.tab(b, p[0] == _land_page)
+		var key: String = String(p[0])
+		b.pressed.connect(func() -> void:
+			if _land_page == key:
+				return
+			Haptics.hit("tap")
+			_land_page = key
+			_refresh_land_menu()
+			_render()
+			scroll.scroll_vertical = 0)
+		_land_menu.add_child(b)
 
 ## Cabecera héroe (9-oct, rediseño): tu casa en pixel art, dinero, casa y coche.
 func _build_hero() -> void:
@@ -52,7 +108,7 @@ func _build_hero() -> void:
 	_hero_card = hero
 
 func _render() -> void:
-	if _hero_card != null and is_instance_valid(_hero_card) and _hero_card.get_parent() != $Margin/VBox:
+	if not _land and _hero_card != null and is_instance_valid(_hero_card) and _hero_card.get_parent() != $Margin/VBox:
 		_hero_card.reparent($Margin/VBox)
 		$Margin/VBox.move_child(_hero_card, 0)
 	for c in body.get_children():
@@ -73,7 +129,15 @@ func _render() -> void:
 		_build_staff,
 		_build_investments,
 	]
-	var land: bool = get_viewport_rect().size.x > get_viewport_rect().size.y
+	var land: bool = _land
+	if land:
+		match _land_page:
+			"social": sections = [_build_social]
+			"wellbeing": sections = [_build_wellbeing, _build_physical, _build_adaptation, _build_wellness_actions]
+			"home": sections = [func(): _build_tier_section("Residencia", LifestyleEngine.HOME_TIERS, "home"),
+				func(): _build_tier_section("Garaje", LifestyleEngine.CAR_TIERS, "car")]
+			"staff": sections = [_build_staff]
+			_: sections = [_build_money, _build_investments]
 	var groups: Array = []
 	for i in range(sections.size()):
 		if i > 0 and not land:
@@ -84,7 +148,7 @@ func _render() -> void:
 		for k in range(before, body.get_child_count()):
 			g.append(body.get_child(k))
 		groups.append(g)
-	if land:
+	if land and groups.size() > 1 and _land_page != "money":
 		_two_columns(groups)
 		var sc := body.get_parent() as ScrollContainer
 		if sc != null:
@@ -105,7 +169,7 @@ func _two_columns(groups: Array) -> void:
 		cols.add_child(v)
 		col_v.append(v)
 	body.add_child(cols)
-	if _hero_card != null and is_instance_valid(_hero_card):
+	if not _land and _hero_card != null and is_instance_valid(_hero_card):
 		UiKit.hero_to_column(_hero_card)
 		_hero_card.reparent(col_v[0])
 		col_h[0] = _hero_card.get_combined_minimum_size().y + 16.0

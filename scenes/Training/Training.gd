@@ -22,6 +22,12 @@ var _progress_card: PanelContainer = null
 
 func _ready() -> void:
 	WorldTickEngine.load_runtime() # idempotente; por si se entra directo a esta escena
+	if get_viewport_rect().size.x > get_viewport_rect().size.y:
+		var pl := SaveManager.load_player()
+		var club := WorldFactory.find_club(WorldTickEngine.world, pl.club_id if pl != null else "")
+		var bd := UiKit.club_backdrop(Color(club.primary_color_hex) if club != null and club.primary_color_hex != "" else Styles.GREEN)
+		add_child(bd)
+		move_child(bd, 0)
 	# Todo el contenido dentro de un scroll (10-oct, Wilber: "se dañó la
 	# pantalla de entrenamiento"). Causa: la pantalla nunca tuvo
 	# desplazamiento; al dejar crecer las tarjetas de foco con su texto, el

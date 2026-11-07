@@ -124,7 +124,69 @@ func _build_hero(open: bool) -> void:
 	window_label.visible = false
 	if title != null:
 		title.visible = false
-	(func(): UiKit.hero_sidebar(hero, 280.0)).call_deferred()
+	(func():
+		UiKit.hero_sidebar(hero, 280.0)
+		_land_sidebar(hero)).call_deferred()
+
+## Horizontal: fondo del club y, debajo del emblema, tu situación y el pulso
+## del mercado (antes la barra izquierda quedaba medio vacía).
+func _land_sidebar(hero: Control) -> void:
+	var vp: Vector2 = get_viewport_rect().size
+	if vp.x <= vp.y or hero.get_parent() == null:
+		return
+	var left := hero.get_parent() as VBoxContainer
+	var club := WorldFactory.find_club(_world, _player.club_id)
+	var base: Color = Color(club.primary_color_hex) if club != null and club.primary_color_hex != "" else Styles.GREEN
+	var bd := UiKit.club_backdrop(base)
+	add_child(bd)
+	move_child(bd, 0)
+	# Tu situación
+	var me := VBoxContainer.new()
+	me.add_theme_constant_override("separation", 3)
+	var top := HBoxContainer.new()
+	top.add_theme_constant_override("separation", 8)
+	if club != null:
+		var cr := Styles.club_crest(_player.club_id, 30)
+		cr.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		top.add_child(cr)
+	var cn := UiKit.tile_text(club.club_name if club != null else "Sin club", 14, Color.WHITE, true)
+	cn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top.add_child(cn)
+	me.add_child(top)
+	for kv in [["Contrato", "%d temporada%s" % [_player.contract_years_remaining, "" if _player.contract_years_remaining == 1 else "s"]],
+			["Sueldo", CurrencyFormat.format(_player.wage)],
+			["Valor", CurrencyFormat.format(_player.market_value)]]:
+		me.add_child(_side_kv(String(kv[0]), String(kv[1])))
+	left.add_child(UiKit.tile("Tu situación", base.lightened(0.2), me, Callable(), 96))
+	# El mercado esta temporada
+	var ss: int = int(WorldTickEngine.season.get("season_start_epoch_day", 0))
+	var today: int = WorldTickEngine.current_epoch_day
+	var moved: Array = TransferMarketEngine.season_transfers_cached(_world, WorldTickEngine.world_seed, ss).filter(func(t): return int(t.get("day", 0)) <= today)
+	var buys := 0
+	var top_t: Dictionary = {}
+	for t in moved:
+		if String(t.get("kind", "compra")) != "cesión":
+			buys += 1
+			if top_t.is_empty() or int(t.get("fee", 0)) > int(top_t.get("fee", 0)):
+				top_t = t
+	var mk := VBoxContainer.new()
+	mk.add_theme_constant_override("separation", 3)
+	mk.add_child(_side_kv("Traspasos", str(buys)))
+	mk.add_child(_side_kv("Cesiones", str(moved.size() - buys)))
+	if not top_t.is_empty():
+		mk.add_child(UiKit.tile_text("El más caro", 11, Styles.GRAY_TEXT))
+		mk.add_child(UiKit.tile_text("%s · %s" % [String(top_t.get("player_name", "?")), CurrencyFormat.format(int(top_t.get("fee", 0)))], 13, Styles.GOLD, true))
+	left.add_child(UiKit.tile("El mercado", Styles.GOLD, mk, func(): _on_tab("market"), 96))
+
+func _side_kv(k: String, v: String) -> HBoxContainer:
+	var r := HBoxContainer.new()
+	var a := UiKit.tile_text(k, 12, Styles.GRAY_TEXT)
+	a.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	r.add_child(a)
+	var b := UiKit.tile_text(v, 13, Color.WHITE, true)
+	b.text_overrun_behavior = TextServer.OVERRUN_NO_TRIMMING
+	r.add_child(b)
+	return r
 
 func _on_tab(t: String) -> void:
 	_tab = t

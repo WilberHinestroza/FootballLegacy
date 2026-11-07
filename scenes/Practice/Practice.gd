@@ -19,6 +19,11 @@ func _ready() -> void:
 	_player = SaveManager.load_player()
 	if _player == null:
 		return
+	if get_viewport_rect().size.x > get_viewport_rect().size.y:
+		var club := WorldFactory.find_club(WorldTickEngine.world, _player.club_id)
+		var bd := UiKit.club_backdrop(Color(club.primary_color_hex) if club != null and club.primary_color_hex != "" else Styles.BLUE)
+		add_child(bd)
+		move_child(bd, 0)
 	_build()
 
 

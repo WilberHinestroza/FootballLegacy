@@ -127,6 +127,7 @@ func _ready() -> void:
 	_landscape_split()
 	_render()
 	if _land:
+		_land_upcoming()   # después de _render: ahí se cargan los datos de selección
 		# El panel de la derecha arranca mostrando HOY (si no, quedaba vacío).
 		var td: Dictionary = CalendarUtils.epoch_day_to_date(_today_epoch_day)
 		_select_day(int(td["day"]), _today_epoch_day, _event_for_day(_today_epoch_day))
@@ -420,6 +421,8 @@ func _make_day_cell(day: int, epoch_day: int) -> Control:
 	panel.custom_minimum_size = Vector2(0, 62 if _land else 86)
 	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var bg: Color = _AWAY_BG if (has_match and is_away) else Styles.CARD_DARK
+	if _land and not (has_match and is_away):
+		bg = Color(bg, 0.8)   # deja ver el fondo del club
 	var style := Styles.card_flat(bg, 10)
 	style.content_margin_left = 5
 	style.content_margin_right = 5
@@ -536,7 +539,8 @@ func _select_day(day: int, epoch_day: int, event: Dictionary) -> void:
 	if _sim_running:
 		return
 	_selected_epoch_day = epoch_day
-	detail_card.visible = true
+	detail_card.visible = not _land
+	_land_detail(day, epoch_day, event)
 	if event.is_empty():
 		detail_label.text = "%d de %s de %d — sin evento" % [day, _MONTH_NAMES[_month], _year]
 		detail_card.add_theme_stylebox_override("panel", Styles.card())
@@ -907,6 +911,9 @@ func _close_sim_overlay() -> void:
 	_year = int(d["year"])
 	_month = int(d["month"])
 	_render()
+	if _land:
+		_land_upcoming()
+		_select_day(int(d["day"]), _today_epoch_day, _event_for_day(_today_epoch_day))
 
 func _sim_log_clear() -> void:
 	if _sim_log == null:
@@ -1036,3 +1043,209 @@ func _landscape_split() -> void:
 	simulate_button.reparent(right)
 	simulate_button.custom_minimum_size.y = 52
 	back_button.visible = false   # "volver" está en la barra de arriba
+	# Estilo consola: fondo del club, tarjeta grande del día elegido y la lista
+	# de próximos partidos (el DetailCard de texto queda solo para vertical).
+	right.custom_minimum_size.x = 360
+	detail.visible = false
+	_land_match = VBoxContainer.new()
+	_land_match.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	right.add_child(_land_match)
+	right.move_child(_land_match, 0)
+	_land_next = VBoxContainer.new()
+	_land_next.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	right.add_child(_land_next)
+	right.move_child(_land_next, 1)
+	var club := WorldFactory.find_club(WorldTickEngine.world, _club_id)
+	var base: Color = Color(club.primary_color_hex) if club != null and club.primary_color_hex != "" else Styles.GREEN
+	var bd := UiKit.club_backdrop(base)
+	add_child(bd)
+	move_child(bd, 0)
+
+var _land_match: VBoxContainer = null
+var _land_next: VBoxContainer = null
+
+## Tarjeta grande del día elegido (horizontal): escudos, nombres, marcador si
+## ya lo jugaste, local/visitante y estado de convocatoria.
+func _land_detail(day: int, epoch_day: int, event: Dictionary) -> void:
+	if _land_match == null:
+		return
+	for c in _land_match.get_children():
+		_land_match.remove_child(c)
+		c.queue_free()
+	var col: Color = event.get("color", Color(0.42, 0.52, 1.0)) if not event.is_empty() else Color(0.42, 0.52, 1.0)
+	var body := VBoxContainer.new()
+	body.add_theme_constant_override("separation", 8)
+	var wd: String = _WEEKDAY_LABELS[CalendarUtils.weekday_of_epoch_day(epoch_day)]
+	var date_txt: String = "%s %d de %s de %d" % [wd, day, _MONTH_NAMES[_month].to_lower(), _year]
+	if epoch_day == _today_epoch_day:
+		date_txt += "  ·  HOY"
+	body.add_child(UiKit.tile_text(date_txt, 13, Styles.GRAY_TEXT))
+	var fx: Dictionary = event.get("fixture", {})
+	var title: String = String(event.get("label", "")) if not event.is_empty() else "Día libre"
+	if fx.has("home_club_id") or fx.has("opponent"):
+		var hn: String
+		var an: String
+		var hc: Control
+		var ac: Control
+		var is_away: bool
+		if fx.has("opponent"):
+			is_away = not bool(fx.get("is_home", true))
+			var opp: String = String(fx.get("opponent", "?"))
+			hn = opp if is_away else _nat_country
+			an = _nat_country if is_away else opp
+			hc = CountryFlags.flag_rect(hn, 54)
+			ac = CountryFlags.flag_rect(an, 54)
+		else:
+			var h_id: String = String(fx.get("home_club_id", ""))
+			var a_id: String = String(fx.get("away_club_id", ""))
+			is_away = a_id == _club_id
+			var hcl := WorldFactory.find_club(WorldTickEngine.world, h_id)
+			var acl := WorldFactory.find_club(WorldTickEngine.world, a_id)
+			hn = hcl.club_name if hcl != null else "?"
+			an = acl.club_name if acl != null else "?"
+			hc = Styles.club_crest(h_id, 64)
+			ac = Styles.club_crest(a_id, 64)
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 6)
+		row.add_child(_land_side(hc, hn, not is_away))
+		var mid := Label.new()
+		var score: Array = _fixture_score(fx)
+		mid.text = "%d - %d" % [int(score[0]), int(score[1])] if score.size() >= 2 else "VS"
+		mid.add_theme_font_override("font", Styles.font_black())
+		mid.add_theme_font_size_override("font_size", 30 if score.size() >= 2 else 22)
+		mid.add_theme_color_override("font_color", Color.WHITE if score.size() >= 2 else Styles.GRAY_TEXT)
+		mid.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		row.add_child(mid)
+		row.add_child(_land_side(ac, an, is_away))
+		body.add_child(row)
+		var chips := HBoxContainer.new()
+		chips.alignment = BoxContainer.ALIGNMENT_CENTER
+		chips.add_theme_constant_override("separation", 6)
+		chips.add_child(UiKit.chip("VISITANTE" if is_away else "LOCAL", col))
+		if score.size() >= 2:
+			chips.add_child(UiKit.chip("JUGADO", Styles.GREEN))
+		match String(event.get("callup_state", "")):
+			"called": chips.add_child(UiKit.chip("CONVOCADO", Styles.GREEN))
+			"not_called": chips.add_child(UiKit.chip("NO CONVOCADO", Styles.RED))
+			"pending": chips.add_child(UiKit.chip("CONVOCATORIA PENDIENTE", _COLOR_FIFA))
+		body.add_child(chips)
+	else:
+		var big := UiKit.tile_text(title if not event.is_empty() else "Sin partido ese día", 20, Color.WHITE, true)
+		big.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		big.text_overrun_behavior = TextServer.OVERRUN_NO_TRIMMING
+		body.add_child(big)
+		if String(event.get("callup_state", "")) == "pending":
+			body.add_child(UiKit.tile_text("Si no te llaman, se simula solo.", 13, Styles.GRAY_TEXT))
+		elif epoch_day > _today_epoch_day:
+			body.add_child(UiKit.tile_text("Puedes simular hasta este día.", 13, Styles.GRAY_TEXT))
+	_land_match.add_child(UiKit.tile(title, col, body, Callable(), 150))
+
+## Escudo/bandera grande con el nombre debajo (el tuyo en dorado).
+func _land_side(crest: Control, name_txt: String, mine: bool) -> VBoxContainer:
+	var v := VBoxContainer.new()
+	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	v.custom_minimum_size.x = 120
+	v.add_theme_constant_override("separation", 4)
+	var cc := CenterContainer.new()
+	cc.add_child(crest)
+	v.add_child(cc)
+	var l := Label.new()
+	l.text = name_txt
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	l.max_lines_visible = 2
+	l.add_theme_font_override("font", Styles.font_semibold())
+	l.add_theme_font_size_override("font_size", 13)
+	l.add_theme_color_override("font_color", Styles.GOLD if mine else Color.WHITE)
+	v.add_child(l)
+	return v
+
+## Marcador guardado de un partido tuyo de liga o amistoso ([] si no se jugó).
+func _fixture_score(fx: Dictionary) -> Array:
+	var comp: String = String(fx.get("competition", ""))
+	var h: String = String(fx.get("home_club_id", ""))
+	var a: String = String(fx.get("away_club_id", ""))
+	var key := ""
+	if comp == "league":
+		key = SeasonEngine.league_result_key(int(fx.get("matchday", 0)), h, a, int(fx.get("epoch_day", 0)))
+	elif comp == "friendly":
+		key = SeasonEngine.friendly_result_key(int(fx.get("index", 0)), h, a)
+	else:
+		return []
+	var r = WorldTickEngine.season.get("results", {}).get(key, null)
+	return r if r is Array and r.size() >= 2 else []
+
+## Tus próximos 4 partidos desde hoy (club y selección); tocar uno salta a ese día.
+func _land_upcoming() -> void:
+	if _land_next == null:
+		return
+	for c in _land_next.get_children():
+		_land_next.remove_child(c)
+		c.queue_free()
+	var rows := VBoxContainer.new()
+	rows.add_theme_constant_override("separation", 4)
+	var card := UiKit.tile("Próximos partidos", Styles.BLUE, rows, Callable(), 120)
+	_land_next.add_child(card)
+	var found := 0
+	var d: int = _today_epoch_day
+	while d < _today_epoch_day + 75 and found < 4:
+		var ev: Dictionary = _event_for_day(d)
+		var fx: Dictionary = ev.get("fixture", {})
+		if fx.has("home_club_id") or fx.has("opponent"):
+			rows.add_child(_land_next_row(d, ev))
+			found += 1
+		d += 1
+	if found == 0:
+		rows.add_child(UiKit.tile_text("No tienes partidos en las próximas semanas.", 13, Styles.GRAY_TEXT))
+
+func _land_next_row(epoch_day: int, ev: Dictionary) -> Control:
+	var fx: Dictionary = ev.get("fixture", {})
+	var dt: Dictionary = CalendarUtils.epoch_day_to_date(epoch_day)
+	var p := PanelContainer.new()
+	var sb := Styles.card_flat(Color(1, 1, 1, 0.05), 8)
+	sb.content_margin_left = 8
+	sb.content_margin_right = 8
+	sb.content_margin_top = 3
+	sb.content_margin_bottom = 3
+	sb.border_width_left = 3
+	sb.border_color = ev.get("color", Styles.GRAY_TEXT)
+	p.add_theme_stylebox_override("panel", sb)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	p.add_child(row)
+	var when := UiKit.tile_text("%s %d %s" % [_WEEKDAY_LABELS[CalendarUtils.weekday_of_epoch_day(epoch_day)], int(dt["day"]), _MES_ABBR[int(dt["month"])]], 12, Styles.GRAY_TEXT)
+	when.custom_minimum_size.x = 76
+	when.text_overrun_behavior = TextServer.OVERRUN_NO_TRIMMING
+	row.add_child(when)
+	var is_away: bool
+	var crest: Control
+	var rival: String
+	if fx.has("opponent"):
+		is_away = not bool(fx.get("is_home", true))
+		rival = String(fx.get("opponent", "?"))
+		crest = CountryFlags.flag_rect(rival, 22)
+	else:
+		is_away = String(fx.get("away_club_id", "")) == _club_id
+		var rid: String = String(fx.get("home_club_id", "")) if is_away else String(fx.get("away_club_id", ""))
+		var rc := WorldFactory.find_club(WorldTickEngine.world, rid)
+		rival = rc.club_name if rc != null else "?"
+		crest = Styles.club_crest(rid, 24)
+	crest.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(crest)
+	var nm := UiKit.tile_text(rival, 13, Color.WHITE, true)
+	nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	nm.custom_minimum_size.x = 60
+	row.add_child(nm)
+	var tag := UiKit.tile_text(_short_tag(ev) + ("  V" if is_away else "  L"), 12, ev.get("color", Styles.GRAY_TEXT), true)
+	tag.text_overrun_behavior = TextServer.OVERRUN_NO_TRIMMING
+	row.add_child(tag)
+	UiKit._ignore_mouse(row)
+	p.mouse_filter = Control.MOUSE_FILTER_STOP
+	UiScroll.on_tap(p, func() -> void:
+		if _sim_running:
+			return
+		_year = int(dt["year"])
+		_month = int(dt["month"])
+		_render()
+		_select_day(int(dt["day"]), epoch_day, ev))
+	return p
