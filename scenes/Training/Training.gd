@@ -139,6 +139,7 @@ const TrainingStage = preload("res://ui/common/TrainingStage.gd")
 ## Campo de entrenamiento 3D (8-nov): tu jugador haciendo el ejercicio del foco.
 var _stage: Control = null
 var _training := false
+var _practice_btn: Button = null
 
 func _render() -> void:
 	_land_setup()
@@ -165,6 +166,21 @@ func _render() -> void:
 			vbox.add_child(_train_btn)
 			vbox.move_child(_train_btn, options_box.get_index())
 	_build_intensity_row(vbox)
+	# Práctica (8-nov): modos libres, por faceta y titulares contra suplentes, con retos
+	if _practice_btn == null:
+		_practice_btn = Button.new()
+		_practice_btn.custom_minimum_size = Vector2(0, 48)
+		_practice_btn.focus_mode = Control.FOCUS_NONE
+		_practice_btn.text = "Práctica · jugadas, facetas y retos con XP"
+		_practice_btn.icon = Icons.load_icon(Icons.FOOTBALL)
+		_practice_btn.add_theme_constant_override("icon_max_width", 22)
+		Styles.styled_button(_practice_btn, Styles.pill_outlined(Styles.BLUE), Color.WHITE)
+		_practice_btn.pressed.connect(func() -> void:
+			if not _training:
+				get_tree().change_scene_to_file("res://scenes/Practice/Practice.tscn"))
+		var host: Node = _train_btn.get_parent()
+		host.add_child(_practice_btn)
+		host.move_child(_practice_btn, _train_btn.get_index() + 1)
 	var player := SaveManager.load_player()
 	var injured: bool = player != null and player.injury_days_remaining > 0
 	_train_btn.text = "Lesionado — no podés entrenar" if injured else "Entrenar sesión de hoy (avanza 1 día)"

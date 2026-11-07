@@ -110,7 +110,7 @@ func _build_card() -> void:
 	var col := VBoxContainer.new()
 	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_child(col)
-	var p: PlayerData = MatchState.user_player
+	var p: PlayerData = _card_player()
 	col.add_child(_label("%s · %s" % [p.player_name, p.position], 20, Color.WHITE))
 	_card_title = _label("", 16, Styles.GOLD)
 	col.add_child(_card_title)
@@ -118,6 +118,10 @@ func _build_card() -> void:
 	col.add_child(_card_rating)
 	_card.modulate.a = 0.0
 	_card.visible = false   # oculta no renderiza el retrato 3D
+
+## El jugador de la ficha (la práctica lo pasa sin MatchState).
+func _card_player() -> PlayerData:
+	return MatchState.user_player
 
 func _label(text: String, size: int, color: Color) -> Label:
 	var l := Label.new()

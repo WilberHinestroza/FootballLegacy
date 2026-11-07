@@ -322,6 +322,103 @@ static func build_config(on_finish: Callable) -> Dictionary:
 		"crowd": {} if national else _crowd_banners(p, fixture, user_home, wseed, world),
 	}
 
+## PRÁCTICA (8-nov, PracticeEngine): el partido 3D en el estadio de tu club, vacío y
+## de día, sin calendario ni consecuencias (no se llama a to_match_result).
+##   mode "free":  sesión con tus jugadas de siempre (las de tu puesto)
+##   mode "facet": solo las jugadas de la faceta `facet` (PracticeEngine.FACETS)
+##   mode "scrim": partido completo, titulares (tú) contra suplentes con peto
+## Devuelve {} si no hay jugador o club.
+const PRACTICE_BIBS := ["#c8ff1e", "#ff6d1a", "#1ec8ff"] # petos de los suplentes
+const PRACTICE_GOAL_RATE := 0.012 # gol por minuto simulado en titulares vs suplentes
+
+static func practice_config(mode: String, facet: String, on_finish: Callable) -> Dictionary:
+	var p: PlayerData = SaveManager.load_player()
+	if p == null:
+		return {}
+	var world: Dictionary = _world()
+	var club: ClubData = WorldFactory.find_club(world, p.club_id)
+	if club == null:
+		return {}
+	var wseed: int = SaveManager.load_world_seed()
+	var season_year: int = WorldTickEngine.get_season_start_year()
+	var season_start: int = int(WorldTickEngine.season.get("season_start_epoch_day", 0))
+	var squad := WorldFactory.make_squad_with_transfers(world, p.club_id, wseed, season_start)
+	# Tú vas aparte (MatchTeam te mete siempre en el once con chance 1.0)
+	var keep: Array[PlayerData] = []
+	for x: PlayerData in squad:
+		if x != p and x.player_name != p.player_name:
+			keep.append(x)
+	squad = keep
+	var coach: CoachData = WorldFactory.find_coach(world, p.club_id)
+	var form: String = coach.formation if coach != null else ""
+	var starters := MatchTeam.from_club(club, squad, p, 1.0, form)
+	var rest: Array[PlayerData] = []
+	for x: PlayerData in squad:
+		if not starters.starting_xi.has(x):
+			rest.append(x)
+	# Los suplentes: el resto de la plantilla (si faltan, completan los titulares)
+	for x: PlayerData in starters.starting_xi:
+		if rest.size() >= 11:
+			break
+		if x != p:
+			rest.append(x)
+	var subs := MatchTeam.assemble("Suplentes", rest, null, 0.0, form)
+	var c: Array = _club_info(p.club_id)
+	var shirt := Color(String(c[2]))
+	var sec := Color(String(c[3]))
+	var bib := Color(PRACTICE_BIBS[0])
+	for b: String in PRACTICE_BIBS:
+		if not Kit.colors_clash(shirt, Color(b)):
+			bib = Color(b)
+			break
+	var prof: PlayerProfile = profile_for(p, wseed, shirt, sec, shirt)
+	var takers: Dictionary = SetPieceTakers.for_xi(starters.starting_xi, p)
+	if mode != "scrim":
+		# Practicando, los balones parados los cobras tú
+		for k: String in SetPieceTakers.KINDS:
+			takers[k] = p.player_name
+	var fams: Array = PracticeEngine.families(facet) if mode == "facet" else []
+	var scrim := mode == "scrim"
+	return {
+		"practice": mode, "practice_facet": facet, "practice_families": fams,
+		"practice_moments": PracticeEngine.SESSION_MOMENTS,
+		"profile": prof,
+		"user_detailed": starters.deployed_code(p),
+		"home_name": "Titulares", "away_name": "Suplentes",
+		"away_shirt": "#" + bib.to_html(false), "away_shorts": "#" + sec.to_html(false),
+		"away_socks": "#" + shirt.to_html(false),
+		"home_color2": "#" + sec.to_html(false), "away_color2": "#" + bib.darkened(0.25).to_html(false),
+		"home_pattern": _pattern(club, season_year, false), "away_pattern": 0,
+		"home_crest_center": Kit.crest_centered(p.club_id, season_year), "away_crest_center": false,
+		"home_crest": func() -> Control: return Styles.club_crest(p.club_id, 112),
+		"away_crest": func() -> Control: return Styles.club_crest(p.club_id, 112),
+		"home_sponsor": KitDecals.sponsor_for(String(c[0])), "away_sponsor": "",
+		"home_coach": coach.coach_name if coach != null else "", "away_coach": "",
+		"stadium": Venue.stadium_name(club),
+		"stadium_stars": Venue.stars(club),
+		"stadium_home_color": club.primary_color_hex if club.primary_color_hex.begins_with("#") else "#" + club.primary_color_hex,
+		"stadium_home_color2": club.secondary_color_hex if club.secondary_color_hex.begins_with("#") else "#" + club.secondary_color_hex,
+		"stadium_away_color": "#" + bib.to_html(false),
+		"crowd_fill": 0.0, "crowd": {}, "time_of_day": 0, "weather": 0,
+		"competition": "Práctica",
+		"ball_design": 0,
+		"home_players": _roster(starters.starting_xi, p, wseed),
+		"away_players": _roster(subs.starting_xi, null, wseed),
+		"home_bench": [],
+		"home_set_pieces": takers,
+		"away_set_pieces": SetPieceTakers.for_xi(subs.starting_xi, null),
+		"start_energy": 1.0,
+		"goal_rate_home": PRACTICE_GOAL_RATE if scrim else 0.0,
+		"goal_rate_away": PRACTICE_GOAL_RATE if scrim else 0.0,
+		"attack_share": 0.55,
+		"on_finish": on_finish,
+		"bench_until": 0.0,
+		"walkout": false, "halftime_locker": false,
+		"sent_off_rates": DecisionResolver.M3D_SENT_OFF_RATES,
+		"user_look": Avatar.config_for_player(p, wseed),
+	}
+
+
 ## Pancartas de la hinchada (6-nov): misma entrada que usaba el partido 2D.
 static func _crowd_banners(p: PlayerData, fixture: Dictionary, user_home: bool, wseed: int, world: Dictionary) -> Dictionary:
 	var fs: int = int(WorldTickEngine.season.get("fan_sentiment", InterviewEngine.FAN_DEFAULT))

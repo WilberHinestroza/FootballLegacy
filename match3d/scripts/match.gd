@@ -322,7 +322,8 @@ func _ready() -> void:
 	FieldBuilder.home_color = Color(String(config.get("stadium_home_color", "#db2129")))
 	FieldBuilder.home_color2 = Color(String(config.get("stadium_home_color2", "#f2f2f2")))
 	FieldBuilder.away_color = Color(String(config.get("stadium_away_color", "#2961eb")))
-	FieldBuilder.crowd_fill = clampf(float(config.get("crowd_fill", 0.85)), 0.2, 1.0)
+	# (la práctica es a puerta cerrada: estadio vacío)
+	FieldBuilder.crowd_fill = clampf(float(config.get("crowd_fill", 0.85)), 0.0 if is_practice() else 0.2, 1.0)
 	# Trapos de la grada: los tuyos (config.crowd) y los de la hinchada del estadio
 	FieldBuilder.crowd = config.get("crowd", {}) as Dictionary
 	FieldBuilder.banner_seed_name = String(config.get("stadium", config.get("home_name", "LOCAL")))
@@ -658,18 +659,33 @@ func _plan_moments() -> void:
 	if start >= 88.0:
 		return
 	var count := maxi(1, int(round(MOMENTS_PER_MATCH * (89.0 - start) / 86.0)))
+	if is_practice() and String(config.practice) != "scrim":
+		count = maxi(1, int(config.get("practice_moments", count)))
 	var span := (89.0 - start) / count
 	# Cada jugada sale del generador: fase según tu puesto y el dominio del partido,
 	# familia según la fase, y la colocación con parámetros al azar
 	_play_counts.clear()
 	_last_family = ""
 	var attack_share := clampf(float(config.get("attack_share", 0.55)), 0.25, 0.8)
+	# Práctica por faceta (PracticeEngine.FACETS): solo esas jugadas, barajadas
+	var fams: Array = (config.get("practice_families", []) as Array).duplicate()
+	fams.shuffle()
 	for i in count:
-		var phase := PlayGenerator.pick_phase(role, attack_share, user_detailed)
-		var pl := PlayGenerator.generate(role, phase, _play_counts, _last_family, user_detailed, int(profile.foot))
+		var pl: Dictionary
+		if not fams.is_empty():
+			pl = PlayGenerator.make(String(fams[i % fams.size()]))
+			PlayGenerator._fit_to_position(pl, PlayGenerator.POSITION_STYLE.get(user_detailed, {}))
+		else:
+			var phase := PlayGenerator.pick_phase(role, attack_share, user_detailed)
+			pl = PlayGenerator.generate(role, phase, _play_counts, _last_family, user_detailed, int(profile.foot))
 		_play_counts[pl.family] = int(_play_counts.get(pl.family, 0)) + 1
 		_last_family = pl.family
 		_moments.append({"minute": start + span * i + randf_range(0.0, span * 0.75), "kind": pl.base, "play": pl})
+
+
+## Práctica (PracticeEngine): "free", "facet" o "scrim"; "" = partido de verdad.
+func is_practice() -> bool:
+	return String(config.get("practice", "")) != ""
 
 
 func _sim_step(delta: float) -> void:

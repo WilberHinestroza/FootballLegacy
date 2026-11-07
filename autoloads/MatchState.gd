@@ -57,6 +57,12 @@ var user_suspended: bool = false
 ## coordenadas de cancha entera vertical (PitchPlays.user_full_pos).
 var moment_map: Array = []
 
+## PRÁCTICA (8-nov): qué sesión lanzar ({"mode", "facet"}) y lo que salió de la
+## última ({"summary", "rewards"}), entre la pantalla Práctica y el partido 3D.
+## Solo en memoria: no se guarda (los retos van en season["practice"]).
+var practice: Dictionary = {}
+var practice_result: Dictionary = {}
+
 
 func start_new_match(p_home: MatchTeam, p_away: MatchTeam, p_user_player: PlayerData, p_is_knockout: bool = false, p_instant: bool = false) -> void:
 	home_team = p_home
