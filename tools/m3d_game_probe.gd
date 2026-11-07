@@ -128,6 +128,13 @@ func _ready() -> void:
 	m.entered = false
 	m._halftime_pending = true
 	m._sim_step(0.0)
+	# Descuento (StoppageTime): al 45' el cuarto árbitro levanta el cartel y el reloj
+	# sigue en 45+X; al agotarse, descanso.
+	_check(m._added_phase == 1 and m._added_total >= 1 and m.added_clock() == "45+1'",
+		"no arrancó el descuento del primer tiempo (%d, %d, %s)" % [m._added_phase, m._added_total, m.added_clock()])
+	m._added_elapsed = float(m._added_total)
+	m._sim_step(0.0)
+	_check(m._added_phase == 0, "el descuento del primer tiempo no terminó")
 	# Antes del vestuario, los equipos caminan al túnel; tocar la salta.
 	_check(m.state == m.State.OUTRO and m._halftime_walk, "el descanso no arrancó con la caminata al túnel")
 	m._on_tapped(Vector2.ZERO)

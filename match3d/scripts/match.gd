@@ -24,6 +24,7 @@ const CrossZone = preload("res://engine/match/m3d/CrossZone.gd")
 const HeaderTiming = preload("res://engine/match/m3d/HeaderTiming.gd")
 const PlayChain = preload("res://engine/match/m3d/PlayChain.gd")
 const PrePlayChoice = preload("res://engine/match/m3d/PrePlayChoice.gd")
+const StoppageTime = preload("res://engine/match/m3d/StoppageTime.gd")
 const Momentum = preload("res://engine/match/m3d/Momentum.gd")
 const Offside = preload("res://engine/match/m3d/Offside.gd")
 const MatchFx = preload("res://match3d/scripts/match_fx.gd")
@@ -610,13 +611,15 @@ func _physics_process(delta: float) -> void:
 	_apply_shake(delta)
 	_update_wave(delta)
 	_pf("misc")
-	var hud_key := "%d|%d|%d|%s|%d|%d" % [score[0], score[1], int(minute), State.keys()[state],
-		int(_shootout_scores[0]), int(_shootout_scores[1])]
+	var hud_key := "%d|%d|%d|%s|%d|%d|%s" % [score[0], score[1], int(minute), State.keys()[state],
+		int(_shootout_scores[0]), int(_shootout_scores[1]), added_clock()]
 	if hud_key != _hud_key:
 		_hud_key = hud_key
-		_hud.update_score(score, minute)
+		_hud.update_score(score, minute, added_clock())
 		var board_minute := "%d'" % int(minute)
-		if minute > MATCH_MINUTES:
+		if added_clock() != "":
+			board_minute = added_clock()
+		elif minute > MATCH_MINUTES:
 			board_minute = "ET %d'" % int(minute - MATCH_MINUTES)
 		var board_text := "%s  %d - %d  %s\n%s" % [TEAM_NAMES[0].left(3).to_upper(), score[0], score[1], TEAM_NAMES[1].left(3).to_upper(), board_minute]
 		if bool(config.get("has_tie_carry", false)):
@@ -693,6 +696,9 @@ func is_practice() -> bool:
 
 
 func _sim_step(delta: float) -> void:
+	if _added_phase != 0:
+		_added_step(delta)
+		return
 	var prev := int(minute)
 	var match_end := 120.0 if _extra_time_active else MATCH_MINUTES
 	minute = minf(minute + delta / (SIM_SECONDS_PER_MINUTE * Preferences.match_pace_factor()), match_end)
@@ -702,11 +708,10 @@ func _sim_step(delta: float) -> void:
 			return # una secuencia de gol ambient pausa el reloj hasta que termine
 	if _halftime_pending:
 		_halftime_pending = false
-		minute = 45.0
-		_hud.add_feed("45'  Descanso")
-		if _wants_locker():
-			_start_halftime_walk()
+		if _start_added(1):
 			return
+		_go_to_halftime()
+		return
 	if _extra_time_break_pending:
 		_extra_time_break_pending = false
 		minute = 105.0
@@ -727,19 +732,98 @@ func _sim_step(delta: float) -> void:
 		var mo: Dictionary = _moments.pop_front()
 		_start_moment(mo.kind, mo.get("play", {}))
 	elif minute >= match_end:
+		if not _extra_time_active and _start_added(2):
+			return
 		_end_match()
 
 
+## Arranca el descuento de esa parte (1 = 45', 2 = 90'). false si ya se jugó o es práctica.
+func _start_added(phase: int) -> bool:
+	if is_practice() or bool(_added_done[phase - 1]):
+		return false
+	_added_done[phase - 1] = true
+	var goals := int(score[0]) + int(score[1])
+	if phase == 1:
+		_goals_first_half = goals
+	else:
+		goals -= _goals_first_half
+	var subs := 0 if phase == 1 else int(_subs_done[0]) + int(_subs_done[1])
+	_added_total = StoppageTime.minutes(phase - 1, goals, subs, int(_var_reviews[phase - 1]), randf())
+	_added_phase = phase
+	_added_elapsed = 0.0
+	minute = 45.0 if phase == 1 else MATCH_MINUTES
+	_added_last_play = -1.0
+	if phase == 2 and _on_pitch_now() and randf() < StoppageTime.LAST_PLAY_CHANCE:
+		_added_last_play = randf_range(0.3, maxf(0.4, _added_total - 0.6))
+	_hud.add_feed("%d'  El cuarto árbitro levanta el cartel: +%d" % [int(minute), _added_total])
+	_hud.show_added_time(_added_total)
+	return true
+
+
+## Un paso del reloj en el descuento: simula sus minutos y cierra la parte al acabar.
+func _added_step(delta: float) -> void:
+	var base := 45 if _added_phase == 1 else int(MATCH_MINUTES)
+	var prev := int(_added_elapsed)
+	_added_elapsed = minf(_added_elapsed + delta / (SIM_SECONDS_PER_MINUTE * Preferences.match_pace_factor()), float(_added_total))
+	for k in range(prev + 1, int(_added_elapsed) + 1):
+		_simulate_minute(base, true)
+		if state != State.SIMULATING:
+			return
+	if _pending_penalty and _added_elapsed < _added_total - 0.3:
+		_pending_penalty = false
+		_pending_fk_spot = Vector3.ZERO
+		_start_moment(Moment.PENALTY, {})
+		return
+	if _pending_free_kick and _added_elapsed < _added_total - 0.3:
+		_pending_free_kick = false
+		_pending_penalty = false
+		var fk_play := PlayGenerator.make("tiro_libre")
+		fk_play["spot"] = _pending_fk_spot
+		_pending_fk_spot = Vector3.ZERO
+		_start_moment(Moment.FREE_KICK, fk_play)
+		return
+	if _added_last_play >= 0.0 and _added_elapsed >= _added_last_play and _on_pitch_now():
+		_added_last_play = -1.0
+		var phase_name := PlayGenerator.pick_phase(star.role, clampf(float(config.get("attack_share", 0.55)), 0.25, 0.8), user_detailed)
+		var pl := PlayGenerator.generate(star.role, phase_name, _play_counts, _last_family, user_detailed, int(profile.foot))
+		_hud.add_feed("%s  ¡Última jugada!" % added_clock())
+		_start_moment(pl.base, pl)
+		return
+	if _added_elapsed >= float(_added_total):
+		var phase := _added_phase
+		_added_phase = 0
+		_hud.show_added_time(0)
+		if phase == 1:
+			_go_to_halftime()
+		else:
+			minute = MATCH_MINUTES
+			_end_match()
+
+
+## "45+2'" durante el descuento; "" fuera de él.
+func added_clock() -> String:
+	if _added_phase == 0:
+		return ""
+	return StoppageTime.clock(45 if _added_phase == 1 else int(MATCH_MINUTES), _added_elapsed)
+
+
+func _go_to_halftime() -> void:
+	minute = 45.0
+	_hud.add_feed("45'  Descanso")
+	if _wants_locker():
+		_start_halftime_walk()
+
+
 ## Lo que pasa en el resto del partido mientras no intervienes.
-func _simulate_minute(m: int) -> void:
-	if m == 45:
+func _simulate_minute(m: int, in_added := false) -> void:
+	if m == 45 and not in_added:
 		_halftime_pending = true
 	elif m == 105 and _extra_time_active:
 		pass
 	if _on_pitch_now():
 		# Cansancio por minuto: un 60 de resistencia acaba los 90' con ~45% de energía
 		stamina = maxf(stamina - lerpf(0.0085, 0.0045, star.stat("stamina")), 0.05)
-	if m == 105 and _extra_time_active:
+	if m == 105 and _extra_time_active and not in_added:
 		_extra_time_break_pending = true
 	if not entered and m >= int(_bench_until):
 		_enter_from_bench(m)
@@ -1054,10 +1138,8 @@ func _finish_ambient_goal() -> void:
 	_ambient_kickoff()
 	if half_pending:
 		_halftime_pending = false
-		minute = 45.0
-		_hud.add_feed("45'  Descanso")
-		if _wants_locker():
-			_start_halftime_walk()
+		if not _start_added(1):
+			_go_to_halftime()
 	elif extra_break_pending:
 		_extra_time_break_pending = false
 		minute = 105.0
@@ -2180,6 +2262,15 @@ const TACTICS := [
 ]
 var _locker: LockerRoom
 var _halftime_pending := false
+# Descuento (StoppageTime): 0 = no, 1 = al 45', 2 = al 90'. El reloj se queda en el
+# minuto base y corre _added_elapsed hasta _added_total.
+var _added_phase := 0
+var _added_total := 0
+var _added_elapsed := 0.0
+var _added_done := [false, false]
+var _added_last_play := -1.0
+var _goals_first_half := 0
+var _var_reviews := [0, 0]
 var _locker_wait := 0.0
 var _tactic := 1
 var _tactic_rates := [1.0, 1.0]
@@ -7187,6 +7278,9 @@ func _scorer_name(t: int) -> String:
 
 func _log_goal(t: int, m: int, who: String, assist_star: bool, by_star := false) -> void:
 	match_stats.goals_log.append({"team": t, "minute": m, "name": who, "assist_star": assist_star, "star": by_star})
+	if _hud != null and _hud.has_method("show_goal_banner"):
+		var when := added_clock() if added_clock() != "" else "%d'" % m
+		_hud.show_goal_banner(t, when, who, by_star)
 
 
 static func _rival_shirt(mine: Color) -> Color:
@@ -7406,6 +7500,7 @@ func _start_var_review(team: int) -> void:
 	_offside_snap = {}
 	var caught := bool(info.get("offside", false)) and DecisionResolver.var_catches_offside(_referee_var_mult)
 	_var = {"team": team, "from": state, "t": 0.0, "caught": caught, "info": info, "done": false}
+	_var_reviews[0 if minute < 45.0 or _added_phase == 1 else 1] += 1
 	_end_decision()
 	state = State.VAR_REVIEW
 	Engine.time_scale = 1.0

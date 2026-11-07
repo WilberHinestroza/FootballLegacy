@@ -87,7 +87,7 @@ func _ready() -> void:
 	_sim_panel.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
 	_sim_panel.offset_left = 10.0
 	_sim_panel.offset_right = 360.0
-	_sim_panel.offset_top = 112.0
+	_sim_panel.offset_top = SIM_TOP
 	_sim_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var panel_style := StyleBoxFlat.new()
 	panel_style.bg_color = Color(0.0, 0.0, 0.0, 0.42)
@@ -612,20 +612,51 @@ func set_rating(r: float, change: float) -> void:
 		_rating_flash = 1.6
 
 
-func update_score(score: Array, minute: float) -> void:
+func update_score(score: Array, minute: float, clock := "") -> void:
 	_score.text = "%d - %d" % [score[0], score[1]]
 	if (score[0] != _last_score[0] or score[1] != _last_score[1]) and _plate != null:
+		var scorer_team := 0 if score[0] != _last_score[0] else 1
 		_last_score = [score[0], score[1]]
-		# pulso de la placa al cambiar el resultado
-		_plate.pivot_offset = _plate.size * 0.5
-		var tw := create_tween()
-		tw.tween_property(_plate, "scale", Vector2(1.25, 1.25), 0.15)
-		tw.tween_property(_plate, "scale", Vector2.ONE, 0.35).set_trans(Tween.TRANS_BACK)
+		_goal_pop(scorer_team)
 	_minute_lbl.text = "%d'" % int(minute)
 	if minute > SoccerMatch.MATCH_MINUTES:
 		var et_minute := int(minute - SoccerMatch.MATCH_MINUTES)
 		_minute_lbl.text = "ET %d'" % et_minute
+	if clock != "":
+		_minute_lbl.text = clock
 	_update_aggregate(score)
+
+
+## Cartel del cuarto árbitro: "+N" pegado al minuto mientras dura el descuento
+## (0 lo quita).
+func show_added_time(mins: int) -> void:
+	if _added_tag != null and is_instance_valid(_added_tag):
+		_added_tag.queue_free()
+	_added_tag = null
+	if mins <= 0 or _minute_lbl == null:
+		return
+	var p := PanelContainer.new()
+	p.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.1, 0.75, 0.3)
+	sb.set_corner_radius_all(4)
+	sb.content_margin_left = 7
+	sb.content_margin_right = 7
+	sb.skew = Vector2(0.2, 0.0)
+	p.add_theme_stylebox_override("panel", sb)
+	var l := _label(20, p)
+	l.text = "+%d" % mins
+	l.label_settings.font_color = Color.WHITE
+	# Al lado del segmento del minuto, alineado con el marcador.
+	var seg := _minute_lbl.get_parent() as Control
+	seg.get_parent().add_child(p)
+	_added_tag = p
+	if not Preferences.reduce_motion:
+		p.modulate.a = 0.0
+		p.scale = Vector2(0.4, 0.4)
+		var tw := create_tween()
+		tw.tween_property(p, "modulate:a", 1.0, 0.2)
+		tw.parallel().tween_property(p, "scale", Vector2.ONE, 0.35).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
 
 func set_shootout_clock() -> void:
@@ -645,6 +676,111 @@ func _update_aggregate(score: Array) -> void:
 	_aggregate_label.visible = true
 	_aggregate_label.text = "GLOBAL · %d - %d" % [
 		int(_aggregate_carry[0]) + int(score[0]), int(_aggregate_carry[1]) + int(score[1])]
+
+
+# ---------- animaciones del marcador (estilo TV) ----------
+
+var _team_cols: Array = [Color.WHITE, Color.WHITE]
+var _team_segs: Array = []
+var _goal_banner: PanelContainer
+var _goal_tw: Tween
+var _added_tag: PanelContainer
+
+
+## Gol: el resultado salta con un destello del color de quien marcó y su segmento
+## parpadea (la franja con el goleador la pone show_goal_banner).
+func _goal_pop(team: int) -> void:
+	var col: Color = _team_cols[team] if team < _team_cols.size() else Color.WHITE
+	if Preferences.reduce_motion:
+		return
+	_plate.pivot_offset = _plate.size * 0.5
+	var tw := create_tween()
+	tw.tween_property(_plate, "scale", Vector2(1.4, 1.4), 0.12).set_trans(Tween.TRANS_QUAD)
+	tw.parallel().tween_property(_plate, "modulate", col.lightened(0.5), 0.12)
+	tw.tween_property(_plate, "scale", Vector2.ONE, 0.45).set_trans(Tween.TRANS_BACK)
+	tw.parallel().tween_property(_plate, "modulate", Color.WHITE, 0.45)
+	if team < _team_segs.size():
+		var seg: Control = _team_segs[team]
+		var blink := create_tween()
+		for i in 3:
+			blink.tween_property(seg, "modulate", Color(1.6, 1.6, 1.6), 0.12)
+			blink.tween_property(seg, "modulate", Color.WHITE, 0.18)
+
+
+## Franja bajo el marcador con el goleador: "⚽ 23'  NOMBRE" (tú en dorado). Entra
+## desde la izquierda, se queda unos segundos y se va.
+func show_goal_banner(team: int, when: String, who: String, by_star: bool) -> void:
+	if _board == null:
+		return
+	if _goal_banner != null and is_instance_valid(_goal_banner):
+		_goal_banner.queue_free()
+	if _goal_tw != null and _goal_tw.is_valid():
+		_goal_tw.kill()
+	var col: Color = _team_cols[team] if team < _team_cols.size() else Color.WHITE
+	var p := PanelContainer.new()
+	p.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.04, 0.05, 0.08, 0.92)
+	sb.border_color = col
+	sb.border_width_left = 6
+	sb.content_margin_left = 14
+	sb.content_margin_right = 16
+	sb.content_margin_top = 4
+	sb.content_margin_bottom = 4
+	sb.skew = Vector2(0.2, 0.0)
+	sb.set_corner_radius_all(3)
+	p.add_theme_stylebox_override("panel", sb)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	p.add_child(row)
+	var g := _label(20, row)
+	g.text = "⚽ " + when
+	g.label_settings.font_color = col.lightened(0.35)
+	var n := _label(20, row)
+	n.text = ("TÚ · " if by_star else "") + (who.to_upper() if who != "" else TEAM_LABEL_GOAL)
+	n.label_settings.font_color = Color(1.0, 0.84, 0.2) if by_star else Color.WHITE
+	add_child(p)
+	var y := _board.position.y + _board.size.y + 6.0
+	p.position = Vector2(_board.position.x, y)
+	_goal_banner = p
+	# El teletipo de debajo baja mientras está la franja y vuelve después.
+	var push := 44.0
+	if Preferences.reduce_motion:
+		_sim_panel.offset_top = SIM_TOP + push
+		_goal_tw = create_tween()
+		_goal_tw.tween_interval(5.0)
+		_goal_tw.tween_callback(p.queue_free)
+		_goal_tw.tween_callback(func() -> void: _sim_panel.offset_top = SIM_TOP)
+		return
+	var sim := create_tween()
+	sim.tween_property(_sim_panel, "offset_top", SIM_TOP + push, 0.25).set_trans(Tween.TRANS_CUBIC)
+	sim.tween_interval(4.6)
+	sim.tween_property(_sim_panel, "offset_top", SIM_TOP, 0.3).set_trans(Tween.TRANS_CUBIC)
+	p.modulate.a = 0.0
+	p.position.x = _board.position.x - 260.0
+	_goal_tw = create_tween()
+	_goal_tw.tween_property(p, "position:x", _board.position.x, 0.35).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	_goal_tw.parallel().tween_property(p, "modulate:a", 1.0, 0.25)
+	_goal_tw.tween_interval(4.5)
+	_goal_tw.tween_property(p, "position:x", _board.position.x - 260.0, 0.3).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN)
+	_goal_tw.parallel().tween_property(p, "modulate:a", 0.0, 0.3)
+	_goal_tw.tween_callback(p.queue_free)
+
+const TEAM_LABEL_GOAL := "GOL"
+const SIM_TOP := 112.0
+
+
+## Entrada del marcador al empezar: baja desde arriba con un fundido.
+func _board_entry() -> void:
+	if Preferences.reduce_motion or _board == null:
+		return
+	_board.modulate.a = 0.0
+	_board.position.y = -60.0
+	var tw := create_tween()
+	tw.tween_interval(0.2)
+	tw.tween_property(_board, "position:y", 12.0, 0.45).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.parallel().tween_property(_board, "modulate:a", 1.0, 0.3)
 
 
 ## Gráfica de transmisión de cada cadena (MediaOutlets.BROADCAST de FootballCareer).
@@ -754,6 +890,9 @@ func setup_broadcast(channel: String, names: Array, colors: Array, extra: Dictio
 		row.add_child(seg)
 		segs.append(seg)
 	_plate = segs[2]
+	_team_cols = [colors[0], colors[1]]
+	_team_segs = [segs[1], segs[3]]
+	_board_entry()
 
 	var logo_path := "res://match3d/media/%s.png" % channel
 	if ResourceLoader.exists(logo_path):
