@@ -397,7 +397,8 @@ func is_diving() -> bool:
 
 
 ## Se estira hacia `target` (punto por donde pasará el balón). `reach_scale` < 1 = no llega.
-func start_dive(target: Vector3, reach_scale := 1.0) -> void:
+## `max_reach` = cuánto puede estirarse más allá del alcance natural (nivel de portero).
+func start_dive(target: Vector3, reach_scale := 1.0, max_reach := 1.45) -> void:
 	if is_diving() or _anim == null:
 		return
 	var fwd := facing
@@ -412,7 +413,7 @@ func start_dive(target: Vector3, reach_scale := 1.0) -> void:
 		d = DIVES.low
 	var h := BODY_H * absf(_avatar.scale.y)
 	var natural_lat: float = d.hands.x * h
-	var lat_scale := clampf(absf(lateral) / natural_lat, 0.45, 1.45) * reach_scale
+	var lat_scale := clampf(absf(lateral) / natural_lat, 0.45, max_reach) * reach_scale
 	_avatar.set_mirrored(side != d.natural)
 	_lean = Vector2.ZERO
 	_avatar.rotation = Vector3.ZERO

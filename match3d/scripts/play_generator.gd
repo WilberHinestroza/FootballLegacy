@@ -55,6 +55,10 @@ const FAMILIES := {
 		"title": "¡DOS CONTRA UNO!", "hint": "Estás solo ante dos: no te tires, toca el césped para tapar el pase\ny entra (toca al rival) cuando se acerque"},
 	"repliegue": {"phase": "defensa", "base": "DEFENSE", "w": {"MF": 1.8, "ST": 1.4, "DF": 0.9},
 		"title": "¡VUELVE! CONTRA DEL RIVAL", "hint": "Te pillaron arriba: toca el césped delante del rival para cortarle\ny barre (desliza hacia él) cuando le alcances"},
+	"persecucion": {"phase": "defensa", "base": "DEFENSE", "w": {"DF": 1.3, "MF": 1.0, "ST": 0.3},
+		"title": "¡SE VA SOLO! PERSÍGUELO", "hint": "Se escapa hacia tu portero: corre tras él (toca el césped delante)\ny barre (desliza hacia él) cuando le alcances"},
+	"ultimo_hombre": {"phase": "defensa", "base": "DEFENSE", "w": {"DF": 1.4, "MF": 0.6, "ST": 0.1},
+		"title": "¡ERES EL ÚLTIMO HOMBRE!", "hint": "Solo tú y el portero: no te tires, temporiza (toca el césped)\ny entra (toca al rival) cuando se le vaya el balón"},
 	"presion_alta": {"phase": "defensa", "base": "DEFENSE", "w": {"ST": 2.0, "MF": 1.3, "DF": 0.2},
 		"title": "¡PRESIÓN ALTA!", "hint": "El rival saca desde atrás: toca al que tiene el balón para encimarle\nRobarla aquí es media ocasión"},
 	"centro_rival": {"phase": "defensa", "base": "DEFENSE", "w": {"DF": 1.7, "MF": 0.6, "ST": 0.3},
@@ -78,12 +82,26 @@ const FAMILIES := {
 }
 
 
+## Mano a mano (8-nov): varias versiones de la misma situación, a favor y en
+## contra. variante -> [título, ayuda, peso]. Las "gk_" son las del portero.
+const ONE_ON_ONE := {
+	"centro": ["¡MANO A MANO!", "Solo ante el portero: desliza hacia la portería para definir\nDesliza hacia un lado para regatearlo", 1.0],
+	"banda": ["¡SOLO EN DIAGONAL!", "Entras escorado: el portero te cierra el palo corto\ncruza al palo largo o recórtale hacia dentro", 1.0],
+	"escapada": ["¡TE ESCAPAS SOLO!", "Ganaste la espalda: corre hacia la portería antes de que te alcancen\ny define cuando el portero salga", 1.0],
+	"sale": ["¡EL PORTERO SALE A TAPAR!", "Te sale a los pies: defínele antes de que llegue\no regatéalo (desliza de lado) y empuja a puerta vacía", 0.8],
+	"gk_centro": ["¡MANO A MANO!", "Se te planta solo: toca al rival para salir y achicar\no espera y desliza hacia donde dispare (hacia arriba = alto)", 1.0],
+	"gk_banda": ["¡SE TE CUELA POR LA BANDA!", "Viene escorado: tapa tu palo corto (toca el césped)\ny desliza hacia el lado del tiro cuando chute", 1.0],
+	"gk_escapada": ["¡SE ESCAPA DESDE LEJOS!", "Viene solo desde el medio campo: decide cuándo salir\n(toca al rival para ir a sus pies) o quédate y estírate al tiro", 0.9],
+}
+
+
 ## Cómo juega cada puesto fino (Positions.gd): "lane" = su carril (+1 banda derecha,
 ## -1 izquierda, ±0.5 carril interior, 0 centro; derecha = +Z con el equipo atacando
 ## a +X) y "w" = cuánto pesa cada familia para ese puesto respecto al de su línea.
 ## Así un extremo vive de desbordes por SU banda y un central de duelos y centros.
 const POSITION_STYLE := {
 	"DFC": {"lane": 0.0, "w": {"duelo": 1.4, "centro_rival": 1.5, "corner_contra": 1.4, "salida_presion": 1.3,
+		"ultimo_hombre": 1.5, "persecucion": 1.3,
 		"desborde": 0.2, "frontal": 0.6, "repliegue": 0.6, "diagonal": 0.0}},
 	"LD": {"lane": 1.0, "w": {"desborde": 1.8, "cambio_orientacion": 1.4, "centro_rival": 1.3, "dos_contra_uno": 1.3,
 		"corner_contra": 0.6, "frontal": 0.5, "diagonal": 0.3}},
@@ -215,6 +233,16 @@ static func make(id: String) -> Dictionary:
 		"rival_delay": randf_range(0.8, 1.5),
 	}
 	match id:
+		"mano_a_mano", "mano_a_mano_gk":
+			var pre := "gk_" if id == "mano_a_mano_gk" else ""
+			var ws := {}
+			for v: String in ONE_ON_ONE:
+				if v.begins_with("gk_") == (pre != ""):
+					ws[v] = float(ONE_ON_ONE[v][2])
+			var key := _weighted(ws)
+			play.variant = key.trim_prefix("gk_")
+			play.title = String(ONE_ON_ONE[key][0])
+			play.hint = String(ONE_ON_ONE[key][1])
 		"superioridad":
 			var att := randi_range(2, 3)
 			play.attackers = att

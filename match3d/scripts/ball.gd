@@ -264,6 +264,25 @@ static func flight_time(dist: float, speed: float) -> float:
 	return -log(1.0 - r) / k
 
 
+## Dónde estará el balón dentro de `t` s (sin botes ni efecto), con el frenado real
+## del aire. El portero lo usa para saber cuándo y por dónde le llega el tiro: con un
+## frenado fijo, los tiros flojos llegaban más tarde de lo previsto y se tiraba antes.
+static func predict(pos: Vector3, vel: Vector3, t: float) -> Vector3:
+	var k := air_drag()
+	var f := (1.0 - exp(-k * t)) / k
+	var p := pos + vel * f
+	p.y = pos.y + (vel.y + 9.8 / k) * f - 9.8 * t / k
+	return p
+
+
+## Segundos hasta que el balón recorra `gap` m en X con velocidad `vx` (INF si no llega).
+static func time_to_x(gap: float, vx: float) -> float:
+	if gap <= 0.0 or vx <= 0.0:
+		return INF
+	var t := flight_time(gap, vx)
+	return INF if t >= 3.0 else t
+
+
 ## Velocidad vertical para estar `rise` metros más arriba al cabo de `t` segundos.
 static func lift_for(rise: float, t: float) -> float:
 	var k := air_drag()

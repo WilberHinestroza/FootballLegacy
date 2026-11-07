@@ -497,7 +497,20 @@ static func _keeper(p: SoccerPlayer, m: SoccerMatch) -> void:
 				p.shoot_at(m.opponent_goal_center(p.team), 0.8)
 		return
 
-	var target := goal + Vector3(dir * 1.0, 0.0, clampf(b.z * 0.35, -half_goal + 0.4, half_goal - 0.4))
+	# Colocación en la bisectriz: sobre la línea balón-centro de la portería, un poco
+	# adelantado; así tapa los dos palos a la vez (antes, z = 35 % del balón, y un
+	# tiro cruzado desde la banda encontraba medio arco libre).
+	var to_b := SoccerMatch.flat(b - goal)
+	var bd := to_b.length()
+	var out := 1.0
+	if bd < 30.0:
+		out = lerpf(2.0, 1.0, clampf((bd - 8.0) / 22.0, 0.0, 1.0))
+	var target := goal + Vector3(dir * 1.0, 0.0, 0.0)
+	if bd > 0.5:
+		target = goal + to_b / bd * out
+		if (target.x - goal.x) * dir < 0.6:
+			target.x = goal.x + dir * 0.6
+	target.z = clampf(target.z, -half_goal + 0.3, half_goal - 0.3)
 
 	if p.is_diving():
 		p.move_input = Vector3.ZERO
@@ -506,10 +519,11 @@ static func _keeper(p: SoccerPlayer, m: SoccerMatch) -> void:
 	# Tiro hacia nuestra portería: ir al punto por donde cruzará y, si no llega andando, estirarse
 	var v := ball.linear_velocity
 	if ball.owner_player == null and v.x * dir < -6.0:
-		var t := (p.global_position.x - b.x) / (v.x * 0.9) # el balón frena un poco en el aire
+		var t := SoccerBall.time_to_x((p.global_position.x - b.x) * signf(v.x), absf(v.x))
 		if t > 0.0 and t < 1.5:
-			var cz := b.z + v.z * t
-			var cy := b.y + v.y * t - 4.9 * t * t
+			var at := SoccerBall.predict(b, v, t)
+			var cz := at.z
+			var cy := at.y
 			var on_target := absf(cz) < half_goal + 0.5 and cy < SoccerMatch.GOAL_HEIGHT + 0.4
 			if on_target and t <= SoccerPlayer.DIVE_LEAD + 0.03 \
 					and absf(cz - p.global_position.z) > 0.8:
@@ -520,14 +534,21 @@ static func _keeper(p: SoccerPlayer, m: SoccerMatch) -> void:
 			p.sprinting = true
 			return
 
-	# Rival con balón cerca del área: salir a tapar ángulo (entre él y el centro de la portería)
+	# Rival con balón cerca: salir a achicar sobre la línea balón-portería. Cuanto
+	# más cerca, más sale (DecisionResolver.m3d_keeper_rush). Si ya lo tiene encima
+	# (mano a mano) va a sus pies: el robo por contacto de _update_possession le
+	# quita el balón si el delantero no lo regatea o define antes.
 	var holder := ball.owner_player
 	if holder != null and holder.team != p.team:
 		var to_h := SoccerMatch.flat(holder.global_position - goal)
 		var dist := to_h.length()
-		if dist > 0.01 and dist < 14.0:
-			var out := clampf(dist * 0.3, 1.0, 3.2)
-			move_to(p, goal + to_h / dist * out, 0.15, dist < 8.0)
+		if dist > 0.01 and dist < 20.0:
+			var rush: float = DecisionResolver.m3d_keeper_rush(dist, p.keeper_skill())
+			var spot := goal + to_h / dist * rush
+			if dist < 9.0 and m.in_own_box(p.team, holder.global_position) \
+					and SoccerMatch.flat_dist(p.global_position, holder.global_position) < 3.2:
+				spot = holder.global_position + SoccerMatch.flat(holder.velocity) * 0.2
+			move_to(p, spot, 0.15, dist < 11.0)
 			return
 
 	# Balón suelto o centro al área: el portero sale a por él si es el primero

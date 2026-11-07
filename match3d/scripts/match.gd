@@ -2918,7 +2918,17 @@ func _setup_play() -> bool:
 	var depth: float = play.depth
 	match String(play.family):
 		"mano_a_mano":
+			var variant := String(play.get("variant", "centro"))
 			var bp := Vector3(lerpf(12.0, 26.0, depth), 0.0, side * randf_range(0.0, 9.0))
+			match variant:
+				"banda": # escorado, a 23-30 m de la línea y por fuera del palo
+					bp = Vector3(randf_range(22.0, 30.0), 0.0, side * randf_range(9.0, 14.0))
+				"escapada": # desde el medio campo, con todo por correr
+					bp = Vector3(randf_range(0.0, 10.0), 0.0, side * randf_range(0.0, 7.0))
+					play.arrive = false
+				"sale": # cerca del área, y el portero ya viene
+					bp = Vector3(randf_range(28.0, 33.0), 0.0, side * randf_range(0.0, 6.0))
+					play.arrive = false
 			_attack_base(bp)
 			# La defensa rota: los rivales quedan detrás, persiguiéndote
 			var chasers := 0
@@ -2928,6 +2938,10 @@ func _setup_play() -> bool:
 				var back := randf_range(2.5, 5.0) if chasers < 2 else randf_range(9.0, 16.0)
 				chasers += 1
 				_place(o, Vector3(bp.x - back, 0.0, o.global_position.z * 0.6 + bp.z * 0.4))
+			if variant == "sale":
+				var g := opponent_goal_center(0)
+				_place(teams[1][0], g + flat(bp - g).normalized() * randf_range(6.5, 8.5))
+				teams[1][0].facing = flat(bp - teams[1][0].global_position).normalized()
 			_star_carries(bp)
 		"superioridad":
 			var bp := Vector3(randf_range(-2.0, 10.0), 0.0, side * randf_range(0.0, 9.0))
@@ -3101,6 +3115,33 @@ func _setup_play() -> bool:
 				if mt == star or mt.is_keeper:
 					continue
 				_place(mt, Vector3(bp.x + randf_range(9.0, 20.0), 0.0, mt.global_position.z))
+		"persecucion":
+			# Mano a mano EN CONTRA: un rival se escapa hacia tu portero y tú vienes
+			# por detrás. Si no le alcanzas, lo resuelven él y tu portero.
+			var bp := Vector3(randf_range(-12.0, -2.0), 0.0, _lane_z(10.0))
+			var a := _defense_base(bp)
+			_place(star, bp + Vector3(randf_range(3.0, 4.5), 0.0, randf_range(-2.0, 2.0)))
+			star.facing = Vector3.LEFT
+			for mt: SoccerPlayer in teams[0]:
+				if mt != star and not mt.is_keeper:
+					_place(mt, Vector3(bp.x + randf_range(6.0, 18.0), 0.0, mt.global_position.z))
+			for o: SoccerPlayer in teams[1]:
+				if o != a and not o.is_keeper and o.global_position.x < bp.x + 4.0:
+					_place(o, Vector3(bp.x + randf_range(4.0, 12.0), 0.0, o.global_position.z))
+			a.ai_timer = 0.3
+		"ultimo_hombre":
+			# Mano a mano EN CONTRA: tú eres lo único entre el delantero y tu portero
+			var bp := Vector3(randf_range(-22.0, -14.0), 0.0, _lane_z(8.0))
+			var a := _defense_base(bp)
+			_place(star, Vector3(bp.x - randf_range(7.0, 9.0), 0.0, bp.z * 0.6))
+			star.facing = Vector3.RIGHT
+			for mt: SoccerPlayer in teams[0]:
+				if mt != star and not mt.is_keeper:
+					_place(mt, Vector3(bp.x + randf_range(5.0, 16.0), 0.0, mt.global_position.z))
+			for o: SoccerPlayer in teams[1]:
+				if o != a and not o.is_keeper:
+					_place(o, Vector3(bp.x + randf_range(4.0, 14.0), 0.0, o.global_position.z * 0.8))
+			a.ai_timer = 0.4
 		"repliegue":
 			var bp := Vector3(randf_range(-8.0, 6.0), 0.0, _lane_z(14.0))
 			var a := _defense_base(bp)
@@ -3839,17 +3880,26 @@ func _key_pass(receiver: SoccerPlayer) -> void:
 func _setup_keeper(force: Variant = null) -> void:
 	var one_on_one: bool = randf() < 0.4 if force == null else bool(force)
 	var bp := Vector3(randf_range(-36.0, -28.0), 0.0, randf_range(-14.0, 14.0))
+	var variant := String(play.get("variant", "centro"))
 	if one_on_one:
-		bp = Vector3(randf_range(-38.0, -34.0), 0.0, randf_range(-6.0, 6.0))
+		var sd: float = float(play.get("side", 1.0))
+		match variant:
+			"banda":
+				bp = Vector3(randf_range(-42.0, -37.0), 0.0, sd * randf_range(9.0, 13.0))
+			"escapada":
+				bp = Vector3(randf_range(-22.0, -15.0), 0.0, randf_range(-5.0, 5.0))
+			_:
+				bp = Vector3(randf_range(-38.0, -34.0), 0.0, randf_range(-6.0, 6.0))
 	possession_team = 1
 	_place_team_for(bp, 1)
 	var attacker := _nearest_of_role(1, bp, ["ST", "MF"])
 	_place(attacker, bp)
 	if one_on_one:
 		# Se ha escapado: tus defensas quedan atrás
+		var gap := 12.0 if variant == "escapada" else 8.0
 		for d: SoccerPlayer in teams[0]:
-			if not d.is_keeper and flat_dist(d.global_position, bp) < 8.0:
-				_place(d, d.global_position + Vector3(8.0, 0.0, 0.0))
+			if not d.is_keeper and (flat_dist(d.global_position, bp) < gap or d.global_position.x < bp.x):
+				_place(d, Vector3(maxf(d.global_position.x, bp.x) + gap, 0.0, d.global_position.z))
 	_place(star, goal_center(0) + Vector3(1.2, 0.0, clampf(bp.z * 0.15, -1.5, 1.5)))
 	star.facing = Vector3.RIGHT
 	_give_ball_now(attacker)
@@ -5381,10 +5431,11 @@ func _update_human_keeper() -> bool:
 	var b := ball.global_position
 	if not _keeper_dived and ball.owner_player == null and v.x < -6.0 \
 			and ball.last_touch != null and ball.last_touch.team == 1:
-		var t := (k.global_position.x - b.x) / (v.x * 0.9)
+		var t := SoccerBall.time_to_x((k.global_position.x - b.x) * signf(v.x), absf(v.x))
 		if t > 0.0 and t < 1.6:
-			var cz := b.z + v.z * t
-			var cy := b.y + v.y * t - 4.9 * t * t
+			var at := SoccerBall.predict(b, v, t)
+			var cz := at.z
+			var cy := at.y
 			if absf(cz) < GOAL_WIDTH * 0.5 + 0.5 and cy < GOAL_HEIGHT + 0.4:
 				_shot_cross = Vector3(k.global_position.x, maxf(cy, 0.25), cz)
 				if not _keeper_deciding:
@@ -5703,16 +5754,38 @@ func keeper_dive(k: SoccerPlayer, cross: Vector3, outcome := "") -> void:
 	if outcome == "miss":
 		reach = clampf((lateral - 0.9) / maxf(lateral, 0.01), 0.3, 0.75)
 		ball.block_pickup(k, 1.5)
-	k.start_dive(cross, reach)
+	k.start_dive(cross, reach, DecisionResolver.m3d_keeper_reach(k.keeper_skill()))
 
 
 ## Durante la estirada: cuando las manos llegan al balón, blocaje o despeje.
+## 8-nov: además de la ventana de las manos, un barrido del balón (de dónde estaba
+## el fotograma anterior a dónde está) contra el cuerpo estirado del portero (de la
+## cadera a las manos). Antes, si el balón llegaba un poco antes o después de lo
+## previsto, pasaba POR DENTRO del portero sin tocarle.
+const DIVE_BODY_RADIUS := 0.42  # brazos y tronco al blocar o despejar
+const DIVE_TORSO_RADIUS := 0.3  # tronco: aunque se tirara tarde, el balón rebota en él
+
+
 func _check_dive_contact(k: SoccerPlayer) -> void:
-	var left := k.dive_contact_left()
-	if left > 0.15 or left < -0.35 or ball.owner_player != null:
+	if ball.owner_player != null:
 		return
 	var outcome: String = k.get_meta("dive_outcome", "miss")
-	if outcome == "miss" or ball.global_position.distance_to(k.hands_position()) > 1.1:
+	var left := k.dive_contact_left()
+	var bpos := ball.global_position
+	var prev := bpos - ball.linear_velocity * get_physics_process_delta_time()
+	var hip := k.global_position + Vector3.UP * 0.35
+	var hands := k.hands_position()
+	var pts := Geometry3D.get_closest_points_between_segments(prev, bpos, hip, hands)
+	var gap: float = (pts[0] as Vector3).distance_to(pts[1])
+	var from_rival := ball.last_touch != null and ball.last_touch.team != k.team
+	if outcome == "miss":
+		# Tiro que le supera: solo si NO pasa por su tronco (en jugada; las de fondo
+		# están decididas y su estirada ya se queda corta)
+		var torso := Geometry3D.get_closest_points_between_segments(prev, bpos, hip, hip.lerp(hands, 0.55))
+		if not from_rival or state != State.MOMENT or (torso[0] as Vector3).distance_to(torso[1]) > DIVE_TORSO_RADIUS:
+			return
+		outcome = "parry"
+	elif gap > DIVE_BODY_RADIUS and (left > 0.15 or left < -0.35 or bpos.distance_to(hands) > 1.1):
 		return
 	if outcome == "auto": # penalti: si adivinó el lado, para según sus reflejos
 		outcome = "parry" if randf() < 0.35 + k.keeper_skill() * 0.45 else "miss"

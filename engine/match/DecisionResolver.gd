@@ -1132,11 +1132,25 @@ static func m3d_shootout_outcome(shooting: float, composure: float, keeper_skill
 
 ## Estirada: probabilidad de que el tiro le supere según velocidad (m/s), lo
 ## lejos que pasa de él (m), si va a la escuadra y su nivel de portero (0..1).
+## (8-nov: algo más difícil marcar — antes 0,4 por velocidad, 0,12 por metro y
+## +0,15 a la escuadra, con el nivel de portero entre x1,4 y x0,6.)
 static func m3d_keeper_dive_beaten(speed: float, lateral: float, top_corner: bool, keeper_skill: float) -> float:
-	var beaten: float = (speed - 14.0) / 16.0 * 0.4 + maxf(lateral - 1.2, 0.0) * 0.12
+	var beaten: float = (speed - 15.0) / 16.0 * 0.34 + maxf(lateral - 1.4, 0.0) * 0.1
 	if top_corner:
-		beaten += 0.15
-	return clampf(beaten * lerpf(1.4, 0.6, keeper_skill), 0.03, 0.85)
+		beaten += 0.13
+	return clampf(beaten * lerpf(1.3, 0.5, keeper_skill), 0.03, 0.8)
+
+## Cuánto más lejos llega estirándose (múltiplo del alcance natural de la animación).
+static func m3d_keeper_reach(keeper_skill: float) -> float:
+	return lerpf(1.35, 1.65, keeper_skill)
+
+## Hasta dónde sale a achicar (m desde su portería) con un rival con balón a
+## `holder_dist` m. Un buen portero sale antes y más; de lejos no deja la portería.
+static func m3d_keeper_rush(holder_dist: float, keeper_skill: float) -> float:
+	if holder_dist > 20.0:
+		return 1.2
+	var k: float = lerpf(0.3, 0.42, keeper_skill)
+	return clampf(holder_dist * k, 1.2, lerpf(4.5, 6.5, keeper_skill))
 
 ## Si la para en la estirada: ¿blocaje (true) o despeje? Solo tiros no muy fuertes.
 static func m3d_keeper_dive_catches(speed: float, r: float) -> bool:
@@ -1144,8 +1158,8 @@ static func m3d_keeper_dive_catches(speed: float, r: float) -> bool:
 
 ## Balón que llega al portero sin estirada: probabilidad de que le supere.
 static func m3d_keeper_contact_beaten(speed: float, lateral: float, keeper_skill: float) -> float:
-	var beaten: float = clampf((speed - 16.0) / 14.0 * 0.35 + lateral * 0.25, 0.0, 0.6)
-	return clampf(beaten * lerpf(1.4, 0.6, keeper_skill), 0.0, 0.75)
+	var beaten: float = clampf((speed - 17.0) / 14.0 * 0.3 + lateral * 0.2, 0.0, 0.55)
+	return clampf(beaten * lerpf(1.3, 0.5, keeper_skill), 0.0, 0.7)
 
 
 ## Volea: velocidad (m/s) y error angular (rad) según el tiro, la sangre fría y lo
