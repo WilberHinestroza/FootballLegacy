@@ -86,6 +86,17 @@ repo; solo su conocimiento aplicado.
 - `DebugDataFactory.gd` — borrado (13-sep): era una red de seguridad para
   abrir el Hub sin carrera activa desde el editor, no la usaba el flujo
   real.
+- Partido 3D (7-nov): las jugadas clave dependen del PUESTO FINO
+  (`config.user_detailed` = `MatchTeam.deployed_code`) y del pie bueno —
+  `PlayGenerator.POSITION_STYLE` (carril y pesos por puesto), tu hueco real en
+  la formación (`_star_slot`), familia "diagonal" (pierna cambiada) y arranques
+  con pase de un compañero (`play.arrive`). Toda jugada arranca con espacio:
+  `_give_start_room()` al colocar (rivales a `PrePlayChoice.OPENING_SPACE` 6,5 m;
+  en defensa empiezas a `DEFENSE_SPACE` 5,5 m) — regla de Wilber: "los rivales no
+  deben estar tan encima para que la jugada tenga inicio".
+- Balance del 3D también en `DecisionResolver` (`m3d_shootout_outcome`,
+  `m3d_keeper_*`); `FoulRules`, `AiTuning`, `DribbleCombo` y `PrePlayChoice` son
+  módulos de reglas propios del 3D (no meter fórmulas sueltas en `match.gd`).
 - El proyecto declara Godot 4.3, pero el único motor instalado es
   **4.7.2** — al abrirlo con el editor puede reescribir
   `config/features` solo (visto durante el desarrollo). Confirmar con
