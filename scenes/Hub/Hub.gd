@@ -1043,6 +1043,11 @@ func _refresh_next_match() -> void:
 	# "Jugar" y "Simular" solo se ven el DÍA del partido (pedido de Wilber:
 	# ocultos hasta que estemos en el día de partido).
 	match_actions_row.visible = not _pending_fixture.is_empty() and not _is_land()
+	# 7-nov: en vertical, el día de partido "Pasar el día"/"Avanzar" solo avisaban
+	# de que había partido (4 botones compitiendo). Se ocultan hasta jugarlo, como en
+	# horizontal (ahí lo hace _land_refresh_match_day).
+	if not _is_land():
+		(next_match_button.get_parent() as Control).visible = _pending_fixture.is_empty()
 
 	var susp: int = int(WorldTickEngine.season.get("suspended_matches", 0))
 	# La sanción es de CLUB (tarjetas acumuladas con el club) — no aplica a
@@ -1418,6 +1423,16 @@ func _refresh_standings() -> void:
 ## WorldTickEngine._normalize_national_fixture/QualifyingEngine.
 ## user_fixture_today) — nunca coincide con un fixture de club, así que
 ## sirve de discriminador limpio sin tocar el resto de la función.
+## "vs Rival" (o "en casa de Rival") para botones estrechos.
+func _rival_line(fixture: Dictionary) -> String:
+	if fixture.has("opponent"):
+		return "vs %s" % String(fixture.get("opponent", "?"))
+	var me: String = _user_club_id()
+	var home_id: String = String(fixture.get("home_club_id", ""))
+	var rival := WorldFactory.find_club(_world, String(fixture.get("away_club_id", "")) if home_id == me else home_id)
+	return "vs %s" % (rival.club_name if rival != null else "?")
+
+
 func _fixture_line(fixture: Dictionary) -> String:
 	if fixture.has("opponent"):
 		var user_country: String = _player.country if _player != null else "?"
@@ -1716,7 +1731,9 @@ func _land_refresh_match_day() -> void:
 		_land_match_btn.text = "Lesionado (%d días): simular el partido" % _player.injury_days_remaining
 		_land_match_btn.pressed.connect(_on_sim_match_pressed, CONNECT_ONE_SHOT)
 	else:
-		_land_match_btn.text = "⚽  Ir al partido  ·  %s" % _fixture_line(_pending_fixture)
+		# 7-nov: con "Local vs Visitante (Competición)" el nombre del rival se cortaba;
+		# solo el rival, que es lo que importa ("Ir al partido · vs X").
+		_land_match_btn.text = "⚽  Ir al partido  ·  %s" % _rival_line(_pending_fixture)
 	if not _land_match_btn.has_meta("pulsing") and not Preferences.reduce_motion:
 		_land_match_btn.set_meta("pulsing", true)
 		_land_match_btn.ready.connect(func(): Juice.pulse(_land_match_btn, 1.03, 1.2))

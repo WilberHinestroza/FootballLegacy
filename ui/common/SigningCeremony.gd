@@ -89,9 +89,24 @@ func _ready() -> void:
 	m.add_theme_constant_override("margin_bottom", 16)
 	_card.add_child(m)
 
+	# En horizontal (el juego va apaisado) la hoja no cabe en alto: dos columnas,
+	# cláusulas a la izquierda y jugador + firma + botones a la derecha.
+	var vs := get_viewport_rect().size
+	var land: bool = vs.x > vs.y
+	var cols: BoxContainer = HBoxContainer.new() if land else VBoxContainer.new()
+	cols.add_theme_constant_override("separation", 22 if land else 8)
+	m.add_child(cols)
 	var v := VBoxContainer.new()
-	v.add_theme_constant_override("separation", 8)
-	m.add_child(v)
+	v.add_theme_constant_override("separation", 7 if land else 8)
+	cols.add_child(v)
+	var v2 := VBoxContainer.new()
+	v2.add_theme_constant_override("separation", 8)
+	cols.add_child(v2)
+	if land:
+		_card.custom_minimum_size = Vector2(0, 0)
+		v.custom_minimum_size = Vector2(300, 0)
+		v2.custom_minimum_size = Vector2(SIG_W, 0)
+		v2.alignment = BoxContainer.ALIGNMENT_END
 
 	var kind_col: Color = _club_col if _club_col.get_luminance() < 0.6 else _club_col.darkened(0.45)
 	var kind := _lbl("CONTRATO DE RENOVACIÓN" if bool(_d.get("is_renewal", false)) else "CONTRATO PROFESIONAL", 12, kind_col, Styles.font_black())
@@ -157,7 +172,7 @@ func _ready() -> void:
 	pcol.add_child(_lbl(p.player_name if p != null else "Jugador", 14, INK, Styles.font_semibold()))
 	pcol.add_child(_lbl("%s · %d años" % [Positions.label_of(p.detailed_position), p.age] if p != null else "", 10, MUTED))
 	prow.add_child(pcol)
-	v.add_child(prow)
+	v2.add_child(prow)
 
 	# --- Recuadro de firma (se dibuja con el dedo) ---
 	_sig_area = Control.new()
@@ -165,7 +180,7 @@ func _ready() -> void:
 	_sig_area.mouse_filter = Control.MOUSE_FILTER_STOP
 	_sig_area.clip_contents = true
 	_sig_area.gui_input.connect(_on_sig_input)
-	v.add_child(_sig_area)
+	v2.add_child(_sig_area)
 	var pad := ColorRect.new()
 	pad.color = Color(1, 1, 1, 0.45)
 	pad.size = Vector2(SIG_W, SIG_H)
@@ -199,7 +214,7 @@ func _ready() -> void:
 
 	_footer = VBoxContainer.new()
 	_footer.add_theme_constant_override("separation", 6)
-	v.add_child(_footer)
+	v2.add_child(_footer)
 
 	var btns := HBoxContainer.new()
 	btns.add_theme_constant_override("separation", 8)

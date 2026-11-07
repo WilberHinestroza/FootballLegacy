@@ -89,7 +89,7 @@ func setup(d: Dictionary) -> void:
 		camera.keep_aspect = Camera3D.KEEP_WIDTH
 		camera.fov = 50.0
 	else:
-		camera.fov = 42.0
+		camera.fov = 50.0
 	camera.far = 400.0
 	add_child(camera)
 	camera.make_current()
@@ -237,8 +237,8 @@ func _build_people() -> void:
 	# Fotógrafos de rodillas delante de la tarima
 	# En arco por delante-derecha: el lado izquierdo queda libre para las cámaras
 	for i in 6:
-		var ang: float = 0.38 + i * 0.17
-		var r: float = 3.0 + (0.45 if i % 2 == 1 else 0.0)
+		var ang: float = 0.72 + i * 0.1
+		var r: float = 3.5 + (0.4 if i % 2 == 1 else 0.0)
 		var pos := Vector3(SPOT.x + sin(ang) * r, 0.0, SPOT.z + cos(ang) * r)
 		_snappers.append(CeremonyKit.photographer(self, pos, SPOT, Color(0.9, 0.9, 0.2)))
 
@@ -323,7 +323,7 @@ func skip_to_end() -> void:
 	_go("fans")
 	_to_fans()
 	_cam_pos = _fans_cam()
-	_cam_look = SPOT + Vector3(0, 1.3, 0)
+	_cam_look = SPOT + Vector3(0, 0.55, 0)
 
 
 func _show_shirt() -> void:
@@ -402,11 +402,12 @@ func _update_camera(delta: float) -> void:
 		"shirt":
 			# Plano medio de frente, acercándose despacio
 			var k := smoothstep(0.0, 3.6, _phase_t)
-			want_pos = head + Vector3(lerpf(0.9, 0.3, k), lerpf(0.1, 0.0, k), lerpf(3.6, 2.4, k))
-			want_look = head - Vector3(0, 0.25, 0)
+			want_pos = head + Vector3(lerpf(0.9, 0.3, k), lerpf(0.1, 0.0, k), lerpf(3.8, 2.9, k))
+			want_look = head - Vector3(0, 0.15, 0)
 		_:
+			# Mira algo por debajo: los dos quedan arriba y la ficha de abajo no los tapa
 			want_pos = _fans_cam()
-			want_look = SPOT + Vector3(0, 1.3, 0)
+			want_look = SPOT + Vector3(0, 0.55, 0)
 	var k2 := minf(1.0, delta * 2.5)
 	_cam_pos = _cam_pos.lerp(want_pos, k2)
 	_cam_look = _cam_look.lerp(want_look, k2)

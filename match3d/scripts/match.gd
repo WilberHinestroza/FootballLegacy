@@ -5250,7 +5250,10 @@ func _camera_declutter() -> void:
 			p._avatar.visible = cp.distance_to(p.global_position + Vector3.UP * 0.9) > 1.7
 	if star != null and star.star_label != null:
 		var d := cp.distance_to(star.star_label.global_position)
-		star.star_label.scale = Vector3.ONE * clampf(d / 14.0, 0.25, 1.0)
+		# Con la cámara pegada a tu espalda el "TÚ" (2,6 m sobre ti) caía en la
+		# perspectiva encima de rivales lejanos; ahí ya te marca el aro amarillo.
+		var hide_mark := d < 7.5
+		star.star_label.scale = Vector3.ONE * (0.001 if hide_mark else clampf(d / 14.0, 0.25, 1.0))
 
 
 func _update_camera(delta: float) -> void:
@@ -5452,9 +5455,11 @@ func _update_camera(delta: float) -> void:
 		if _cam_focus == Vector3.ZERO and _cam_focus_v == Vector3.ZERO:
 			_cam_focus = raw
 		_cam_focus = _smooth_damp(_cam_focus, raw, lag, delta)
-		target_pos = Vector3(_cam_focus.x * 0.85, 21.0, _cam_focus.z + 34.0)
-		target_look = _cam_focus + Vector3(0.0, 0.0, -2.0)
-		target_fov = 48.0
+		# 7-nov: más cerca (antes 21 m de alto y 34 atrás: en el móvil los jugadores
+		# medían ~20 px y el balón no se veía)
+		target_pos = Vector3(_cam_focus.x * 0.88, 15.5, _cam_focus.z + 25.0)
+		target_look = _cam_focus + Vector3(0.0, 0.0, -1.5)
+		target_fov = 46.0
 		broadcast = true
 	# La de TV ya va suavizada por su muelle: aquí solo se funde rápido con el plano anterior
 	var k := minf(1.0, (7.0 if broadcast else 4.0) * delta)

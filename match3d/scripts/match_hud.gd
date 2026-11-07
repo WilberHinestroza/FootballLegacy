@@ -48,6 +48,7 @@ var _hint: Label
 var _timer_bar: ProgressBar
 var _sim_panel: PanelContainer
 var _feed: Label
+var _feed_old: Label   # las dos líneas anteriores, más tenues
 var _feed_lines: Array[String] = []
 var _msg_time := 0.0
 var _rating_panel: PanelContainer
@@ -79,21 +80,34 @@ func _ready() -> void:
 
 	_sim_panel = PanelContainer.new()
 	add_child(_sim_panel)
-	_sim_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
-	_sim_panel.offset_left = -270.0
-	_sim_panel.offset_right = 270.0
-	_sim_panel.offset_top = 70.0
+	# 7-nov: teletipo compacto arriba a la izquierda (antes una caja en el centro que
+	# crecía hasta tapar media jugada). Última línea brillante, dos anteriores tenues.
+	_sim_panel.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
+	_sim_panel.offset_left = 10.0
+	_sim_panel.offset_right = 360.0
+	_sim_panel.offset_top = 112.0
+	_sim_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var panel_style := StyleBoxFlat.new()
-	panel_style.bg_color = Color(0.0, 0.0, 0.0, 0.55)
-	panel_style.set_corner_radius_all(12)
-	panel_style.set_content_margin_all(14.0)
+	panel_style.bg_color = Color(0.0, 0.0, 0.0, 0.42)
+	panel_style.set_corner_radius_all(10)
+	panel_style.border_width_left = 3
+	panel_style.border_color = Color(1.0, 0.8, 0.15, 0.9)
+	panel_style.content_margin_left = 12.0
+	panel_style.content_margin_right = 10.0
+	panel_style.content_margin_top = 6.0
+	panel_style.content_margin_bottom = 8.0
 	_sim_panel.add_theme_stylebox_override("panel", panel_style)
 	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 1)
 	_sim_panel.add_child(vbox)
-	var title := _label(20, vbox)
-	title.text = "Simulando partido…"
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_feed = _label(17, vbox)
+	var title := _label(12, vbox)
+	title.text = "● EN JUEGO"
+	title.label_settings.font_color = Color(1.0, 0.8, 0.15)
+	_feed_old = _label(13, vbox)
+	_feed_old.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_feed_old.label_settings.font_color = Color(1.0, 1.0, 1.0, 0.55)
+	_feed_old.visible = false
+	_feed = _label(15, vbox)
 	_feed.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 
 	# Aviso: franja translúcida en el tercio superior (no tapa la jugada); el final, centrado
@@ -822,14 +836,19 @@ func set_sim_visible(value: bool) -> void:
 
 func add_feed(text: String) -> void:
 	_feed_lines.append(text)
-	while _feed_lines.size() > 5:
+	while _feed_lines.size() > 3:
 		_feed_lines.pop_front()
-	_feed.text = "\n".join(PackedStringArray(_feed_lines))
+	_feed.text = _feed_lines[-1]
+	var old: Array[String] = _feed_lines.slice(0, _feed_lines.size() - 1)
+	_feed_old.text = "\n".join(PackedStringArray(old))
+	_feed_old.visible = not old.is_empty()
 
 
 func clear_feed() -> void:
 	_feed_lines.clear()
 	_feed.text = ""
+	_feed_old.text = ""
+	_feed_old.visible = false
 
 
 func set_hint(text: String) -> void:

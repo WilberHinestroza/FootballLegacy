@@ -364,6 +364,9 @@ static var crowd_fill := 0.85
 const ROW_DEPTH := 1.2
 ## Lado de los trozos del público (ver _stands).
 const CROWD_CHUNK := 35.0
+## Distancia (al centro de cada trozo de grada) a partir de la cual el público pasa
+## a la versión barata de cajas.
+const CROWD_NEAR := 45.0
 const ROW_RISE := 0.6
 
 
@@ -525,6 +528,7 @@ static func _stands(root: Node3D) -> void:
 	m.shader = CROWD_SHADER
 	root.set_meta("crowd_mat", m)
 	var fan := _fan_mesh()
+	var fan_far := _fan_mesh_far()
 	var chunks := {}
 	for i in xforms.size():
 		var o := xforms[i].origin
@@ -533,38 +537,123 @@ static func _stands(root: Node3D) -> void:
 			chunks[key] = []
 		chunks[key].append(i)
 	var first := true
+	# Dos niveles de detalle por trozo (7-nov): la persona con brazos (48 triángulos)
+	# solo en los trozos cerca de la cámara; de lejos, la versión de cajas (22), que
+	# ahí ocupa unos pocos píxeles. Godot cambia uno por otro según la distancia.
 	for key: Vector2i in chunks:
 		var ids: Array = chunks[key]
-		var mm := MultiMesh.new()
-		mm.transform_format = MultiMesh.TRANSFORM_3D
-		mm.use_colors = true
-		mm.mesh = fan
-		mm.instance_count = ids.size()
-		for j in ids.size():
-			mm.set_instance_transform(j, xforms[ids[j]])
-			mm.set_instance_color(j, colors[ids[j]])
-		var mmi := MultiMeshInstance3D.new()
-		mmi.multimesh = mm
-		mmi.material_override = m
-		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		mmi.name = "Crowd" if first else "CrowdPart"
+		for far: bool in [false, true]:
+			var mm := MultiMesh.new()
+			mm.transform_format = MultiMesh.TRANSFORM_3D
+			mm.use_colors = true
+			mm.mesh = fan_far if far else fan
+			mm.instance_count = ids.size()
+			for j in ids.size():
+				mm.set_instance_transform(j, xforms[ids[j]])
+				mm.set_instance_color(j, colors[ids[j]])
+			var mmi := MultiMeshInstance3D.new()
+			mmi.multimesh = mm
+			mmi.material_override = m
+			mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			if far:
+				mmi.visibility_range_begin = CROWD_NEAR
+				mmi.visibility_range_begin_margin = 3.0
+			else:
+				mmi.visibility_range_end = CROWD_NEAR
+				mmi.visibility_range_end_margin = 3.0
+			mmi.name = ("Crowd" if first else "CrowdPart") + ("Far" if far else "")
+			root.add_child(mmi, true)
 		first = false
-		root.add_child(mmi, true)
 	_fan_flags(root, xforms)
 	_flashes(root, xforms)
 
 
-## Persona de la grada: tronco con hombros y cabeza (low-poly), con los pies en el origen.
+## Persona de la grada (7-nov: antes tres cajas apiladas, "los aficionados son
+## cubos"): tronco ahusado de 4 caras, cabeza redondeada con pelo y dos brazos que
+## el shader levanta girando en el hombro (celebración, la ola). Pies en el origen,
+## mira a +Z local; sin las caras que nunca se ven (espalda, base): 48 triángulos.
+## UV.x = pieza (0 camiseta, 1 piel, 2 pelo), UV.y = brazo (-1 izq, 1 der, 0 no).
 static func _fan_mesh() -> Mesh:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	st.set_color(Color.WHITE)
-	# Sin las caras que nunca se ven (espalda, base; la tapa del tronco queda bajo
-	# los hombros): 22 triángulos por persona en vez de 36. Miran a +Z local.
+	var quad := func(a: Vector3, b: Vector3, c: Vector3, d: Vector3, uv: Vector2) -> void:
+		st.set_uv(uv)
+		for v: Vector3 in [a, c, b, a, d, c]:   # Godot: cara delantera en sentido horario
+			st.add_vertex(v)
+	var tri := func(a: Vector3, b: Vector3, c: Vector3, uv: Vector2) -> void:
+		st.set_uv(uv)
+		for v: Vector3 in [a, c, b]:
+			st.add_vertex(v)
+	var ring := func(y: float, rx: float, rz: float, zoff: float, n: int) -> Array:
+		var out := []
+		for k in n + 1:
+			var th := -PI * 0.5 + PI * float(k) / float(n)
+			out.append(Vector3(sin(th) * rx, y, cos(th) * rz + zoff))
+		return out
+	var shirt := Vector2(0, 0)
+	var skin := Vector2(1, 0)
+	var hair := Vector2(2, 0)
+	# Tronco: cintura -> pecho -> cuello (la banda de arriba hace de hombros)
+	var r0: Array = ring.call(0.0, 0.16, 0.11, 0.0, 4)
+	var r1: Array = ring.call(0.36, 0.205, 0.13, 0.0, 4)
+	var r2: Array = ring.call(0.47, 0.075, 0.06, 0.0, 4)
+	for k in 4:
+		quad.call(r0[k], r0[k + 1], r1[k + 1], r1[k], shirt)
+		quad.call(r1[k], r1[k + 1], r2[k + 1], r2[k], shirt)
+	# Cabeza: barbilla -> mejillas -> sienes -> coronilla, de frente (cara) y tapa
+	# trasera (nuca con pelo)
+	var ha: Array = ring.call(0.56, 0.095, 0.095, 0.0, 4)
+	var hb: Array = ring.call(0.67, 0.09, 0.088, -0.005, 4)
+	var top := Vector3(0.0, 0.745, -0.02)
+	var chin := Vector3(0.0, 0.485, 0.012)
+	for k in 4:
+		var front := k == 1 or k == 2
+		tri.call(ha[k + 1], ha[k], chin, skin)
+		quad.call(ha[k], ha[k + 1], hb[k + 1], hb[k], Vector2(2, 0.5) if front else hair)
+		tri.call(hb[k], hb[k + 1], top, hair)
+	tri.call(ha[4], hb[0], hb[4], hair)     # nuca
+	tri.call(ha[4], ha[0], hb[0], hair)
+	tri.call(hb[4], hb[0], top, hair)
+	tri.call(ha[0], ha[4], chin, skin)
+	# Brazos colgando a los lados: manga + antebrazo (piel) de frente y cara exterior
+	for side: float in [-1.0, 1.0]:
+		var arm := Vector2(0, side)
+		var arm_skin := Vector2(1, side)
+		var sx := side * 0.215
+		var w := 0.075
+		var sh_top := Vector3(sx, 0.43, 0.03)
+		var elbow := Vector3(sx + side * 0.025, 0.25, 0.05)
+		var hand := Vector3(sx + side * 0.03, 0.09, 0.07)
+		var o := Vector3(side * w * 0.5, 0.0, 0.0)
+		var f := Vector3(0.0, 0.0, 0.04)
+		# de frente (orden según el lado para que la cara mire a +Z)
+		if side > 0.0:
+			quad.call(sh_top - o + f, elbow - o + f, elbow + o + f, sh_top + o + f, arm)
+			quad.call(elbow - o + f, hand - o + f, hand + o + f, elbow + o + f, arm_skin)
+			tri.call(sh_top + o + f, hand + o + f, hand + o - f, arm)
+			tri.call(sh_top + o + f, hand + o - f, sh_top + o - f, arm)
+		else:
+			quad.call(sh_top - o + f, sh_top + o + f, elbow + o + f, elbow - o + f, arm)
+			quad.call(elbow - o + f, elbow + o + f, hand + o + f, hand - o + f, arm_skin)
+			tri.call(sh_top - o + f, hand - o - f, hand - o + f, arm)
+			tri.call(sh_top - o + f, sh_top - o - f, hand - o - f, arm)
+	st.generate_normals()
+	return st.commit()
+
+
+## La de lejos: tronco, hombros y cabeza en cajas (22 triángulos), con las mismas
+## marcas de UV que _fan_mesh para el shader (camiseta / piel).
+static func _fan_mesh_far() -> Mesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	st.set_color(Color.WHITE)
 	var back_bottom := [Vector3(0, 0, -1), Vector3(0, -1, 0)]
-	_st_box(st, Vector3(0.0, 0.22, 0.0), Vector3(0.36, 0.44, 0.26), back_bottom + [Vector3(0, 1, 0)])  # tronco
-	_st_box(st, Vector3(0.0, 0.44, 0.0), Vector3(0.46, 0.1, 0.27), back_bottom)   # hombros
-	_st_box(st, Vector3(0.0, 0.63, 0.01), Vector3(0.2, 0.22, 0.2), back_bottom)   # cabeza
+	st.set_uv(Vector2(0, 0))
+	_st_box(st, Vector3(0.0, 0.22, 0.0), Vector3(0.36, 0.44, 0.26), back_bottom + [Vector3(0, 1, 0)])
+	_st_box(st, Vector3(0.0, 0.44, 0.0), Vector3(0.46, 0.1, 0.27), back_bottom)
+	st.set_uv(Vector2(1, 0))
+	_st_box(st, Vector3(0.0, 0.63, 0.01), Vector3(0.2, 0.22, 0.2), back_bottom)
 	st.generate_normals()
 	return st.commit()
 
