@@ -15,6 +15,10 @@ extends Control
 var _player: PlayerData = null
 var _club: ClubData = null
 var _world: Dictionary = {}
+## Columna de la presentación (resumen de carrera). En horizontal es la de la
+## izquierda, fija; en vertical es la misma lista que los accesos.
+var _side: VBoxContainer
+var _landscape := false
 
 func _ready() -> void:
 	WorldTickEngine.load_runtime()
@@ -25,6 +29,10 @@ func _ready() -> void:
 	if _player != null and _player.club_id != "":
 		_club = WorldFactory.find_club(_world, _player.club_id)
 
+	_side = vbox
+	_landscape = get_viewport_rect().size.x > get_viewport_rect().size.y
+	if _landscape:
+		_split_columns()
 	_build_summary_card()
 	if _player != null and not _player.pending_sponsor_offer.is_empty():
 		_build_sponsor_banner()
@@ -58,14 +66,17 @@ func _ready() -> void:
 	# lo puede hacer, ¿lo tenemos implementado?" — faltaba la vía
 	# voluntaria a mitad de contrato.
 	if _player != null and _player.age >= 34 and _player.club_id != "":
-		vbox.add_child(Styles.section_label("RETIRO"))
 		var retire_btn := Button.new()
 		retire_btn.custom_minimum_size = Vector2(0, 52)
 		retire_btn.focus_mode = Control.FOCUS_NONE
 		retire_btn.text = "Colgar los botines (retirarme)"
 		Styles.styled_button(retire_btn, Styles.pill_outlined(Styles.RED), Styles.RED)
 		retire_btn.pressed.connect(_on_voluntary_retire_pressed)
-		vbox.add_child(retire_btn)
+		if _landscape:
+			_side.add_child(retire_btn) # junto a la presentación, no perdido al final de la lista
+		else:
+			vbox.add_child(Styles.section_label("RETIRO"))
+			vbox.add_child(retire_btn)
 
 func _on_voluntary_retire_pressed() -> void:
 	var dlg := ConfirmationDialog.new()
@@ -96,9 +107,41 @@ func _on_voluntary_retire_pressed() -> void:
 	add_child(dlg)
 	dlg.popup_centered()
 
+## Horizontal (como Inicio): la presentación a la izquierda, fija, y los accesos a
+## la derecha con su propio scroll. El título "Carrera" encabeza la izquierda.
+func _split_columns() -> void:
+	var root: VBoxContainer = $Root
+	var scroll: ScrollContainer = $Root/Scroll
+	var margin: MarginContainer = $Root/Scroll/Margin
+	var title: Label = vbox.get_node("TitleLabel")
+	var outer := MarginContainer.new()
+	outer.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	outer.add_theme_constant_override("margin_left", 20)
+	outer.add_theme_constant_override("margin_top", 116) # mismo alto que en vertical (debajo del TopBar)
+	outer.add_theme_constant_override("margin_right", 14)
+	outer.add_theme_constant_override("margin_bottom", 12)
+	root.add_child(outer)
+	root.move_child(outer, 0)
+	var cols := HBoxContainer.new()
+	cols.add_theme_constant_override("separation", 20)
+	outer.add_child(cols)
+	_side = VBoxContainer.new()
+	_side.add_theme_constant_override("separation", 12)
+	_side.custom_minimum_size = Vector2(get_viewport_rect().size.x * 0.42, 0)
+	cols.add_child(_side)
+	scroll.reparent(cols)
+	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	for k in ["left", "top", "bottom"]:
+		margin.add_theme_constant_override("margin_" + k, 0)
+	margin.add_theme_constant_override("margin_right", 8) # aire para la barra de scroll
+	title.reparent(_side)
+
+
 func _new_grid() -> GridContainer:
 	var grid := GridContainer.new()
-	grid.columns = 4 if get_viewport_rect().size.x > get_viewport_rect().size.y else 2  # horizontal: 4 por fila
+	# Horizontal: 3 por fila en la columna derecha; vertical: 2
+	grid.columns = 3 if _landscape else 2
 	grid.add_theme_constant_override("h_separation", 12)
 	grid.add_theme_constant_override("v_separation", 12)
 	return grid
@@ -116,7 +159,7 @@ func _make_tile(title: String, subtitle: String, icon_path: String, badge_color:
 	# Altura FIJA (mín = máx efectivo con clip): todas las tarjetas del grid
 	# quedan iguales y el subtítulo largo nunca se derrama fuera de la
 	# tarjeta (bug reportado: el texto salía por debajo del recuadro).
-	btn.custom_minimum_size = Vector2(0, 152)
+	btn.custom_minimum_size = Vector2(0, 164 if _landscape else 152)
 	btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	btn.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	btn.clip_contents = true
@@ -199,7 +242,7 @@ func _build_sponsor_banner() -> void:
 	btn.add_theme_constant_override("icon_max_width", 26)
 	Styles.styled_button(btn, Styles.pill_outlined(Styles.GOLD), Styles.GOLD)
 	btn.pressed.connect(_go.bind("res://scenes/SponsorOffer/SponsorOffer.tscn"))
-	vbox.add_child(btn)
+	_side.add_child(btn)
 
 ## Contrato, patrocinio activo, agente/vida y objetivos — vivían como
 ## texto en el Hub; se movieron aquí para que el Inicio quedara magro
@@ -317,7 +360,7 @@ func _build_summary_card() -> void:
 
 	margin.add_child(v)
 	panel.add_child(margin)
-	vbox.add_child(panel)
+	_side.add_child(panel)
 
 ## Fila "etiqueta gris → valor" con un dato secundario a la derecha.
 func _kv_row(key: String, value: String, right: String = "", right_col: Color = Color.TRANSPARENT) -> HBoxContainer:
