@@ -71,7 +71,21 @@ static func extract_context(fixture: Dictionary, result: Dictionary, player_club
 		"is_derby": bool(fixture.get("derby", false)) or bool(fixture.get("is_derby", false)),
 		"comp_name": String(fixture.get("name", "")),
 		"position": player.position if player != null else "ST",
+		# Partido 3D: tu puesto fino y CÓMO marcaste (chilena, volea, diagonal…)
+		"detailed": String(result.get("user_detailed", player.detailed_position if player != null else "")),
+		"foot": player.dominant_foot if player != null else "",
 	}
+	var plays: Array = result.get("user_goal_plays", [])
+	for gp in plays:
+		if bool(gp.get("goal", false)):
+			if String(gp.get("flair", "")) == "bicycle":
+				ctx["bicycle_goal"] = true
+			elif String(gp.get("flair", "")) == "volley":
+				ctx["volley_goal"] = true
+			if String(gp.get("play", "")) != "" and not ctx.has("goal_play"):
+				ctx["goal_play"] = String(gp.get("play", ""))
+		elif bool(gp.get("assist", false)) and not ctx.has("assist_play"):
+			ctx["assist_play"] = String(gp.get("play", ""))
 	if player != null:
 		ctx["contract_expiring"] = player.contract_years_remaining <= 1
 		ctx["career_goals"] = player.career_goals + goals
@@ -119,6 +133,16 @@ static func _pick_branch(c: Dictionary, goals: int, assists: int, rating: float,
 			_o("Ambicioso", "Es un número bonito, pero quiero el doble. No me pienso parar.", {"rep": 4, "coach": 2, "traits": {"ambition": 5}, "narrative": "en_racha", "tone": "ambiciosa"}),
 			_o("Récord", "Voy a por todos los récords que se puedan batir. Ese es mi objetivo.", {"rep": 2, "fan": 3, "traits": {"ambition": 6, "sportsmanship": -2}, "tone": "ambiciosa"}),
 		]}
+	if bool(c.get("bicycle_goal", false)):
+		return {"question": "¡Gol de chilena! ¿Lo pensaste o salió solo?", "options": [
+			_o("Humilde", "El centro venía perfecto. Solo tenía que llegar, el mérito es compartido.", {"rep": 7, "dressing": 4, "traits": {"loyalty": 3, "sportsmanship": 2}, "tone": "humilde"}),
+			_o("Instinto", "No lo piensas: el balón queda ahí, de espaldas, y el cuerpo va solo.", {"rep": 6, "fan": 6, "traits": {"determination": 2}, "tone": "neutral"}),
+			_o("Lo entreno", "Lo practico mucho después del entrenamiento. Hoy salió.", {"rep": 5, "coach": 4, "traits": {"professionalism": 5}, "tone": "neutral"}),
+			_o("Show", "Ese es mi fútbol. La gente paga para ver cosas así.", {"rep": 2, "fan": 8, "dressing": -2, "traits": {"ambition": 4, "sportsmanship": -2}, "narrative": "en_racha", "tone": "ambiciosa"}),
+		]}
+	var pos_q: Dictionary = _position_branch(c, goals, assists)
+	if not pos_q.is_empty():
+		return pos_q
 	if bool(c.get("contract_expiring", false)):
 		return {"question": "Tu contrato termina pronto y hoy fuiste protagonista. ¿Seguirás en el club?", "options": [
 			_o("Comprometido", "Estoy feliz acá. Ojalá se resuelva pronto, mi cabeza está en el equipo.", {"rep": 5, "coach": 6, "fan": 8, "dressing": 5, "traits": {"loyalty": 6}, "narrative": "lider", "tone": "lider"}),
@@ -181,6 +205,65 @@ static func _pick_branch(c: Dictionary, goals: int, assists: int, rating: float,
 		_o("Polémico", "El entrenador no me puso en mi mejor posición.", {"rep": -6, "coach": -4, "dressing": -3, "traits": {"sportsmanship": -3}, "narrative": "polemica", "tone": "polemica"}),
 		_o("Líder", "El equipo necesitaba algo de mí y lo di.", {"rep": 5, "coach": 3, "dressing": 4, "traits": {"loyalty": 3, "determination": 2}, "narrative": "lider", "tone": "lider"}),
 	]}
+
+## Preguntas sobre TU puesto, tu pie y la jugada concreta del partido 3D
+## (volea, diagonal desde la banda, pared, central que marca, lateral que asiste).
+## {} si no aplica.
+static func _position_branch(c: Dictionary, goals: int, assists: int) -> Dictionary:
+	var det: String = String(c.get("detailed", ""))
+	var foot: String = String(c.get("foot", ""))
+	var gplay: String = String(c.get("goal_play", ""))
+	if goals >= 1 and bool(c.get("volley_goal", false)):
+		return {"question": "Ese gol de volea, sin dejarla caer. ¿Cómo se ensaya algo así?", "options": [
+			_o("Técnico", "Es timing: mirar el balón hasta el final y no levantar la cabeza.", {"rep": 5, "coach": 3, "traits": {"professionalism": 4}, "tone": "neutral"}),
+			_o("Humilde", "Me la dejaron bien. Yo solo le pegué con fe.", {"rep": 6, "dressing": 4, "traits": {"loyalty": 3}, "tone": "humilde"}),
+			_o("Confiado", "Cuando le pego así no se me escapa. Es de mis golpeos favoritos.", {"rep": 3, "fan": 4, "traits": {"ambition": 4}, "narrative": "en_racha", "tone": "ambiciosa"}),
+			_o("Líder", "Los goles bonitos valen lo mismo; lo que cuenta es lo que suma el equipo.", {"rep": 5, "dressing": 4, "traits": {"loyalty": 2, "determination": 2}, "narrative": "lider", "tone": "lider"}),
+		]}
+	var left_side: bool = det in ["EI", "MI", "LI", "CAI"]
+	var inverted: bool = (left_side and foot == "Derecho") or (det in ["ED", "MD", "LD", "CAD"] and foot == "Izquierdo")
+	if goals >= 1 and (gplay == "diagonal" or (inverted and det in ["EI", "ED"])):
+		var lado: String = "izquierda" if left_side else "derecha"
+		var pierna: String = "pierna buena"
+		if foot == "Derecho":
+			pierna = "derecha"
+		elif foot == "Izquierdo":
+			pierna = "zurda"
+		return {"question": "Arrancas por la %s, recortas hacia dentro y a la %s. ¿Ya te la conocen los defensas?" % [lado, pierna], "options": [
+			_o("Lo saben", "La conocen todos, pero si la haces rápido da igual. Es mi jugada.", {"rep": 4, "fan": 4, "traits": {"ambition": 4}, "narrative": "en_racha", "tone": "ambiciosa"}),
+			_o("Trabajo", "La repito cada día con el míster. Hoy salió como en el entrenamiento.", {"rep": 4, "coach": 5, "traits": {"professionalism": 4}, "tone": "neutral"}),
+			_o("Variar", "Tengo que sorprender más: a veces ir por fuera con la otra pierna.", {"rep": 3, "coach": 3, "traits": {"determination": 3}, "tone": "humilde"}),
+			_o("Equipo", "El lateral me dobla y me abre el espacio. Sin él no sale.", {"rep": 5, "dressing": 5, "traits": {"loyalty": 3, "sportsmanship": 2}, "tone": "humilde"}),
+		]}
+	if goals >= 1 and gplay == "pared":
+		return {"question": "La pared salió de manual y la definiste tú. ¿Se entienden así siempre?", "options": [
+			_o("Química", "Con él me entiendo con la mirada. Me la devuelve antes de que se la pida.", {"rep": 5, "dressing": 6, "traits": {"loyalty": 4}, "tone": "humilde"}),
+			_o("Movimiento", "La clave es seguir corriendo después de soltarla. Muchos se paran.", {"rep": 4, "coach": 4, "traits": {"professionalism": 3, "determination": 2}, "tone": "neutral"}),
+			_o("Ambicioso", "Así quiero jugar siempre: tocar y llegar. Podemos hacer mucho daño.", {"rep": 3, "traits": {"ambition": 4}, "narrative": "en_racha", "tone": "ambiciosa"}),
+			_o("Líder", "Ese es el fútbol que nos pide el míster. Hoy se vio el trabajo.", {"rep": 5, "coach": 4, "dressing": 3, "narrative": "lider", "tone": "lider"}),
+		]}
+	if goals >= 1 and det == "DFC":
+		return {"question": "Un central marcando y mandando atrás. ¿Te ves llegando más al área rival?", "options": [
+			_o("Equipo", "Primero mi portería. Si en la pelota parada puedo ayudar, mejor.", {"rep": 5, "coach": 4, "traits": {"professionalism": 3}, "tone": "humilde"}),
+			_o("Ambicioso", "Quiero más. Un central con gol vale doble.", {"rep": 3, "traits": {"ambition": 4}, "narrative": "en_racha", "tone": "ambiciosa"}),
+			_o("Humilde", "Me tocó estar en el sitio. El balón me cayó y empujé.", {"rep": 4, "dressing": 3, "traits": {"sportsmanship": 2}, "tone": "humilde"}),
+			_o("Líder", "Atrás y adelante, donde me necesite el equipo voy a estar.", {"rep": 6, "coach": 3, "dressing": 4, "traits": {"determination": 3}, "narrative": "lider", "tone": "lider"}),
+		]}
+	if assists >= 1 and goals == 0 and det in ["LD", "LI", "CAD", "CAI"]:
+		return {"question": "Subiste por tu banda y diste el gol. ¿Te sientes más lateral o más extremo?", "options": [
+			_o("Lateral", "Soy lateral. Defender primero, y si hay espacio, subir sin miedo.", {"rep": 4, "coach": 5, "traits": {"professionalism": 3, "loyalty": 2}, "tone": "neutral"}),
+			_o("Ofensivo", "Me gusta pisar campo rival. Ahí es donde marco diferencias.", {"rep": 3, "fan": 3, "traits": {"ambition": 4}, "tone": "ambiciosa"}),
+			_o("Humilde", "El extremo me arrastró a su marcador. Yo solo puse el centro.", {"rep": 5, "dressing": 5, "traits": {"loyalty": 3}, "tone": "humilde"}),
+			_o("Líder", "Así trabajamos la banda en la semana. Salió de memoria.", {"rep": 5, "coach": 4, "dressing": 3, "narrative": "lider", "tone": "lider"}),
+		]}
+	if assists >= 1 and goals == 0 and det in ["MC", "MCO", "MP"] and String(c.get("assist_play", "")) in ["entre_lineas", "elaborado", "frontal", "superioridad"]:
+		return {"question": "Ese pase entre líneas abrió el partido. ¿Lo viste antes de recibir?", "options": [
+			_o("Visión", "Antes de que llegue el balón ya miré. Si no, no hay tiempo.", {"rep": 5, "coach": 4, "traits": {"professionalism": 4}, "tone": "neutral"}),
+			_o("Humilde", "El delantero hizo el desmarque perfecto. Fácil dársela así.", {"rep": 6, "dressing": 5, "traits": {"loyalty": 3, "sportsmanship": 2}, "tone": "humilde"}),
+			_o("Ambicioso", "Quiero ser el que manda en el medio. Hoy di un paso.", {"rep": 3, "traits": {"ambition": 5}, "narrative": "en_racha", "tone": "ambiciosa"}),
+			_o("Líder", "El balón pasa por mí y eso es responsabilidad. Me gusta.", {"rep": 5, "coach": 3, "dressing": 4, "traits": {"determination": 3}, "narrative": "lider", "tone": "lider"}),
+		]}
+	return {}
 
 ## Repregunta encadenada según el TONO de la respuesta elegida. {} = cierra.
 static func followup(context: Dictionary, chosen: Dictionary, rng: RandomNumberGenerator) -> Dictionary:

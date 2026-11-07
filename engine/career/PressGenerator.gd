@@ -28,6 +28,15 @@ static func headline_for_match(player_name: String, goals: int, rating: float, r
 
 	# --- HITOS (mandan sobre el titular genérico) ---
 	if goals >= 1:
+		var flair: String = String(ctx.get("flair", ""))
+		if flair == "bicycle":
+			return _news("¡La chilena de %s!" % surname,
+				"De espaldas y en el aire: %s firmó un gol de chilena que ya da la vuelta al mundo." % player_name,
+				_pick(SOURCES, rng), "POSITIVE")
+		if flair == "volley" and rng.randf() < 0.6:
+			return _news("Volea de %s" % surname,
+				"Sin dejarla caer: %s la enganchó de volea y la mandó a la red." % player_name,
+				_pick(SOURCES, rng), "POSITIVE")
 		if bool(ctx.get("debut", false)):
 			return _news("Debut soñado de %s" % surname,
 				"%s marca en su estreno. No se le puede pedir más a un primer partido." % player_name,

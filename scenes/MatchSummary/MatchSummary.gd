@@ -663,6 +663,7 @@ func _apply_match_consequences() -> CoachData:
 			"is_final": rn.contains("final") and String(_fixture.get("competition", "")) in ["cup", "continental", "supercup"],
 			"career_goals": _player.career_goals + _player.season_goals,
 			"debut": (_player.career_matches + _player.season_matches_played) <= 1,
+			"flair": _goal_flair(),
 		}
 		var news: Dictionary = PressGenerator.headline_for_match(_player.player_name, goals_this_match, rating, press_rng, narrative, nick, press_ctx)
 		PressGenerator.append_to_feed(_player, news, WorldTickEngine.current_epoch_day)
@@ -1426,3 +1427,16 @@ func _landscape_split() -> void:
 	tabs.reparent(right)
 	sc.reparent(right)
 	sc.size_flags_vertical = Control.SIZE_EXPAND_FILL
+
+
+## Partido 3D: "bicycle" / "volley" si marcaste así (para el titular).
+func _goal_flair() -> String:
+	var best := ""
+	for gp in _result.get("user_goal_plays", []):
+		if bool(gp.get("goal", false)):
+			var f: String = String(gp.get("flair", ""))
+			if f == "bicycle":
+				return f
+			if f == "volley":
+				best = f
+	return best

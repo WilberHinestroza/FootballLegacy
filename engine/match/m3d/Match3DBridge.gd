@@ -453,6 +453,9 @@ static func to_match_result(res: Dictionary, cfg: Dictionary) -> Dictionary:
 		"user_subbed_off": bool(res.get("subbed_off", false)),
 		"user_exit_minute": int(res.get("exit_minute", 0)),
 		"user_yellows": mini(yellows, 2),
+		"user_detailed": String(cfg.get("user_detailed", "")),
+		"user_goal_plays": _goal_plays(st.get("moment_log", [])),
+		"user_best_moment": String((res.get("best_moment", {}) as Dictionary).get("label", "")),
 		"m3d": true,
 	}
 
@@ -471,6 +474,16 @@ static func _fill_gesture_stats(log: Array) -> void:
 			gs["best_streak"] = maxi(int(gs["best_streak"]), int(gs["streak"]))
 		else:
 			gs["streak"] = 0
+
+## Cómo marcaste/asististe en las jugadas: [{play, flair, goal, assist}] — lo
+## usa la zona mixta para preguntarte por TU jugada (chilena, diagonal, pared…).
+static func _goal_plays(log: Array) -> Array:
+	var out: Array = []
+	for e in log:
+		if bool(e.get("my_goal", false)) or bool(e.get("my_assist", false)):
+			out.append({"play": String(e.get("play", "")), "flair": String(e.get("flair", "")),
+				"goal": bool(e.get("my_goal", false)), "assist": bool(e.get("my_assist", false))})
+	return out
 
 ## Notas de los 22: base por resultado + goles de cada uno (por nombre).
 static func _player_ratings(res: Dictionary, cfg: Dictionary, user_rating: float) -> Array:

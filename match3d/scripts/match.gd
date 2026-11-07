@@ -2360,7 +2360,7 @@ func result() -> Dictionary:
 		"extra_time_played": _extra_time_active, "aggregate": aggregate,
 		"shootout_score": _shootout_scores.duplicate(), "shootout_winner_team": _shootout_winner_team,
 		"tie_winner_team": winner, "subbed_off": subbed_off, "exit_minute": _exit_minute,
-		"end_stamina": stamina}
+		"end_stamina": stamina, "best_moment": replay.best_info.duplicate()}
 
 
 ## El míster te mete al campo: el compañero de tu hueco sale y entras tú (con el cartel
@@ -4119,7 +4119,9 @@ func _finish_moment(text: String) -> void:
 		grade = _foul_grade
 		_foul_grade = ""
 	match_stats.moment_log.append({"minute": int(minute), "kind": Moment.keys()[moment_type], "ok": ok, "text": text, "grade": grade,
-			"play": String(play.get("family", ""))})
+			"play": String(play.get("family", "")), "flair": _hl_flair,
+			"my_goal": int(match_stats.me.goals) > int(_hl_base[0]),
+			"my_assist": int(match_stats.me.assists) > int(_hl_base[1])})
 	_propose_highlight(ok, grade)
 	moment_ended.emit(text, ok)
 	Haptics.hit("success" if ok else "fail")
