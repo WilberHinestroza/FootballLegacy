@@ -1127,62 +1127,248 @@ func _on_simulate_pressed(btn: Button) -> void:
 func _land_columns(vbox: VBoxContainer) -> void:
 	if get_viewport_rect().size.x <= get_viewport_rect().size.y:
 		return
+	_land_faceoff(vbox)
+
+
+## CARA A CARA (8-nov, como la previa de WSC): las dos alineaciones enfrentadas
+## a los lados, de portero a delantero (GK → DF → MF → ST), con la camiseta de
+## cada uno, su puesto y su media; tu fila en dorado. En el medio, lo del partido
+## (competición, estadio, titularidad, uniformes/balón, ojeadores…), con su
+## propio scroll. Nada de la pantalla se sale: cada columna se desplaza sola.
+func _land_faceoff(vbox: VBoxContainer) -> void:
+	var vp: Vector2 = get_viewport_rect().size
+	var root_scroll := $Scroll as ScrollContainer
+	root_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	root_scroll.scroll_vertical = 0
+	var mrg := $Scroll/Margin as MarginContainer
+	mrg.add_theme_constant_override("margin_bottom", 12)
+	mrg.add_theme_constant_override("margin_left", 16)
+	mrg.add_theme_constant_override("margin_right", 16)
+	# Fondo con los colores de tu club (el mismo del Inicio)
+	if get_node_or_null("PM_Backdrop") == null:
+		var mine: ClubData = WorldFactory.find_club(WorldTickEngine.world, WorldTickEngine.user_club_id)
+		var bd := UiKit.club_backdrop(Color(mine.primary_color_hex) if mine != null and mine.primary_color_hex != "" else Styles.GREEN)
+		bd.name = "PM_Backdrop"
+		add_child(bd)
+		move_child(bd, 0)
 	var cols := HBoxContainer.new()
 	cols.name = "LandCols"
-	cols.add_theme_constant_override("separation", 18)
-	var left := VBoxContainer.new()
-	left.name = "LandLeft"
-	left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	left.add_theme_constant_override("separation", vbox.get_theme_constant("separation"))
-	var right := VBoxContainer.new()
-	right.name = "LandRight"
-	right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	right.size_flags_stretch_ratio = 0.9
-	cols.add_child(left)
-	cols.add_child(right)
+	cols.add_theme_constant_override("separation", 12)
+	cols.custom_minimum_size.y = vp.y - float(mrg.get_theme_constant("margin_top")) - 14.0
+	cols.custom_minimum_size.x = vp.x - 32.0
+	cols.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	var kids: Array = []
 	for k in vbox.get_children():
 		if k != start_button:
 			kids.append(k)
 	vbox.add_child(cols)
 	vbox.move_child(cols, 0)
-	for k in kids:
-		(k as Node).reparent(left)
-	teams_row.reparent(right)
-	teams_row.visible = false   # en horizontal: mini cancha en su lugar
-	var me: PlayerData = MatchState.user_player
 	var home: MatchTeam = MatchState.home_team
 	var away: MatchTeam = MatchState.away_team
-	var mine_home: bool = home.starting_xi.has(me) or home.bench.has(me)
-	if _land_side == "":
-		_land_side = "home" if mine_home else "away"
-	var sw := HBoxContainer.new()
-	sw.add_theme_constant_override("separation", 6)
-	right.add_child(sw)
-	for key in ["home", "away"]:
-		var t: MatchTeam = home if key == "home" else away
-		var b := Button.new()
-		b.text = t.team_name + ("  ★" if (key == "home") == mine_home else "")
-		b.clip_text = true
-		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		b.custom_minimum_size.y = 36
-		b.focus_mode = Control.FOCUS_NONE
-		Styles.tab(b, key == _land_side)
-		b.pressed.connect(func():
-			_land_side = key
-			_render())
-		sw.add_child(b)
-	var team: MatchTeam = home if _land_side == "home" else away
-	var club: ClubData = _home_club if _land_side == "home" else _away_club
-	var col: Color = Color(club.primary_color_hex) if club != null and club.primary_color_hex != "" else (Styles.BLUE if _land_side == "home" else Styles.RED)
-	right.add_child(_land_pitch(team, col, me))
+	var me: PlayerData = MatchState.user_player
+	var fx: Dictionary = MatchState.fixture
+	cols.add_child(_faceoff_list(home, _home_club, _home_away_kit, fx, me))
+	var mid_sc := ScrollContainer.new()
+	mid_sc.name = "LandMid"
+	mid_sc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	# SHOW_NEVER (no DISABLED): así recorta en vez de ensanchar la columna
+	mid_sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_SHOW_NEVER
+	mid_sc.custom_minimum_size.x = 400
+	UiScroll.make_touch(mid_sc)
+	cols.add_child(mid_sc)
+	var mid := VBoxContainer.new()
+	mid.name = "LandLeft"
+	mid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	mid.add_theme_constant_override("separation", 12)
+	mid_sc.add_child(mid)
+	for k in kids:
+		(k as Node).reparent(mid)
+	teams_row.visible = false   # las listas ya están a los lados
+	cols.add_child(_faceoff_list(away, _away_club, _away_away_kit, fx, me))
+
+
+const _LINE_ORDER := {"GK": 0, "DF": 1, "MF": 2, "ST": 3}
+const _LINE_COLOR := {"GK": Color("#e0a92e"), "DF": Color("#3d8bd9"), "MF": Color("#3fb56b"), "ST": Color("#e0524a")}
+
+
+## Una alineación: escudo/bandera, nombre y media arriba; titulares de portero a
+## delantero y luego el banco.
+func _faceoff_list(team: MatchTeam, club: ClubData, away_kit: bool, fx: Dictionary, me: PlayerData) -> Control:
+	var is_nat: bool = _is_national_fixture(fx)
+	var kit_club: ClubData = _country_kit_stub(team.team_name) if is_nat else club
+	var cols: Array = Kit._club_colors(kit_club)
+	var prim: Color = cols[0]
+	var sec: Color = cols[1]
+	if away_kit:
+		var body: Color = sec
+		if absf(body.get_luminance() - prim.get_luminance()) < 0.12:
+			body = Color.WHITE if prim.get_luminance() < 0.5 else Color("#1a1a1a")
+		sec = prim
+		prim = body
+	var accent: Color = CountryFlags.team_color(team.team_name) if is_nat else Color(cols[0])
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size.x = 262
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.07, 0.08, 0.1, 0.94)
+	sb.set_corner_radius_all(14)
+	sb.border_width_top = 4
+	sb.border_color = accent.lightened(0.2) if accent.get_luminance() < 0.2 else accent
+	sb.content_margin_left = 10
+	sb.content_margin_right = 10
+	sb.content_margin_top = 10
+	sb.content_margin_bottom = 8
+	panel.add_theme_stylebox_override("panel", sb)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 6)
+	panel.add_child(col)
+	# Cabecera
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 10)
+	col.add_child(head)
+	var crest: Control = CountryFlags.flag_rect(team.team_name, 30) if is_nat else (Styles.club_crest(club.club_id, 40) if club != null else null)
+	if crest != null:
+		var cc := CenterContainer.new()
+		cc.custom_minimum_size = Vector2(42, 42)
+		cc.add_child(crest)
+		head.add_child(cc)
+	var nm := Label.new()
+	nm.text = team.team_name
+	nm.clip_text = true
+	nm.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	nm.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	nm.add_theme_font_override("font", Styles.font_black())
+	nm.add_theme_font_size_override("font_size", 16)
+	head.add_child(nm)
+	var strength := _xi_strength(team)
+	var chip := UiKit.chip("%d" % strength, PlayerCard.tier_color(strength))
+	chip.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	head.add_child(chip)
+	# Lista
+	var sc := ScrollContainer.new()
+	sc.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	UiScroll.make_touch(sc)
+	col.add_child(sc)
+	var rows := VBoxContainer.new()
+	rows.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	rows.add_theme_constant_override("separation", 3)
+	sc.add_child(rows)
+	var xi: Array = team.starting_xi.duplicate()
+	# Orden estable GK → DF → MF → ST (el orden del DT dentro de cada línea)
+	var idx := {}
+	for i in xi.size():
+		idx[xi[i]] = i
+	xi.sort_custom(func(a: PlayerData, b: PlayerData) -> bool:
+		var la: int = _LINE_ORDER.get(Positions.broad_of(team.deployed_code(a)), 2)
+		var lb: int = _LINE_ORDER.get(Positions.broad_of(team.deployed_code(b)), 2)
+		return la < lb if la != lb else int(idx[a]) < int(idx[b]))
+	for p: PlayerData in xi:
+		rows.add_child(_faceoff_row(p, team, prim, sec, p == me, true))
+	var bench: Array = []
+	for p: PlayerData in team.bench:
+		if p == me and team.user_not_called:
+			continue
+		bench.append(p)
+	if not bench.is_empty():
+		var bh := Label.new()
+		bh.text = "SUPLENTES"
+		bh.add_theme_font_override("font", Styles.font_semibold())
+		bh.add_theme_font_size_override("font_size", 11)
+		bh.add_theme_color_override("font_color", Styles.GRAY_TEXT)
+		rows.add_child(bh)
+		for p: PlayerData in bench:
+			rows.add_child(_faceoff_row(p, team, prim, sec, p == me, false))
+	return panel
+
+
+func _faceoff_row(p: PlayerData, team: MatchTeam, prim: Color, sec: Color, mine: bool, starter: bool) -> Control:
+	var code: String = team.deployed_code(p) if starter else p.detailed_position
+	var line: String = Positions.broad_of(code)
+	var row := PanelContainer.new()
+	var sb := StyleBoxFlat.new()
+	sb.set_corner_radius_all(8)
+	sb.content_margin_left = 6
+	sb.content_margin_right = 8
+	sb.content_margin_top = 2
+	sb.content_margin_bottom = 2
+	if mine:
+		sb.bg_color = Color(Styles.GOLD, 0.22)
+		sb.border_width_left = 3
+		sb.border_color = Styles.GOLD
+	else:
+		sb.bg_color = Color(1, 1, 1, 0.035) if starter else Color(0, 0, 0, 0)
+	row.add_theme_stylebox_override("panel", sb)
+	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 5)
+	row.add_child(h)
+	# Puesto, con el color de su línea
+	var pos := Label.new()
+	pos.text = code + ("*" if starter and code != p.detailed_position else "")
+	pos.custom_minimum_size = Vector2(38, 0)
+	pos.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	pos.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	pos.add_theme_font_override("font", Styles.font_black())
+	pos.add_theme_font_size_override("font_size", 12)
+	var lc: Color = _LINE_COLOR.get(line, Styles.GRAY_TEXT)
+	pos.add_theme_color_override("font_color", lc if starter else lc.darkened(0.25))
+	h.add_child(pos)
+	# Camiseta (la del portero, verde)
+	var keeper: bool = line == "GK"
+	var shirt := _mini_shirt(Color("#2bbf6a") if keeper else prim, Color("#17733f") if keeper else sec)
+	h.add_child(shirt)
+	var nm := Label.new()
+	nm.text = ("TÚ · " if mine else "") + p.player_name
+	nm.clip_text = true
+	nm.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	nm.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	nm.add_theme_font_override("font", Styles.font_semibold())
+	nm.add_theme_font_size_override("font_size", 13)
+	nm.add_theme_color_override("font_color", Styles.GOLD if mine else (Color.WHITE if starter else Color(0.7, 0.72, 0.77)))
+	h.add_child(nm)
+	var ovr := Label.new()
+	ovr.text = str(p.overall)
+	ovr.custom_minimum_size = Vector2(26, 0)
+	ovr.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	ovr.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	ovr.add_theme_font_override("font", Styles.font_black())
+	ovr.add_theme_font_size_override("font_size", 14)
+	ovr.add_theme_color_override("font_color", PlayerCard.tier_color(p.overall))
+	h.add_child(ovr)
+	row.custom_minimum_size.y = 30 if starter else 26
+	return row
+
+
+## Camiseta chiquita dibujada (cuerpo + mangas + cuello), sin texturas: hay 40+ por pantalla.
+func _mini_shirt(body: Color, trim: Color) -> Control:
+	var c := Control.new()
+	c.custom_minimum_size = Vector2(22, 22)
+	c.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	c.draw.connect(func() -> void:
+		var out := Color(0, 0, 0, 0.55)
+		var pts := PackedVector2Array([Vector2(7, 3), Vector2(1, 7), Vector2(3, 11), Vector2(6, 9.5),
+				Vector2(6, 20), Vector2(16, 20), Vector2(16, 9.5), Vector2(19, 11), Vector2(21, 7), Vector2(15, 3)])
+		c.draw_colored_polygon(pts, body)
+		var loop := pts.duplicate()
+		loop.append(pts[0])
+		c.draw_polyline(loop, out, 1.2, true)
+		c.draw_line(Vector2(8.5, 3.4), Vector2(11, 6), trim, 1.6, true)
+		c.draw_line(Vector2(13.5, 3.4), Vector2(11, 6), trim, 1.6, true)
+		c.draw_line(Vector2(1.6, 8.2), Vector2(3.6, 10.2), trim, 1.4, true)
+		c.draw_line(Vector2(20.4, 8.2), Vector2(18.4, 10.2), trim, 1.4, true))
+	var cc := CenterContainer.new()
+	cc.custom_minimum_size = Vector2(24, 26)
+	cc.add_child(c)
+	return cc
+
 
 func _land_undo(vbox: VBoxContainer) -> void:
 	var cols := vbox.get_node_or_null("LandCols")
 	if cols == null:
 		return
 	var idx: int = cols.get_index()
-	var left: Node = cols.get_node("LandLeft")
+	var left: Node = cols.find_child("LandLeft", true, false)
 	for k in left.get_children():
 		k.reparent(vbox)
 		vbox.move_child(k, idx)
@@ -1191,79 +1377,3 @@ func _land_undo(vbox: VBoxContainer) -> void:
 		teams_row.reparent(vbox)
 	vbox.remove_child(cols)
 	cols.queue_free()
-
-
-# ---------------------------------------------------------------- mini cancha
-var _land_side: String = ""
-const _LAND_ROWS := {"ST": 0.16, "MF": 0.44, "DF": 0.70, "GK": 0.90}
-
-## El once en una mini cancha (como Plantilla): jugador, media y apellido.
-func _land_pitch(team: MatchTeam, kit: Color, me: PlayerData) -> Control:
-	var holder := Control.new()
-	holder.custom_minimum_size = Vector2(0, 400)
-	holder.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	var bg := MiniPitch.new()
-	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
-	holder.add_child(bg)
-	var by_line: Dictionary = {"GK": [], "DF": [], "MF": [], "ST": []}
-	for p in team.starting_xi:
-		by_line[Positions.broad_of(team.deployed_code(p))].append(p)
-	var seed_w: int = SaveManager.load_world_seed()
-	for line in ["GK", "DF", "MF", "ST"]:
-		var arr: Array = by_line[line]
-		for i in arr.size():
-			var p: PlayerData = arr[i]
-			var x: float = float(i + 1) / float(arr.size() + 1)
-			holder.add_child(_land_token(p, team.deployed_code(p), kit, p == me, x, _LAND_ROWS[line], seed_w))
-	return holder
-
-func _land_token(p: PlayerData, code: String, kit: Color, mine: bool, x: float, y: float, seed_w: int) -> Control:
-	var w := Control.new()
-	w.anchor_left = x
-	w.anchor_right = x
-	w.anchor_top = y
-	w.anchor_bottom = y
-	w.offset_left = -45
-	w.offset_right = 45
-	w.offset_top = -42
-	w.offset_bottom = 34
-	w.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var cfg: Dictionary = Avatar.config_for_player(p, seed_w).duplicate()
-	var keeper: bool = code == "POR" or p.position == "GK"
-	var shirt: Color = Color("#2bbf6a") if keeper else kit
-	cfg["tint_clothing"] = shirt.to_html(false)
-	cfg["tint_shorts"] = "#1f2026" if shirt.get_luminance() > 0.42 else "#e9e9ec"
-	cfg.erase("tint_socks")
-	var spr := TextureRect.new()
-	spr.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	spr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	spr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	spr.position = Vector2(8, -14)
-	spr.size = Vector2(74, 74)
-	if not Avatar.fill_3d(spr, cfg, 74):
-		var frames: Array = Avatar.anim_frames(cfg, "gk_idle_south" if keeper else "pitch_idle_south")
-		if not frames.is_empty():
-			spr.texture = frames[0]
-	w.add_child(spr)
-	var ovr := Label.new()
-	ovr.text = str(p.overall)
-	ovr.position = Vector2(64, -4)
-	ovr.add_theme_font_override("font", Styles.font_black())
-	ovr.add_theme_font_size_override("font_size", 12)
-	ovr.add_theme_color_override("font_outline_color", Color.BLACK)
-	ovr.add_theme_constant_override("outline_size", 4)
-	w.add_child(ovr)
-	var nm := Label.new()
-	var parts: PackedStringArray = p.player_name.split(" ", false)
-	nm.text = ("TÚ" if mine else (parts[parts.size() - 1] if parts.size() > 0 else p.player_name))
-	nm.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	nm.position = Vector2(-10, 52)
-	nm.size = Vector2(110, 18)
-	nm.clip_text = true
-	nm.add_theme_font_override("font", Styles.font_semibold())
-	nm.add_theme_font_size_override("font_size", 12)
-	nm.add_theme_color_override("font_color", Styles.GOLD if mine else Color.WHITE)
-	nm.add_theme_color_override("font_outline_color", Color.BLACK)
-	nm.add_theme_constant_override("outline_size", 4)
-	w.add_child(nm)
-	return w
