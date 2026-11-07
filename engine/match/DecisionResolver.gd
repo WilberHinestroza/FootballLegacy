@@ -1106,3 +1106,44 @@ static func m3d_bench_entry_minute(trust: int, r_enter: float, r_minute: float) 
 static func m3d_attack_share(xg_us: float, xg_them: float) -> float:
 	var tot: float = maxf(xg_us + xg_them, 0.2)
 	return clampf(0.5 + (xg_us - xg_them) / tot * 0.35, 0.3, 0.75)
+
+
+## ---------- Partido 3D: tanda de penales y paradas del portero ----------
+## (antes vivían en match3d/scripts/match.gd; mismos números, ahora centralizados)
+
+const M3D_SHOOTOUT_BASE := 0.76
+const M3D_SHOOTOUT_SHOOTING := 0.18
+const M3D_SHOOTOUT_COMPOSURE := 0.08
+const M3D_SHOOTOUT_KEEPER := 0.16
+const M3D_SHOOTOUT_SAVED_BAND := 0.18 # de lo que no entra, esta parte la para el portero
+
+## Penal de la tanda simulada (no el tuyo): "goal" / "saved" / "miss".
+## Stats 0..1 (0,5 = media). `r` = tirada 0..1.
+static func m3d_shootout_outcome(shooting: float, composure: float, keeper_skill: float, r: float) -> String:
+	var p: float = M3D_SHOOTOUT_BASE
+	p += (shooting - 0.5) * M3D_SHOOTOUT_SHOOTING
+	p += (composure - 0.5) * M3D_SHOOTOUT_COMPOSURE
+	p -= (keeper_skill - 0.5) * M3D_SHOOTOUT_KEEPER
+	p = clampf(p, 0.6, 0.9)
+	if r < p:
+		return "goal"
+	if r < p + M3D_SHOOTOUT_SAVED_BAND:
+		return "saved"
+	return "miss"
+
+## Estirada: probabilidad de que el tiro le supere según velocidad (m/s), lo
+## lejos que pasa de él (m), si va a la escuadra y su nivel de portero (0..1).
+static func m3d_keeper_dive_beaten(speed: float, lateral: float, top_corner: bool, keeper_skill: float) -> float:
+	var beaten: float = (speed - 14.0) / 16.0 * 0.4 + maxf(lateral - 1.2, 0.0) * 0.12
+	if top_corner:
+		beaten += 0.15
+	return clampf(beaten * lerpf(1.4, 0.6, keeper_skill), 0.03, 0.85)
+
+## Si la para en la estirada: ¿blocaje (true) o despeje? Solo tiros no muy fuertes.
+static func m3d_keeper_dive_catches(speed: float, r: float) -> bool:
+	return speed < 19.0 and r < 0.55
+
+## Balón que llega al portero sin estirada: probabilidad de que le supere.
+static func m3d_keeper_contact_beaten(speed: float, lateral: float, keeper_skill: float) -> float:
+	var beaten: float = clampf((speed - 16.0) / 14.0 * 0.35 + lateral * 0.25, 0.0, 0.6)
+	return clampf(beaten * lerpf(1.4, 0.6, keeper_skill), 0.0, 0.75)

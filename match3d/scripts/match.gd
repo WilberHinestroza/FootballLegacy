@@ -1522,19 +1522,12 @@ func _build_shootout_sequence() -> Array:
 func _roll_shootout_outcome(team: int, kick_index: int, rng: RandomNumberGenerator) -> String:
 	var taker := _shootout_taker(team, kick_index)
 	var keeper: SoccerPlayer = teams[1 - team][0]
-	var p := 0.76
-	if taker != null:
-		p += (taker.stat("shooting") - 0.5) * 0.18
-		p += (taker.stat("composure") - 0.5) * 0.08
-	if keeper != null:
-		p -= (keeper.keeper_skill() - 0.5) * 0.16
-	p = clampf(p, 0.6, 0.9)
-	var r := rng.randf()
-	if r < p:
-		return "goal"
-	if r < p + 0.18:
-		return "saved"
-	return "miss"
+	# Balance en DecisionResolver (regla del proyecto): aquí solo los datos
+	return DecisionResolver.m3d_shootout_outcome(
+		taker.stat("shooting") if taker != null else 0.5,
+		taker.stat("composure") if taker != null else 0.5,
+		keeper.keeper_skill() if keeper != null else 0.5,
+		rng.randf())
 
 
 func _shootout_taker(team: int, kick_index: int) -> SoccerPlayer:
@@ -5221,13 +5214,10 @@ func keeper_dive(k: SoccerPlayer, cross: Vector3, outcome := "") -> void:
 	var lateral := absf(cross.z - k.global_position.z)
 	if outcome == "":
 		var spd := ball.linear_velocity.length()
-		var beaten := (spd - 14.0) / 16.0 * 0.4 + maxf(lateral - 1.2, 0.0) * 0.12
-		if cross.y > 1.9:
-			beaten += 0.15 # por la escuadra
-		beaten = clampf(beaten * lerpf(1.4, 0.6, k.keeper_skill()), 0.03, 0.85)
+		var beaten: float = DecisionResolver.m3d_keeper_dive_beaten(spd, lateral, cross.y > 1.9, k.keeper_skill())
 		outcome = "miss"
 		if randf() >= beaten:
-			outcome = "catch" if spd < 19.0 and randf() < 0.55 else "parry"
+			outcome = "catch" if DecisionResolver.m3d_keeper_dive_catches(spd, randf()) else "parry"
 	k.set_meta("dive_outcome", outcome)
 	var reach := 1.0
 	if outcome == "miss":
@@ -5312,8 +5302,7 @@ func _try_receive(p: SoccerPlayer, body_control := false) -> void:
 			_count_sot(ball.last_touch.team)
 		# Tiros fuertes y lejos del cuerpo del portero pueden superarle
 		var lateral := absf(ball.global_position.z - p.global_position.z)
-		var beaten := clampf((spd - 16.0) / 14.0 * 0.35 + lateral * 0.25, 0.0, 0.6)
-		beaten = clampf(beaten * lerpf(1.4, 0.6, p.keeper_skill()), 0.0, 0.75)
+		var beaten: float = DecisionResolver.m3d_keeper_contact_beaten(spd, lateral, p.keeper_skill())
 		# Al cuerpo no le supera nunca: el balón le da y lo para o rebota
 		# (antes seguía de largo y se veía atravesándole).
 		if flat_dist(ball.global_position, p.global_position) < 0.6 and ball.global_position.y < 1.85:
