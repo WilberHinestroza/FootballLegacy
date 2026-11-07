@@ -27,6 +27,8 @@ const FAMILIES := {
 		"title": "¡BALÓN EN LA FRONTAL!", "hint": "Te cierran rápido: chuta de lejos (desliza fuerte y curvo)\no toca a un compañero que entre al área"},
 	"desborde": {"phase": "ataque", "base": "ATTACK", "w": {"ST": 1.3, "MF": 1.3, "DF": 0.7},
 		"title": "¡ENCARA AL LATERAL!", "hint": "Uno contra uno por la banda: desliza hacia un lado para irte\ny luego toca a un compañero del área o chuta"},
+	"diagonal": {"phase": "ataque", "base": "ATTACK", "w": {"ST": 0.8, "MF": 0.9, "DF": 0.2},
+		"title": "¡RECORTA HACIA DENTRO!", "hint": "Pierna cambiada: el lateral te cierra la línea, no el centro\nDesliza en diagonal hacia el área y chuta al palo largo"},
 	"pared": {"phase": "ataque", "base": "ATTACK", "w": {"ST": 1.0, "MF": 1.7, "DF": 0.5},
 		"title": "¡TIRA LA PARED!", "hint": "Toca al compañero de al lado y sigue corriendo:\ntócate a ti para pedirla de vuelta y define"},
 	"rechace": {"phase": "ataque", "base": "ATTACK", "w": {"ST": 1.6, "MF": 0.7, "DF": 0.6},
@@ -74,9 +76,73 @@ const FAMILIES := {
 }
 
 
+## Cómo juega cada puesto fino (Positions.gd): "lane" = su carril (+1 banda derecha,
+## -1 izquierda, ±0.5 carril interior, 0 centro; derecha = +Z con el equipo atacando
+## a +X) y "w" = cuánto pesa cada familia para ese puesto respecto al de su línea.
+## Así un extremo vive de desbordes por SU banda y un central de duelos y centros.
+const POSITION_STYLE := {
+	"DFC": {"lane": 0.0, "w": {"duelo": 1.4, "centro_rival": 1.5, "corner_contra": 1.4, "salida_presion": 1.3,
+		"desborde": 0.2, "frontal": 0.6, "repliegue": 0.6, "diagonal": 0.0}},
+	"LD": {"lane": 1.0, "w": {"desborde": 1.8, "cambio_orientacion": 1.4, "centro_rival": 1.3, "dos_contra_uno": 1.3,
+		"corner_contra": 0.6, "frontal": 0.5, "diagonal": 0.3}},
+	"LI": {"lane": -1.0, "w": {"desborde": 1.8, "cambio_orientacion": 1.4, "centro_rival": 1.3, "dos_contra_uno": 1.3,
+		"corner_contra": 0.6, "frontal": 0.5, "diagonal": 0.3}},
+	"CAD": {"lane": 1.0, "w": {"desborde": 2.2, "centro": 1.3, "repliegue": 1.4, "contra_rapida": 1.3, "diagonal": 0.5}},
+	"CAI": {"lane": -1.0, "w": {"desborde": 2.2, "centro": 1.3, "repliegue": 1.4, "contra_rapida": 1.3, "diagonal": 0.5}},
+	"MCD": {"lane": 0.0, "w": {"salida_presion": 1.6, "cambio_orientacion": 1.5, "duelo": 1.4, "repliegue": 1.3,
+		"mano_a_mano": 0.3, "desborde": 0.3, "rechace": 0.5, "diagonal": 0.0}},
+	"MC": {"lane": 0.0, "w": {"pared": 1.3, "entre_lineas": 1.2, "frontal": 1.2, "diagonal": 0.2}},
+	"MD": {"lane": 0.5, "w": {"desborde": 1.2, "cambio_orientacion": 1.3, "pared": 1.2, "diagonal": 0.8}},
+	"MI": {"lane": -0.5, "w": {"desborde": 1.2, "cambio_orientacion": 1.3, "pared": 1.2, "diagonal": 0.8}},
+	"MCO": {"lane": 0.0, "w": {"entre_lineas": 1.9, "frontal": 1.7, "pared": 1.5, "mano_a_mano": 1.2,
+		"duelo": 0.6, "desborde": 0.5, "diagonal": 0.3}},
+	"MP": {"lane": 0.0, "w": {"entre_lineas": 1.8, "frontal": 1.6, "pared": 1.6, "mano_a_mano": 1.4,
+		"duelo": 0.5, "desborde": 0.4, "diagonal": 0.3}},
+	"ED": {"lane": 1.0, "w": {"desborde": 2.4, "contra_rapida": 1.3, "superioridad": 1.2, "frontal": 0.5,
+		"entre_lineas": 0.6, "rechace": 0.5, "duelo": 0.6, "diagonal": 1.0}},
+	"EI": {"lane": -1.0, "w": {"desborde": 2.4, "contra_rapida": 1.3, "superioridad": 1.2, "frontal": 0.5,
+		"entre_lineas": 0.6, "rechace": 0.5, "duelo": 0.6, "diagonal": 1.0}},
+	"SD": {"lane": 0.0, "w": {"pared": 1.7, "frontal": 1.4, "entre_lineas": 1.4, "centro": 0.7, "diagonal": 0.6}},
+	"DC": {"lane": 0.0, "w": {"rechace": 1.5, "centro": 1.5, "mano_a_mano": 1.3, "pared": 0.8, "desborde": 0.5,
+		"diagonal": 0.2}},
+}
+
+const PHASE_BY_POSITION := {
+	"ED": {"ataque": 1.5, "creacion": 0.7, "defensa": 0.7},
+	"EI": {"ataque": 1.5, "creacion": 0.7, "defensa": 0.7},
+	"MCO": {"ataque": 1.3, "defensa": 0.7},
+	"MP": {"ataque": 1.35, "defensa": 0.65},
+	"MCD": {"ataque": 0.55, "creacion": 1.3, "defensa": 1.3},
+	"CAD": {"ataque": 1.4, "defensa": 0.85},
+	"CAI": {"ataque": 1.4, "defensa": 0.85},
+	"SD": {"ataque": 0.9, "creacion": 1.6},
+}
+
+## Familias en las que el balón te puede LLEGAR (pase de un compañero al arrancar)
+## en vez de empezar ya con él en los pies: así no todas arrancan igual.
+const ARRIVE_FAMILIES := {"frontal": 0.4, "desborde": 0.45, "diagonal": 0.5, "pared": 0.3, "mano_a_mano": 0.45}
+
+
+## ¿Pierna cambiada? Extremo/interior de un lado que le pega con la pierna del otro:
+## su jugada natural es recortar hacia dentro, no ir a línea de fondo.
+static func inverted(detailed: String, foot: int) -> bool:
+	var lane := float((POSITION_STYLE.get(detailed, {}) as Dictionary).get("lane", 0.0))
+	if absf(lane) < 0.4:
+		return false
+	if foot == 2:
+		return true # ambidiestro: puede hacer las dos
+	# foot: 0 diestro, 1 zurdo. Banda derecha + zurdo o izquierda + diestro.
+	return (lane > 0.0 and foot == 1) or (lane < 0.0 and foot == 0)
+
+
 ## Elige la fase: el reparto del puesto, ajustado al dominio del partido (attack_share).
-static func pick_phase(role: String, attack_share: float) -> String:
+static func pick_phase(role: String, attack_share: float, detailed := "") -> String:
 	var w: Dictionary = (PHASES.get(role, PHASES["MF"]) as Dictionary).duplicate()
+	# El puesto fino corrige el reparto: el extremo vive arriba, el pivote en la salida
+	var pm: Dictionary = PHASE_BY_POSITION.get(detailed, {})
+	for ph: String in pm:
+		if w.has(ph):
+			w[ph] = float(w[ph]) * float(pm[ph])
 	if w.has("ataque"):
 		w["ataque"] = float(w["ataque"]) * attack_share / 0.55
 		w["defensa"] = float(w["defensa"]) * (1.0 - attack_share) / 0.45
@@ -85,7 +151,11 @@ static func pick_phase(role: String, attack_share: float) -> String:
 
 ## Una jugada nueva para `role` en `phase`. `counts` = cuántas veces salió cada familia
 ## (para variar y para los topes, como un penalti por partido); `last` = la anterior.
-static func generate(role: String, phase: String, counts: Dictionary, last := "") -> Dictionary:
+static func generate(role: String, phase: String, counts: Dictionary, last := "",
+		detailed := "", foot := 0) -> Dictionary:
+	var style: Dictionary = POSITION_STYLE.get(detailed, {})
+	var mults: Dictionary = style.get("w", {})
+	var inv := inverted(detailed, foot)
 	var options := {}
 	for id: String in FAMILIES:
 		var f: Dictionary = FAMILIES[id]
@@ -97,10 +167,32 @@ static func generate(role: String, phase: String, counts: Dictionary, last := ""
 		var wt: float = float(f.w[role]) / (1.0 + int(counts.get(id, 0)) * 0.8)
 		if id == last:
 			wt *= 0.15
-		options[id] = wt
+		wt *= float(mults.get(id, 1.0))
+		if id == "diagonal":
+			wt *= 2.8 if inv else 0.3 # el recorte es la jugada del de pierna cambiada
+		elif id == "desborde" and absf(float(style.get("lane", 0.0))) > 0.4:
+			wt *= 0.7 if inv else 1.3 # el de pierna natural, a línea de fondo
+		if wt > 0.0:
+			options[id] = wt
 	if options.is_empty():
 		options = {"remate_area": 1.0} if role == "GK" else {"elaborado": 1.0}
-	return make(_weighted(options))
+	var play := make(_weighted(options))
+	_fit_to_position(play, style)
+	return play
+
+
+## La banda y el carril salen de tu puesto (casi siempre la tuya; a veces, la otra
+## como un cambio de banda puntual) y a veces el balón te llega de un pase.
+static func _fit_to_position(play: Dictionary, style: Dictionary) -> void:
+	if style.is_empty():
+		return
+	var lane := float(style.get("lane", 0.0))
+	play.lane = lane
+	if absf(lane) > 0.1 and randf() < 0.85:
+		play.side = signf(lane)
+	var fam := String(play.family)
+	if ARRIVE_FAMILIES.has(fam) and randf() < float(ARRIVE_FAMILIES[fam]):
+		play.arrive = true
 
 
 ## Arma la familia `id` con sus parámetros al azar.

@@ -354,7 +354,10 @@ func _ready() -> void:
 			add_child(p)
 			players.append(p)
 			teams[t].append(p)
-	star = teams[0][_star_slot(PROFILE_ROLE[clampi(profile.position, 0, 3)])]
+	var star_role: String = PROFILE_ROLE[clampi(profile.position, 0, 3)]
+	user_detailed = String(config.get("user_detailed", ""))
+	star = teams[0][_star_slot(star_role)]
+	star.role = star_role # p. ej. extremo (MED) en el hueco de banda de un 4-3-3
 	star.set_star()
 	var kits := [_kit_for(0, shirts[0]), _kit_for(1, shirts[1])]
 	_kits = kits
@@ -499,6 +502,7 @@ func _physics_process(delta: float) -> void:
 				Engine.time_scale = MOMENT_TIME_SCALE
 				_opening_room()
 				_apply_preplay_choice()
+				_launch_arrival()
 				if _cross_pending:
 					_hud.show_cross_zones(true)
 		State.MOMENT:
@@ -605,8 +609,8 @@ func _plan_moments() -> void:
 	_last_family = ""
 	var attack_share := clampf(float(config.get("attack_share", 0.55)), 0.25, 0.8)
 	for i in count:
-		var phase := PlayGenerator.pick_phase(role, attack_share)
-		var pl := PlayGenerator.generate(role, phase, _play_counts, _last_family)
+		var phase := PlayGenerator.pick_phase(role, attack_share, user_detailed)
+		var pl := PlayGenerator.generate(role, phase, _play_counts, _last_family, user_detailed, int(profile.foot))
 		_play_counts[pl.family] = int(_play_counts.get(pl.family, 0)) + 1
 		_last_family = pl.family
 		_moments.append({"minute": start + span * i + randf_range(0.0, span * 0.75), "kind": pl.base, "play": pl})
@@ -2148,8 +2152,8 @@ func _replan_second_half(share_delta: float) -> void:
 	for e: Dictionary in _moments:
 		if float(e.minute) <= 45.0 or not e.has("play"):
 			continue
-		var phase := PlayGenerator.pick_phase(star.role, share)
-		var pl := PlayGenerator.generate(star.role, phase, _play_counts, _last_family)
+		var phase := PlayGenerator.pick_phase(star.role, share, user_detailed)
+		var pl := PlayGenerator.generate(star.role, phase, _play_counts, _last_family, user_detailed, int(profile.foot))
 		_play_counts[pl.family] = int(_play_counts.get(pl.family, 0)) + 1
 		_last_family = pl.family
 		e.kind = pl.base
@@ -2459,6 +2463,7 @@ func _start_moment(kind: Moment, pl: Dictionary = {}) -> void:
 	_reset_play_chain()
 	_preplay_choice = ""
 	_preplay_hold = 0.0
+	_arrival_from = null
 	if _hud != null:
 		_hud.hide_cross_zones()
 		_hud.hide_preplay_choices()
@@ -2675,7 +2680,7 @@ func _setup_play() -> bool:
 				c.ai_timer = 0.9
 				_set_human(star)
 		"frontal":
-			var bp := Vector3(randf_range(24.0, 30.0), 0.0, randf_range(-9.0, 9.0))
+			var bp := Vector3(randf_range(24.0, 30.0), 0.0, _lane_z(9.0))
 			_attack_base(bp)
 			_star_carries(bp)
 			_press_ring(bp, int(play.pressure), 3.0, 5.0, true)
@@ -2689,8 +2694,21 @@ func _setup_play() -> bool:
 			fb.facing = flat(star.global_position - fb.global_position).normalized()
 			_crowd_box(0, 2, [star])
 			_spread_rivals_in_box(3, [fb])
+		"diagonal":
+			# Recibes abierto en tu banda; el lateral rival te cierra POR FUERA y deja
+			# el pasillo hacia dentro. El central sale tarde y el área está cargada.
+			var bp := Vector3(lerpf(20.0, 30.0, depth), 0.0, side * randf_range(16.0, 22.0))
+			_attack_base(bp)
+			_star_carries(bp)
+			var fb := _nearest_of_role(1, bp, ["DF"], [])
+			_place(fb, bp + Vector3(3.2, 0.0, side * 1.6))
+			fb.facing = flat(star.global_position - fb.global_position).normalized()
+			var cb := _nearest_of_role(1, Vector3(40.0, 0.0, 0.0), ["DF"], [fb])
+			_place(cb, Vector3(bp.x + randf_range(10.0, 13.0), 0.0, side * randf_range(3.0, 6.0)))
+			_crowd_box(0, 2, [star])
+			_spread_rivals_in_box(2, [fb, cb])
 		"pared":
-			var bp := Vector3(randf_range(16.0, 26.0), 0.0, randf_range(-10.0, 10.0))
+			var bp := Vector3(randf_range(16.0, 26.0), 0.0, _lane_z(10.0))
 			_attack_base(bp)
 			_star_carries(bp)
 			var mt := _nearest_of_role(0, bp, ["ST", "MF"], [star])
@@ -2710,7 +2728,7 @@ func _setup_play() -> bool:
 			ball.release(Vector3(randf_range(-2.0, 1.0), 0.6, randf_range(-1.5, 1.5)))
 			_set_human(star)
 		"entre_lineas":
-			var bp := Vector3(randf_range(-4.0, 8.0), 0.0, randf_range(-10.0, 10.0))
+			var bp := Vector3(randf_range(-4.0, 8.0), 0.0, _lane_z(10.0))
 			_build_base(bp)
 			# Línea defensiva rival adelantada y tu delantero a su espalda, listo para picar
 			var line_x := bp.x + randf_range(17.0, 21.0)
@@ -2734,7 +2752,7 @@ func _setup_play() -> bool:
 			_place(far, Vector3(bp.x + randf_range(8.0, 14.0), 0.0, -side * randf_range(18.0, 25.0)))
 			play.key_far_side = true
 		"contra_rapida":
-			var bp := Vector3(randf_range(-22.0, -10.0), 0.0, randf_range(-12.0, 12.0))
+			var bp := Vector3(randf_range(-22.0, -10.0), 0.0, _lane_z(14.0))
 			_build_base(bp)
 			# El rival estaba atacando: casi todos por detrás del balón; solo dos atrás
 			var back := 0
@@ -2764,7 +2782,7 @@ func _setup_play() -> bool:
 					continue
 				_place(mt, Vector3(bp.x + randf_range(9.0, 20.0), 0.0, mt.global_position.z))
 		"repliegue":
-			var bp := Vector3(randf_range(-8.0, 6.0), 0.0, randf_range(-12.0, 12.0))
+			var bp := Vector3(randf_range(-8.0, 6.0), 0.0, _lane_z(14.0))
 			var a := _defense_base(bp)
 			_place(star, bp + Vector3(randf_range(3.5, 5.0), 0.0, randf_range(-2.5, 2.5)))
 			star.facing = Vector3.LEFT
@@ -2779,7 +2797,7 @@ func _setup_play() -> bool:
 					_place(mt, Vector3(bp.x + randf_range(5.0, 15.0), 0.0, mt.global_position.z))
 			a.ai_timer = 0.5
 		"presion_alta":
-			var bp := Vector3(randf_range(34.0, 42.0), 0.0, randf_range(-12.0, 12.0))
+			var bp := Vector3(randf_range(34.0, 42.0), 0.0, _lane_z(14.0))
 			possession_team = 1
 			_place_team_for(bp, 1)
 			var holder := _nearest_of_role(1, bp, ["DF"], [])
@@ -2886,8 +2904,55 @@ func _attack_base(bp: Vector3) -> void:
 func _star_carries(bp: Vector3) -> void:
 	_place(star, bp)
 	star.facing = flat(opponent_goal_center(0) - bp).normalized()
+	_arrival_from = null
+	if bool(play.get("arrive", false)):
+		# El balón te llega: un compañero por detrás (más hacia dentro) te la pone
+		# al arrancar la jugada. Tú controlas y decides.
+		var from := Vector3(bp.x - randf_range(10.0, 15.0), 0.0, bp.z * 0.45 + randf_range(-3.0, 3.0))
+		var passer := _nearest_of_role(0, from, ["MF", "DF", "ST"], [star])
+		if passer != null:
+			_place(passer, from)
+			passer.facing = flat(bp - from).normalized()
+			_give_ball_now(passer)
+			passer.ai_timer = 9.0 # espera: pasa él al empezar, no la IA
+			_arrival_from = passer
+			# Mirando hacia el que te la da, perfilado a portería
+			star.facing = flat((from - bp).normalized() * 0.6 + star.facing).normalized()
+			_set_human(star)
+			return
 	_give_ball_now(star)
 	_set_human(star)
+
+
+## La jugada con llegada: arranca con el pase del compañero. En el mano a mano te
+## la filtra al espacio; si no, al pie. Los rivales encima esperan a que controles.
+func _launch_arrival() -> void:
+	var passer := _arrival_from
+	_arrival_from = null
+	if passer == null or not passer.has_ball() or star == null:
+		return
+	passer.ai_timer = 0.8
+	for o: SoccerPlayer in teams[1]:
+		if not o.is_keeper and flat_dist(o.global_position, star.global_position) < 6.0:
+			o.tackle_cooldown = maxf(o.tackle_cooldown, 1.3)
+	if String(play.get("family", "")) == "mano_a_mano":
+		var ahead := star.global_position + flat(opponent_goal_center(0) - star.global_position).normalized() * 3.5
+		passer.pass_to_point(ahead, star, 1.0)
+	else:
+		passer.pass_ball(star)
+	_hud.show_message("¡TE LA PASAN!", 0.6)
+
+
+## Altura lateral (z) de la jugada según tu carril: extremos y laterales por su banda,
+## interiores por su carril, los del centro más centrados. Sin puesto fino, al azar.
+func _lane_z(limit: float) -> float:
+	if not play.has("lane"):
+		return randf_range(-limit, limit)
+	var lane := float(play.lane)
+	if absf(lane) < 0.1:
+		return randf_range(-limit * 0.55, limit * 0.55)
+	var sgn: float = float(play.get("side", signf(lane)))
+	return clampf(sgn * absf(lane) * limit * 0.8 + randf_range(-limit * 0.3, limit * 0.3), -limit, limit)
 
 
 ## Creación: tú con el balón en `bp`, de cara al campo rival.
@@ -3111,9 +3176,9 @@ func is_attacking_moment() -> bool:
 
 ## Ataque elaborado o contraataque. Si eres defensa, llegas desde atrás al ataque.
 func _setup_attack(counter: bool) -> void:
-	var bp := Vector3(randf_range(14.0, 26.0), 0.0, randf_range(-16.0, 16.0))
+	var bp := Vector3(randf_range(14.0, 26.0), 0.0, _lane_z(16.0))
 	if counter:
-		bp = Vector3(randf_range(-6.0, 6.0), 0.0, randf_range(-14.0, 14.0))
+		bp = Vector3(randf_range(-6.0, 6.0), 0.0, _lane_z(14.0))
 	possession_team = 0
 	_place_team_for(bp, 0)
 	if counter:
@@ -3279,6 +3344,8 @@ func _setup_free_kick() -> void:
 ## Mete `count` jugadores del equipo `team` en el área rival del equipo 0 (la de +X).
 func _crowd_box(team: int, count: int, exclude: Array) -> void:
 	var used := exclude.duplicate()
+	if _arrival_from != null:
+		used.append(_arrival_from) # el que te la va a pasar se queda donde está
 	for i in count:
 		var spot := Vector3(randf_range(38.0, 48.0), 0.0, randf_range(-11.0, 11.0))
 		var p := _nearest_of_role(team, spot, ["DF", "MF", "ST"], used)
@@ -3295,7 +3362,7 @@ func _crowd_box(team: int, count: int, exclude: Array) -> void:
 
 ## El rival ataca: según tu puesto llegas cerrando de frente, de lado o desde atrás.
 func _setup_defense() -> void:
-	var bp := Vector3(randf_range(-30.0, -16.0), 0.0, randf_range(-16.0, 16.0))
+	var bp := Vector3(randf_range(-30.0, -16.0), 0.0, _lane_z(22.0))
 	possession_team = 1
 	_place_team_for(bp, 1)
 	var attacker := _nearest_of_role(1, bp, ["ST", "MF"])
@@ -3618,6 +3685,9 @@ func _finish_moment(text: String) -> void:
 ## protesta al árbitro, el compañero del caído le reclama, tras un fallo tuyo
 ## te lamentas (y alguien te anima) y si la robas tú, puño al aire.
 var _foul_pair: Array = []
+## Puesto fino del usuario (Positions.gd: ED, LI, MCO...); "" = solo la línea.
+var user_detailed := ""
+var _arrival_from: SoccerPlayer = null # compañero que te pasa el balón al arrancar
 var _react_face := {} # SoccerPlayer -> punto hacia el que se va girando
 
 
@@ -5816,6 +5886,32 @@ func _formation_roles(fname: String) -> Array:
 func _star_slot(role: String) -> int:
 	if role == "GK":
 		return 0
+	# Con puesto fino de banda (lateral, extremo, interior) vas al hueco de TU banda;
+	# antes siempre al más centrado y un extremo jugaba de mediocentro.
+	var lane := float((PlayGenerator.POSITION_STYLE.get(user_detailed, {}) as Dictionary).get("lane", 0.0))
+	if absf(lane) > 0.1:
+		var want := lane * 24.0
+		var near_roles: Array = [role]
+		if role == "MF":
+			near_roles.append("ST") # en un 4-3-3 los extremos son la línea de arriba
+		elif role == "ST":
+			near_roles.append("MF")
+		var pick := -1
+		var pick_d := INF
+		for pass_i in near_roles.size():
+			for i in range(1, PLAYERS_PER_TEAM):
+				var p: SoccerPlayer = teams[0][i]
+				if p.role != near_roles[pass_i]:
+					continue
+				var z := (_bases[0][i] as Vector3).z
+				if signf(z) != signf(lane) or absf(z) < 9.0:
+					continue
+				var d := absf(z - want)
+				if d < pick_d:
+					pick_d = d
+					pick = i
+			if pick >= 0:
+				return pick
 	var best := PLAYERS_PER_TEAM - 1
 	var best_z := INF
 	for i in range(1, PLAYERS_PER_TEAM):
