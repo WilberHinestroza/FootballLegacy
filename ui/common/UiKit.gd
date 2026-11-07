@@ -360,3 +360,124 @@ static func land_back_arrow(btn: Button) -> void:
 			var mc := c as MarginContainer
 			mc.add_theme_constant_override("margin_top", maxi(mc.get_theme_constant("margin_top"), 0) + 46)
 			break
+
+
+# ---------------------------------------------------------------- mosaico (8-nov)
+# Rediseño de menús estilo consola pero táctil (Wilber: "un menú mejor como los
+# del PES o FIFA pero en táctil"): tarjetas grandes en mosaico con el color del
+# club, que se hunden al tocarlas, y un fondo con franjas diagonales.
+
+## Tarjeta del mosaico: título arriba, `body` dentro y `on_tap` al tocarla (sin
+## disparar si el dedo estaba desplazando). Se hunde un poco al pulsarla.
+static func tile(title: String, accent: Color, body: Control, on_tap: Callable = Callable(), min_h: float = 80.0) -> PanelContainer:
+	var card := PanelContainer.new()
+	card.custom_minimum_size = Vector2(0, min_h)
+	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	card.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.07, 0.08, 0.1, 0.88)
+	sb.set_corner_radius_all(14)
+	sb.border_width_bottom = 3
+	sb.border_width_left = 1
+	sb.border_width_right = 1
+	sb.border_width_top = 1
+	sb.border_color = Color(accent, 0.55)
+	sb.shadow_color = Color(0, 0, 0, 0.35)
+	sb.shadow_size = 6
+	sb.shadow_offset = Vector2(0, 3)
+	sb.set_content_margin_all(10)
+	card.add_theme_stylebox_override("panel", sb)
+	# Brillo del color del club arriba
+	var glow := TextureRect.new()
+	glow.texture = Styles.gradient_texture(Color(accent, 0.28), Color(accent, 0.0))
+	glow.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	glow.stretch_mode = TextureRect.STRETCH_SCALE
+	glow.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card.add_child(glow)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 4)
+	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card.add_child(col)
+	if title != "":
+		var t := Label.new()
+		t.text = title.to_upper()
+		t.add_theme_font_override("font", Styles.font_semibold())
+		t.add_theme_font_size_override("font_size", 11)
+		t.add_theme_color_override("font_color", accent.lightened(0.35))
+		t.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		col.add_child(t)
+	if body != null:
+		body.size_flags_vertical = Control.SIZE_EXPAND_FILL
+		col.add_child(body)
+		_ignore_mouse(body)
+	if on_tap.is_valid():
+		card.mouse_filter = Control.MOUSE_FILTER_STOP
+		UiScroll.on_tap(card, func() -> void:
+			Haptics.hit("tap")
+			on_tap.call())
+		card.gui_input.connect(func(ev: InputEvent) -> void:
+			var down: bool = (ev is InputEventScreenTouch or ev is InputEventMouseButton) and ev.pressed
+			var up: bool = (ev is InputEventScreenTouch or ev is InputEventMouseButton) and not ev.pressed
+			if not (down or up):
+				return
+			card.pivot_offset = card.size * 0.5
+			var tw := card.create_tween()
+			tw.tween_property(card, "scale", Vector2.ONE * (0.97 if down else 1.0), 0.08)
+			sb.border_color = accent if down else Color(accent, 0.55))
+	return card
+
+
+static func _ignore_mouse(n: Node) -> void:
+	if n is Control:
+		(n as Control).mouse_filter = Control.MOUSE_FILTER_IGNORE
+	for c in n.get_children():
+		_ignore_mouse(c)
+
+
+## Texto de tarjeta (una línea grande o el detalle pequeño).
+static func tile_text(text: String, size: int = 15, color: Color = Color.WHITE, bold: bool = false) -> Label:
+	var l := Label.new()
+	l.text = text
+	l.autowrap_mode = TextServer.AUTOWRAP_OFF
+	l.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	if bold:
+		l.add_theme_font_override("font", Styles.font_black())
+	l.add_theme_font_size_override("font_size", size)
+	l.add_theme_color_override("font_color", color)
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return l
+
+
+static var _backdrop_cache := {}
+
+## Fondo de pantalla con el color del club: degradado oscuro con franjas
+## diagonales suaves (como las pantallas de alineaciones de los juegos de fútbol).
+static func club_backdrop(primary: Color) -> TextureRect:
+	var key := primary.to_html(false)
+	var tex: Texture2D = _backdrop_cache.get(key)
+	if tex == null:
+		var w := 480
+		var h := 270
+		var img := Image.create(w, h, false, Image.FORMAT_RGB8)
+		var base := Color(0.035, 0.045, 0.07)
+		var tint := base.lerp(primary, 0.32)
+		for y in h:
+			for x in w:
+				var u := float(x) / w
+				var v := float(y) / h
+				var c := tint.lerp(base, clampf(u * 0.9 + v * 0.35, 0.0, 1.0))
+				# Franjas diagonales finas, más visibles a la derecha
+				var d := fmod(float(x + y) * 0.5, 22.0)
+				if d < 1.2:
+					c = c.lightened(0.05 + 0.06 * u)
+				c = c.lerp(Color.BLACK, clampf((v - 0.75) * 0.8, 0.0, 0.2)) # algo más oscuro abajo
+				img.set_pixel(x, y, c)
+		tex = ImageTexture.create_from_image(img)
+		_backdrop_cache[key] = tex
+	var r := TextureRect.new()
+	r.texture = tex
+	r.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	r.stretch_mode = TextureRect.STRETCH_SCALE
+	r.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	r.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	return r

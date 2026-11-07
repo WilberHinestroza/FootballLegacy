@@ -624,6 +624,7 @@ func _refresh_status() -> void:
 	_refresh_cup_label()
 	_refresh_press()
 	_refresh_standings()
+	_refresh_mosaic()
 
 ## Tarjeta compacta (overall + posición/temporada + chips) que reemplaza
 ## el bloque de texto largo que tenía el Hub antes — contrato, patrocinio,
@@ -1711,6 +1712,7 @@ func _landscape_fit() -> void:
 	adv.get_parent().add_child(_land_match_btn)
 	adv.get_parent().move_child(_land_match_btn, adv.get_index())
 	_land_refresh_match_day()
+	_build_mosaic(left, right, tabs_box)
 
 func _land_show_tab(i: int) -> void:
 	_land_tab = i
@@ -1775,3 +1777,341 @@ func _land_pack_alerts() -> void:
 		bt.add_theme_font_size_override("font_size", 13)
 		bt.add_theme_constant_override("icon_max_width", 18)
 	right.move_child(g, adv.get_index())
+	if _mosaic_on:
+		g.columns = 3
+
+
+# ---------------------------------------------------------------- mosaico (8-nov)
+## INICIO estilo consola pero táctil (Wilber: "un menú mejor como las del PES o
+## FIFA pero en táctil"). En horizontal: a la izquierda tu jugador en 3D con la
+## camiseta del club (hace un gesto de vez en cuando), su nivel/energía y la
+## semana; a la derecha el próximo partido en grande y un mosaico de tarjetas
+## (Prensa, Tabla, Objetivos, Entrenamiento, Práctica, Vida). Prensa/Tabla/
+## Objetivos abren su panel encima (el mismo de antes). La lógica del Hub
+## (avisos, Pasar/Avanzar, día de partido) no cambia: solo la forma.
+const Match3DBridge = preload("res://engine/match/m3d/Match3DBridge.gd")
+const HERO_GESTURES := ["fist_pump", "clap", "point", "victory_idle"]
+const MOSAIC_TILES := [
+	{"key": "press", "title": "Prensa", "icon": Icons.PX_NEWS},
+	{"key": "table", "title": "Tabla", "icon": Icons.PX_STANDINGS},
+	{"key": "goals", "title": "Objetivos", "icon": Icons.PX_AWARDS},
+	{"key": "training", "title": "Entrenamiento", "icon": Icons.PX_TRAINING},
+	{"key": "practice", "title": "Práctica", "icon": Icons.PX_CUP},
+	{"key": "life", "title": "Vida personal", "icon": Icons.PX_LIFESTYLE},
+]
+
+var _mosaic_on := false
+var _mosaic_bodies := {}          # key -> VBoxContainer con el texto de la tarjeta
+var _mosaic_match: VBoxContainer = null
+var _hero_info: VBoxContainer = null
+var _hero_face: Control = null
+var _panel_overlay: Control = null
+var _accent := Styles.GREEN
+
+
+func _club_accent() -> Color:
+	if _club != null and _club.primary_color_hex != "":
+		var c := Color(_club.primary_color_hex)
+		# Colores muy oscuros (negro, azul marino) no se leen como borde: aclarar
+		var out: Color = c.lightened(0.35) if c.get_luminance() < 0.18 else c
+		return out
+	return Styles.GREEN
+
+
+func _build_mosaic(left: VBoxContainer, right: VBoxContainer, tabs_box: Control) -> void:
+	_mosaic_on = true
+	_accent = _club_accent()
+	# Fondo con el color del club, detrás de todo
+	var base: Color = Color(_club.primary_color_hex) if _club != null and _club.primary_color_hex != "" else Styles.GREEN
+	var bd := UiKit.club_backdrop(base)
+	add_child(bd)
+	move_child(bd, 0)
+	# Izquierda: tu jugador en 3D, su ficha corta y la semana
+	status_card.visible = false
+	left.custom_minimum_size.x = 360
+	left.size_flags_stretch_ratio = 0.62
+	var hero := VBoxContainer.new()
+	hero.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	hero.add_theme_constant_override("separation", 4)
+	left.add_child(hero)
+	left.move_child(hero, 0)
+	if _player != null:
+		_hero_face = Match3DBridge.portrait(_player, _club, 260, true, Color(0, 0, 0, 0))
+		_hero_face.size_flags_vertical = Control.SIZE_EXPAND_FILL
+		_hero_face.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		_hero_face.custom_minimum_size = Vector2(0, 180)
+		hero.add_child(_hero_face)
+		var t := Timer.new()
+		t.wait_time = 7.0
+		t.autostart = true
+		t.timeout.connect(_hero_gesture)
+		add_child(t)
+	_hero_info = VBoxContainer.new()
+	_hero_info.add_theme_constant_override("separation", 3)
+	hero.add_child(_hero_info)
+	week_strip.size_flags_vertical = Control.SIZE_SHRINK_END
+	# Derecha: el partido en grande, el mosaico y abajo los avisos y Pasar/Avanzar
+	var at := chips_row.get_index() + 1
+	_mosaic_match = VBoxContainer.new()
+	_mosaic_match.add_theme_constant_override("separation", 2)
+	var match_tile := UiKit.tile("Próximo partido", _accent, _mosaic_match, _on_match_tile, 120)
+	right.add_child(match_tile)
+	right.move_child(match_tile, at)
+	var grid := GridContainer.new()
+	grid.columns = 3
+	grid.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	grid.add_theme_constant_override("h_separation", 8)
+	grid.add_theme_constant_override("v_separation", 8)
+	right.add_child(grid)
+	right.move_child(grid, at + 1)
+	for d: Dictionary in MOSAIC_TILES:
+		var body := VBoxContainer.new()
+		body.add_theme_constant_override("separation", 0)
+		body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 8)
+		var ic := TextureRect.new()
+		ic.texture = Icons.load_icon(String(d.icon))
+		ic.custom_minimum_size = Vector2(32, 32)
+		ic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		ic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		ic.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		ic.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		row.add_child(ic)
+		row.add_child(body)
+		_mosaic_bodies[String(d.key)] = body
+		var tl := UiKit.tile(String(d.title), _accent, row, _on_mosaic_tile.bind(String(d.key)), 64)
+		tl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		tl.size_flags_vertical = Control.SIZE_EXPAND_FILL
+		grid.add_child(tl)
+	# Prensa · Tabla · Objetivos: el cuadro con pestañas de antes, ahora encima
+	_build_panel_overlay(tabs_box)
+	_refresh_mosaic()
+
+
+func _hero_gesture() -> void:
+	if _hero_face == null or not is_instance_valid(_hero_face) or not (_hero_face is PlayerPortrait):
+		return
+	var av = (_hero_face as PlayerPortrait).avatar
+	if av == null or av.anim == null:
+		return
+	var anim: String = HERO_GESTURES.pick_random()
+	if av.anim.has_animation(anim):
+		av.anim.play(anim, 0.25)
+		av.anim.queue("idle")
+
+
+## Panel encima de la pantalla (Prensa/Tabla/Objetivos) con su botón de cerrar.
+func _build_panel_overlay(tabs_box: Control) -> void:
+	_panel_overlay = Control.new()
+	_panel_overlay.name = "PanelOverlay"
+	_panel_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_panel_overlay.visible = false
+	_panel_overlay.z_index = 20
+	add_child(_panel_overlay)
+	var dim := ColorRect.new()
+	dim.color = Color(0, 0, 0, 0.62)
+	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_panel_overlay.add_child(dim)
+	UiScroll.on_tap(dim, func() -> void: _panel_overlay.visible = false)
+	var card := PanelContainer.new()
+	card.add_theme_stylebox_override("panel", Styles.card_accent(_accent))
+	card.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	card.offset_left = 170
+	card.offset_right = -170
+	card.offset_top = 70
+	card.offset_bottom = -70
+	_panel_overlay.add_child(card)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 8)
+	card.add_child(col)
+	tabs_box.reparent(col)
+	tabs_box.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	var close := Button.new()
+	close.text = "Cerrar"
+	close.focus_mode = Control.FOCUS_NONE
+	close.custom_minimum_size = Vector2(0, 42)
+	Styles.styled_button(close, Styles.pill_outlined(Styles.GRAY_TEXT), Color.WHITE)
+	close.pressed.connect(func() -> void: _panel_overlay.visible = false)
+	col.add_child(close)
+
+
+func _on_mosaic_tile(key: String) -> void:
+	match key:
+		"press": _open_panel(0)
+		"table": _open_panel(1)
+		"goals": _open_panel(2)
+		"training": get_tree().change_scene_to_file("res://scenes/Training/Training.tscn")
+		"practice": get_tree().change_scene_to_file("res://scenes/Practice/Practice.tscn")
+		"life": get_tree().change_scene_to_file("res://scenes/Lifestyle/Lifestyle.tscn")
+
+
+func _open_panel(i: int) -> void:
+	if _panel_overlay == null:
+		return
+	_land_show_tab(i)
+	_panel_overlay.visible = true
+
+
+## El próximo partido: si es hoy, a jugarlo; si no, avanza hasta ese día.
+func _on_match_tile() -> void:
+	if not _pending_fixture.is_empty():
+		_go_to_match_day(WorldTickEngine.current_epoch_day)
+		return
+	var fx: Dictionary = WorldTickEngine.next_user_fixture(_user_club_id())
+	if not fx.is_empty():
+		_go_to_match_day(int(fx.get("epoch_day", WorldTickEngine.current_epoch_day)))
+
+
+func _refresh_mosaic() -> void:
+	if not _mosaic_on or _player == null:
+		return
+	_refresh_hero_info()
+	_refresh_match_tile()
+	var b: Dictionary = _mosaic_bodies
+	# Prensa: el último titular
+	var head := "Sin novedades"
+	if not _player.press_feed.is_empty():
+		head = String((_player.press_feed[0] as Dictionary).get("headline", head))
+	_fill(b.press, head, "Toca para ver todas")
+	# Tabla: tu puesto
+	var table: Array = WorldTickEngine.user_league_table()
+	var mine: Dictionary = {} if table.is_empty() else LeagueTable.row_for(table, _user_club_id())
+	if mine.is_empty():
+		_fill(b.table, "Sin liga", "")
+	else:
+		_fill(b.table, "%dº de %d" % [int(mine.get("pos", 0)), table.size()],
+				"%d pts · %d PJ" % [int(mine.get("pts", 0)), int(mine.get("pj", 0))])
+	# Objetivos de la semana
+	var goals: Array = WeeklyGoalsEngine.current(WorldTickEngine.season, WorldTickEngine.current_epoch_day, SaveManager.load_world_seed())
+	var done := 0
+	var to_claim := 0
+	for g: Dictionary in goals:
+		if WeeklyGoalsEngine.is_done(g):
+			done += 1
+			if not bool(g.get("claimed", false)):
+				to_claim += 1
+	var sub_goals: String = ("¡%d por cobrar!" % to_claim) if to_claim > 0 else "esta semana"
+	_fill(b.goals, "%d de %d cumplidos" % [done, goals.size()], sub_goals)
+	# Entrenamiento: tu foco
+	var sub_tr: String = "Lesionado" if _player.injury_days_remaining > 0 else "Toca para entrenar"
+	_fill(b.training, _focus_label(WorldTickEngine.get_training_focus()), sub_tr)
+	# Práctica: retos cobrados
+	var pst: Dictionary = PracticeEngine.state(WorldTickEngine.season, WorldTickEngine.current_epoch_day,
+			SaveManager.load_world_seed(), _player.position == "GK")
+	_fill(b.practice, "%d/%d cobrados" % [int(pst.get("claims", 0)), PracticeEngine.MAX_CLAIMS_PER_WEEK], "retos de la semana")
+	# Vida personal
+	_fill(b.life, LifestyleEngine.home_label(_player.home_type), LifestyleEngine.car_label(_player.car_type))
+
+
+func _focus_label(key: String) -> String:
+	match key:
+		"physical": return "Físico"
+		"technical": return "Técnica"
+		"mental": return "Mental"
+	return "Equilibrado"
+
+
+func _fill(body: VBoxContainer, big: String, small: String) -> void:
+	for c in body.get_children():
+		c.queue_free()
+	var l := UiKit.tile_text(big, 15, Color.WHITE, true)
+	l.autowrap_mode = TextServer.AUTOWRAP_OFF
+	l.clip_text = true
+	l.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	body.add_child(l)
+	if small != "":
+		var s2 := UiKit.tile_text(small, 12, Color(0.75, 0.77, 0.82))
+		s2.autowrap_mode = TextServer.AUTOWRAP_OFF
+		s2.clip_text = true
+		s2.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		body.add_child(s2)
+
+
+func _refresh_hero_info() -> void:
+	for c in _hero_info.get_children():
+		c.queue_free()
+	var top := HBoxContainer.new()
+	top.add_theme_constant_override("separation", 8)
+	_hero_info.add_child(top)
+	top.add_child(UiKit.chip("%d" % _player.overall, PlayerCard.tier_color(_player.overall)))
+	var name_l := UiKit.tile_text(_player.player_name, 18, Color.WHITE, true)
+	name_l.autowrap_mode = TextServer.AUTOWRAP_OFF
+	name_l.clip_text = true
+	name_l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top.add_child(name_l)
+	var pos: String = _player.detailed_position if _player.detailed_position != "" else _player.position
+	top.add_child(UiKit.chip(pos, _accent))
+	_hero_info.add_child(_build_energy_row())
+	_hero_info.add_child(_build_level_row())
+
+
+func _refresh_match_tile() -> void:
+	for c in _mosaic_match.get_children():
+		c.queue_free()
+	var today := not _pending_fixture.is_empty()
+	var fx: Dictionary = _pending_fixture if today else WorldTickEngine.next_user_fixture(_user_club_id())
+	if fx.is_empty():
+		_mosaic_match.add_child(UiKit.tile_text("Sin partidos en el calendario", 16, Styles.GRAY_TEXT))
+		return
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", 18)
+	_mosaic_match.add_child(row)
+	var home_c: Control
+	var away_c: Control
+	var home_n: String
+	var away_n: String
+	if fx.has("opponent"):
+		var is_home: bool = bool(fx.get("is_home", true))
+		var opp := String(fx.get("opponent", "?"))
+		home_n = _player.country if is_home else opp
+		away_n = opp if is_home else _player.country
+		home_c = CountryFlags.flag_rect(home_n, 40)
+		away_c = CountryFlags.flag_rect(away_n, 40)
+	else:
+		var hc := WorldFactory.find_club(_world, String(fx.get("home_club_id", "")))
+		var ac := WorldFactory.find_club(_world, String(fx.get("away_club_id", "")))
+		home_n = hc.club_name if hc != null else "?"
+		away_n = ac.club_name if ac != null else "?"
+		home_c = Styles.club_crest(String(fx.get("home_club_id", "")), 52)
+		away_c = Styles.club_crest(String(fx.get("away_club_id", "")), 52)
+	row.add_child(_match_side(home_c, home_n))
+	var mid := VBoxContainer.new()
+	mid.alignment = BoxContainer.ALIGNMENT_CENTER
+	mid.custom_minimum_size.x = 120
+	var vs := UiKit.tile_text("HOY" if today else "VS", 24, Styles.GOLD if today else Color.WHITE, true)
+	vs.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	mid.add_child(vs)
+	var line := _fixture_line(fx)
+	var comp := ""
+	if line.contains("("):
+		comp = line.substr(line.rfind("(") + 1).trim_suffix(")")
+	var cl := UiKit.tile_text(comp, 12, _competition_color(fx).lightened(0.35))
+	cl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	mid.add_child(cl)
+	if not today:
+		var days_to: int = int(fx.get("epoch_day", 0)) - WorldTickEngine.current_epoch_day
+		var dl := UiKit.tile_text("en %d día%s" % [days_to, "" if days_to == 1 else "s"], 12, Color(0.8, 0.82, 0.86))
+		dl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		mid.add_child(dl)
+	row.add_child(mid)
+	row.add_child(_match_side(away_c, away_n))
+	UiKit._ignore_mouse(_mosaic_match)
+
+
+func _match_side(crest: Control, n: String) -> VBoxContainer:
+	var v := VBoxContainer.new()
+	v.custom_minimum_size.x = 170
+	v.alignment = BoxContainer.ALIGNMENT_CENTER
+	v.add_theme_constant_override("separation", 2)
+	var cc := CenterContainer.new()
+	cc.add_child(crest)
+	v.add_child(cc)
+	var l := UiKit.tile_text(n, 14, Color.WHITE, true)
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.autowrap_mode = TextServer.AUTOWRAP_OFF
+	l.clip_text = true
+	l.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	v.add_child(l)
+	return v
