@@ -182,6 +182,9 @@ func _ready() -> void:
 		while not done[0] and t2 < 14.0:
 			await get_tree().create_timer(0.4).timeout
 			t2 += 0.4
+			if args.has("dbg"):
+				for sn: PlayerAvatar in c.get("_snappers"):
+					print("SNAP anim=%s playing=%s pos=%.2f" % [sn.anim.current_animation, sn.anim.is_playing(), sn.anim.current_animation_position])
 			get_viewport().get_texture().get_image().save_png("res://build/m3d_cer_%s_%02d.png" % [tag, shots])
 			shots += 1
 	print("CEREMONY ", kind, " cuadros=", shots)

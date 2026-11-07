@@ -34,6 +34,15 @@ static func photographer(parent: Node3D, pos: Vector3, look: Vector3, vest: Colo
 	if av.anim.has_animation("kneel"):
 		av.anim.play("kneel")
 		av.anim.seek(randf() * av.anim.current_animation_length, true)
+	# La cámara va EN LAS MANOS (antes era una caja fija delante del pecho que se
+	# quedaba flotando mientras los brazos colgaban): brazos por código "cam_photo"
+	# (se la lleva a la cara, dispara, la baja) y la cámara sigue a las manos.
+	av.pose_arms("cam_photo", 0.01)
+	var ap := av.skeleton.get_children().filter(func(c: Node) -> bool: return c is ArmPose)
+	if not ap.is_empty():
+		(ap[0] as ArmPose).seed = randf() * 5.0
+	var grip := _CameraGrip.new()
+	grip.av = av
 	var body := MeshInstance3D.new()
 	var b := BoxMesh.new()
 	b.size = Vector3(0.16, 0.12, 0.12)
@@ -41,14 +50,24 @@ static func photographer(parent: Node3D, pos: Vector3, look: Vector3, vest: Colo
 	var m := StandardMaterial3D.new()
 	m.albedo_color = Color(0.05, 0.05, 0.06)
 	body.material_override = m
-	body.position = Vector3(0.0, 1.0, 0.32)
-	av.add_child(body)
+	grip.add_child(body)
+	var lens := MeshInstance3D.new()
+	var lm := CylinderMesh.new()
+	lm.top_radius = 0.035
+	lm.bottom_radius = 0.04
+	lm.height = 0.1
+	lens.mesh = lm
+	lens.material_override = m
+	lens.rotation.x = PI * 0.5
+	lens.position = Vector3(0.0, 0.0, 0.1)
+	grip.add_child(lens)
+	av.add_child(grip)
 	var light := OmniLight3D.new()
 	light.light_color = Color(0.95, 0.97, 1.0)
 	light.omni_range = 7.0
 	light.light_energy = 0.0
-	light.position = Vector3(0.0, 1.05, 0.45)
-	av.add_child(light)
+	light.position = Vector3(0.0, 0.0, 0.18)
+	grip.add_child(light)
 	av.set_meta("flash", light)
 	return av
 
@@ -133,3 +152,15 @@ static func step_to(n: Node3D, anim: AnimationPlayer, target: Vector3, speed: fl
 			anim.play(want, 0.25)
 		anim.speed_scale = clampf(spd / (3.2 if want == "jog" else 1.4), 0.6, 1.4)
 	return true
+
+
+## Cámara de fotos sujeta: cada cuadro se pone entre las manos del fotógrafo,
+## mirando hacia donde mira él (las manos las mueve ArmPose "cam_photo").
+class _CameraGrip extends Node3D:
+	var av: PlayerAvatar
+
+	func _process(_delta: float) -> void:
+		if av == null:
+			return
+		global_position = av.hands_position() + av.global_transform.basis.z.normalized() * 0.1
+		global_rotation = av.global_rotation
