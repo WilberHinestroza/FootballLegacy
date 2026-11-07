@@ -350,7 +350,16 @@ func _team_panel(side: String, team: MatchTeam, club: ClubData, away_kit: bool, 
 	var kit_holder := CenterContainer.new()
 	kit_holder.custom_minimum_size = Vector2(0, 66)
 	_kit_slot[side] = kit_holder
-	kit_holder.add_child(Kit.build_for_club_kit(kit_club, _season_year, away_kit, 60))
+	# 8-nov (Wilber: "en la camiseta podrías meter un jugador modelando el
+	# uniforme que se le ponga"): con el 3D, un jugador con la equipación
+	# elegida — tú en tu equipo, la figura (mejor media) en el rival.
+	var model: PlayerData = _kit_model(team)
+	if Preferences.match_3d and model != null:
+		var fig: Control = Match3DBridge.portrait(model, kit_club, 150, true, Color(0, 0, 0, 0), away_kit, not is_nat)
+		fig.custom_minimum_size = Vector2(120, 150)
+		kit_holder.add_child(fig)
+	else:
+		kit_holder.add_child(Kit.build_for_club_kit(kit_club, _season_year, away_kit, 60))
 	v.add_child(kit_holder)
 
 	var toggle := HBoxContainer.new()
@@ -378,6 +387,18 @@ func _team_panel(side: String, team: MatchTeam, club: ClubData, away_kit: bool, 
 	m.add_child(v)
 	panel.add_child(m)
 	return panel
+
+## Quién modela la equipación: tú si juegas en ese equipo; si no, su mejor titular.
+func _kit_model(team: MatchTeam) -> PlayerData:
+	var me: PlayerData = MatchState.user_player
+	if me != null and (team.starting_xi.has(me) or team.bench.has(me)):
+		return me
+	var best: PlayerData = null
+	for p: PlayerData in team.starting_xi:
+		if p.position != "GK" and (best == null or p.overall > best.overall):
+			best = p
+	return best
+
 
 func _mini_btn(text: String, active: bool, cb: Callable) -> Button:
 	var b := Button.new()
@@ -483,7 +504,7 @@ func _ball_selector() -> Control:
 	# ancha que la pantalla y ensanchaba toda la pestaña → tarjetas de
 	# equipos, pestañas y balones cortados a los costados.
 	var row := GridContainer.new()
-	row.columns = 8
+	row.columns = 7 if get_viewport_rect().size.x > get_viewport_rect().size.y else 8
 	row.add_theme_constant_override("h_separation", 6)
 	row.add_theme_constant_override("v_separation", 6)
 	row.size_flags_horizontal = Control.SIZE_SHRINK_CENTER

@@ -66,7 +66,10 @@ static func look_for(pl: PlayerData, wseed: int) -> Dictionary:
 ## pantallas de la carrera (carta, perfil, redes...). Sustituye al avatar pixel art.
 ## Con el 3D apagado en Ajustes vuelve al pixel art (móviles flojos).
 ## full_body: cuerpo entero con fondo transparente (cartas); si no, busto con fondo `bg`.
-static func portrait(p: PlayerData, club: ClubData, px: int, full_body := false, bg := Color(0.09, 0.13, 0.11)) -> Control:
+## away: con la equipación de visitante (mismos colores que Kit.build_for_club_kit).
+## stamp: false para clubes "de mentira" (selecciones), que no tienen escudo propio.
+static func portrait(p: PlayerData, club: ClubData, px: int, full_body := false, bg := Color(0.09, 0.13, 0.11),
+		away := false, stamp := true) -> Control:
 	var wseed: int = SaveManager.load_world_seed()
 	if not Preferences.match_3d:
 		var cfg: Dictionary = Avatar.config_for_player(p, wseed)
@@ -75,11 +78,18 @@ static func portrait(p: PlayerData, club: ClubData, px: int, full_body := false,
 		club = WorldFactory.find_club(_world(), p.club_id)
 	var shirt := Color(club.primary_color_hex) if club != null and club.primary_color_hex != "" else Color("#2a6ad9")
 	var sec := Color(club.secondary_color_hex) if club != null and club.secondary_color_hex != "" else Color.WHITE
+	if away:
+		var cc: Array = Kit._club_colors(club)
+		var body: Color = cc[1]
+		if body.is_equal_approx(cc[0]) or absf(body.get_luminance() - Color(cc[0]).get_luminance()) < 0.12:
+			body = Color.WHITE if Color(cc[0]).get_luminance() < 0.5 else Color("#1a1a1a")
+		sec = cc[0]
+		shirt = body
 	var face := PlayerPortrait.new(px, Color(0, 0, 0, 0) if full_body else bg, full_body)
 	face.set_profile(profile_for(p, wseed, shirt, sec, shirt),
-		{"shirt_pattern": _pattern(club, WorldTickEngine.get_season_start_year(), false), "shirt_color2": sec})
+		{"shirt_pattern": _pattern(club, WorldTickEngine.get_season_start_year(), away), "shirt_color2": sec})
 	# Escudo, patrocinio, dorsal y apellido en la camiseta (los mismos del partido)
-	if club != null:
+	if club != null and stamp:
 		var words: PackedStringArray = p.player_name.split(" ", false)
 		Avatar3D.stamp_kit(face, club.club_id, Kit.suggested_number(p.position, "%s|%d" % [p.player_name, wseed]),
 			words[words.size() - 1] if words.size() > 0 else "", shirt, sec)
