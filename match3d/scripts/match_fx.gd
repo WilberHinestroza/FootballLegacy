@@ -11,6 +11,12 @@ var _puffs: Array[CPUParticles3D] = []
 var _puff_i := 0
 
 
+## Crea los emisores de antemano (compila su material durante la salida al campo).
+func warm_up() -> void:
+	if _puffs.is_empty():
+		turf_puff(Vector3(0.0, -50.0, 0.0), 0.0)
+
+
 func turf_puff(pos: Vector3, strength: float) -> void:
 	if _puffs.is_empty():
 		var wet := FieldBuilder.weather == Weather.RAIN

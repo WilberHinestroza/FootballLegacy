@@ -28,6 +28,7 @@ const Momentum = preload("res://engine/match/m3d/Momentum.gd")
 const Offside = preload("res://engine/match/m3d/Offside.gd")
 const MatchFx = preload("res://match3d/scripts/match_fx.gd")
 const OutroHandshakes = preload("res://match3d/scripts/outro_handshakes.gd")
+const SwipeIntent = preload("res://engine/match/m3d/SwipeIntent.gd")
 
 # Cancha reglamentaria (metros)
 const FIELD_LENGTH := 105.0
@@ -282,14 +283,10 @@ var _subs_done := [0, 0]
 var _kit_shirt1 := Color.BLUE # camiseta del rival (rótulos de TV)
 ## Lo que pasó en el partido (goles, tiros, tus acciones): FootballCareer saca de aquí la nota.
 var match_stats := {}
-## Pesos de la nota en vivo. FootballCareer manda los suyos en config.rating_weights
-## (los de DecisionResolver), así la nota del marcador es la misma que la del resumen.
-const RATING_WEIGHTS := {"base": 6.2, "goal": 1.0, "assist": 0.7, "key_pass": 0.2, "shot": 0.05,
-	"recov": 0.3, "save": 0.3, "moment_ok": 0.15, "moment_fail": -0.15, "conceded": -0.2,
-	"gk_goal_against": -0.3, "win": 0.3, "loss": -0.3, "yellow": -0.3, "red": -1.2}
 var _shown_rating := -1.0
 var _names: Array = [[], []]          # nombre de cada jugador ("" = sin nombre)
 var _star_passed_to: SoccerPlayer = null # a quién diste el último pase (asistencias)
+var _star_pass_received := false # ese pase llegó (si él falla, no es fallo tuyo)
 var _moment_goal := -1                # equipo que marcó en la jugada actual
 var _scripted_goal_receiver: SoccerPlayer = null # pase clave: el compañero que define
 var _bench_until := 0.0               # empiezas en el banco hasta este minuto
@@ -450,6 +447,7 @@ func _setup_render_quality() -> void:
 	# triángulos; a esa distancia y en pantalla pequeña no se nota)
 	if OS.has_feature("mobile"):
 		vp.mesh_lod_threshold = 3.0
+	fx.warm_up() # los emisores se crean ya (antes: en la 1.ª barrida, con tirón)
 
 
 func _process(delta: float) -> void:
@@ -486,15 +484,42 @@ func _exit_tree() -> void:
 
 
 
+## Perfil por secciones (solo pruebas: Engine.set_meta("m3d_profile", true)).
+## prof[sección] = [usec acumulados, máximo de un frame].
+static var prof := {}
+static var prof_last := {} # [sección] = usec en el último frame de física
+var _pf_on := false
+var _pf_t := 0
+
+
+func _pf(sec: String) -> void:
+	if not _pf_on:
+		return
+	var now := Time.get_ticks_usec()
+	var d := now - _pf_t
+	_pf_t = now
+	var e: Array = prof.get(sec, [0, 0])
+	e[0] = int(e[0]) + d
+	e[1] = maxi(int(e[1]), d)
+	prof[sec] = e
+	prof_last[sec] = d
+
+
 func _physics_process(delta: float) -> void:
+	_pf_on = Engine.has_meta("m3d_profile")
+	_pf_t = Time.get_ticks_usec()
 	_hud.show_minimap(state == State.MOMENT_INTRO or state == State.MOMENT)
 	_update_name_tags()
+	_pf("name_tags")
 	match state:
 		State.SIMULATING:
 			if bool(config.get("ambient_ai", true)):
 				_run_ai()
+			_pf("ai")
 			_update_possession(delta)
+			_pf("possession")
 			_update_shoulder_contacts(delta)
+			_pf("shoulders")
 			_sim_step(delta)
 		State.LOCKER:
 			_freeze_players()
@@ -527,9 +552,13 @@ func _physics_process(delta: float) -> void:
 			_update_shot_charge()
 			_update_cross_zone(delta)
 			_update_play_chain(delta)
+			_pf("human")
 			_run_ai()
+			_pf("ai")
 			_update_possession(delta)
+			_pf("possession")
 			_update_shoulder_contacts(delta)
+			_pf("shoulders")
 			_check_moment_outcome(delta)
 		State.MOMENT_RESULT:
 			_freeze_players()
@@ -559,16 +588,21 @@ func _physics_process(delta: float) -> void:
 			if _cut_timer <= 0.0:
 				_end_cutscene()
 
+	_pf("state")
 	if (state == State.MOMENT or state == State.MOMENT_RESULT or state == State.PENALTY_SHOOTOUT) and not _replay_hold:
 		replay.record(self)
+	_pf("replay")
 	if state == State.SIMULATING or state == State.MOMENT:
 		_check_ball_escaped()
 	_update_camera(delta)
+	_pf("camera")
 	fx.follow_rain(_camera, state == State.LOCKER)
 	_camera_declutter()
+	_pf("declutter")
 	_update_aim_zone()
 	_apply_shake(delta)
 	_update_wave(delta)
+	_pf("misc")
 	var hud_key := "%d|%d|%d|%s|%d|%d" % [score[0], score[1], int(minute), State.keys()[state],
 		int(_shootout_scores[0]), int(_shootout_scores[1])]
 	if hud_key != _hud_key:
@@ -596,6 +630,7 @@ func _physics_process(delta: float) -> void:
 		_hud.set_timer(_decision_left / DECISION_SECONDS, true)
 	else:
 		_hud.set_timer(_moment_timer / MOMENT_SECONDS, state == State.MOMENT)
+	_pf("hud")
 
 
 # ---------- simulación ----------
@@ -732,6 +767,9 @@ func _simulate_minute(m: int) -> void:
 ## Los goles de la simulación también se juegan en el césped: pausa el reloj,
 ## arma un remate corto con el goleador y el portero, y sólo suma el tanto al
 ## cruzar el balón la línea (o al cerrar el plano de seguridad).
+var _ambient_miss_kind := "" # "", save, block, out, dead: cómo se resolvió la ocasión de fondo
+
+
 func _start_ambient_goal(team: int, at_minute: int, scorer_name: String) -> void:
 	var shooter: SoccerPlayer = null
 	for p: SoccerPlayer in teams[team]:
@@ -752,6 +790,7 @@ func _start_ambient_goal(team: int, at_minute: int, scorer_name: String) -> void
 	_ambient_goal_scored = false
 	_ambient_keeper_dived = false
 	_ambient_goal_timer = 6.0
+	_ambient_miss_kind = ""
 	_ambient_is_miss = false
 	_ambient_dive_wrong = randf() < 0.3
 	_ambient_goal_shot_side = 1.0 if randf() < 0.5 else -1.0
@@ -821,6 +860,7 @@ func _start_ambient_miss(team: int, at_minute: int, shooter_name: String) -> voi
 	_ambient_goal_scored = false
 	_ambient_keeper_dived = false
 	_ambient_goal_timer = 4.0
+	_ambient_miss_kind = ""
 	_ambient_is_miss = true
 	_ambient_dive_wrong = randf() < 0.2
 	_ambient_goal_shot_side = 1.0 if randf() < 0.5 else -1.0
@@ -891,10 +931,26 @@ func _update_ambient_goal(delta: float) -> void:
 			else:
 				_finish_ambient_goal()
 		return
+	# En cuanto se sabe que no entra (se fue por la línea, lo tiene el portero o se paró),
+	# se decide ya: antes se esperaba a que acabara el plano (4-6 s) mirando la nada.
+	if _ambient_goal_shot_taken and _ambient_miss_kind == "":
+		var adir := attack_dir(_ambient_goal_team)
+		var gline := opponent_goal_center(_ambient_goal_team).x * adir
+		var bo: SoccerPlayer = ball.owner_player
+		if bo != null and bo.team != _ambient_goal_team:
+			_ambient_miss_kind = "save" if bo.is_keeper else "block"
+		elif bo == null and ball.global_position.x * adir > gline + 0.4 				and (absf(ball.global_position.z - opponent_goal_center(_ambient_goal_team).z) > GOAL_WIDTH * 0.5 + 0.2
+				or ball.global_position.y > GOAL_HEIGHT + 0.2): # fuera de la portería (no un gol a punto de contar)
+			_ambient_miss_kind = "out"
+		elif bo == null and ball.linear_velocity.length() < 1.2 and _ambient_goal_timer < 3.2:
+			_ambient_miss_kind = "dead"
+		if _ambient_miss_kind != "":
+			_ambient_goal_timer = minf(_ambient_goal_timer, 0.7)
 	if _ambient_goal_timer <= 0.0:
 		# Si el balón no entró en la red, la ocasión se queda en nada: sin teletransporte
 		# ni marcador (antes se forzaba el gol de golpe, después de verlo ir fuera).
-		_hud.show_message("¡NO ENTRA!", 1.2)
+		var miss_txt: String = {"save": "¡PARADA!", "block": "¡TAPADO!", "out": "¡FUERA!"}.get(_ambient_miss_kind, "¡NO ENTRA!")
+		_hud.show_message(miss_txt, 1.2)
 		_hud.add_feed("%d'  Ocasión de %s, el balón se va" % [_ambient_goal_minute,
 				_ambient_goal_name if _ambient_goal_name != "" else TEAM_NAMES[_ambient_goal_team]])
 		_finish_ambient_goal()
@@ -1922,7 +1978,7 @@ func _start_halftime_walk() -> void:
 	_hud.show_replay_button(false)
 	_hud.set_sim_visible(false)
 	_hud.set_hint("")
-	_hud.show_message("DESCANSO\n%s %d - %d %s" % [TEAM_NAMES[0], score[0], score[1], TEAM_NAMES[1]], 2.6, 0.62)
+	_show_halftime_card()
 	SoundFx.play("whistle", -3.0)
 	Haptics.hit("whistle")
 	SoundFx.set_crowd(-8.0)
@@ -1946,6 +2002,24 @@ func _start_halftime_walk() -> void:
 	ball.owner_player = null
 	ball.freeze = true
 	ball.visible = false
+
+
+## Marcador del descanso con el mismo cartel que el final (escudos, goleadores,
+## minutos). Pedido de Wilber: "en el entretiempo también debe salir el marcador".
+## Una vez por descanso (la caminata y el vestuario lo piden los dos).
+var _ht_card_at := -100.0
+
+
+func _show_halftime_card() -> void:
+	if _now_s() - _ht_card_at < 10.0:
+		return
+	_ht_card_at = _now_s()
+	var ht := _final_card_data()
+	ht["title"] = "DESCANSO"
+	ht["winner"] = -1 # aún no gana nadie
+	if not bool(config.get("has_tie_carry", false)):
+		ht["footer"] = ""
+	_hud.show_final_card(ht, 5.0)
 
 
 func _end_halftime_walk() -> void:
@@ -2130,7 +2204,7 @@ func _start_locker() -> void:
 	_hud.set_sim_visible(false)
 	_hud.set_hint("")
 	SoundFx.set_crowd(-30.0)
-	_hud.show_message("DESCANSO\n%s %d - %d %s" % [TEAM_NAMES[0], score[0], score[1], TEAM_NAMES[1]], 2.2, 0.62)
+	_show_halftime_card()
 	get_tree().create_timer(2.4).timeout.connect(func() -> void:
 		if state != State.LOCKER:
 			return
@@ -2569,7 +2643,7 @@ func _restart() -> void:
 	sent_off = false
 	match_stats = {"shots": [0, 0], "sot": [0, 0], "corners": [0, 0], "fouls": [0, 0], "yellows": [0, 0],
 		"goals_log": [], "moments": 0, "moment_log": [],
-		"me": {"goals": 0, "assists": 0, "shots": 0, "key_passes": 0, "recov": 0, "saves": 0, "conceded": 0, "moments_ok": 0,
+		"me": {"goals": 0, "assists": 0, "shots": 0, "key_passes": 0, "recov": 0, "saves": 0, "conceded": 0, "moments_ok": 0, "moments_fail": 0,
 			"yellows": 0, "red": false}}
 	Engine.time_scale = 1.0
 	_set_human(null)
@@ -2613,6 +2687,7 @@ func _start_moment(kind: Moment, pl: Dictionary = {}) -> void:
 	_wall.clear()
 	_set_human(null)
 	_star_passed_to = null
+	_star_pass_received = false
 	_moment_goal = -1
 	_scripted_goal_receiver = null
 	_offside_snap = {}
@@ -3874,28 +3949,7 @@ func _check_moment_outcome(delta: float) -> void:
 func live_rating() -> float:
 	if match_stats.is_empty():
 		return 6.0
-	var w: Dictionary = RATING_WEIGHTS.merged(config.get("rating_weights", {}), true)
-	var me: Dictionary = match_stats.me
-	var ok := int(me.moments_ok)
-	var r := float(w.base)
-	r += int(me.goals) * float(w.goal) + int(me.assists) * float(w.assist)
-	r += int(me.key_passes) * float(w.key_pass) + int(me.shots) * float(w.shot)
-	r += int(me.recov) * float(w.recov) + int(me.saves) * float(w.save)
-	r += ok * float(w.moment_ok) + maxi(match_stats.moment_log.size() - ok, 0) * float(w.moment_fail)
-	r += int(me.conceded) * float(w.conceded)
-	if star and star.is_keeper:
-		r += score[1] * float(w.gk_goal_against)
-	var winner := _winner_team()
-	if winner == 0:
-		r += float(w.win)
-	elif winner == 1:
-		r += float(w.loss)
-	r = clampf(r, 3.0, 10.0)
-	if int(me.get("yellows", 0)) > 0:
-		r += float(w.yellow)
-	if bool(me.get("red", false)):
-		r += float(w.red)
-	return clampf(r, 1.0, 10.0)
+	return DecisionResolver.m3d_user_rating(match_stats.me) # misma fórmula que la nota final
 
 
 func _refresh_rating() -> void:
@@ -4032,8 +4086,13 @@ func _finish_moment(text: String) -> void:
 		match_stats.me.recov += 1
 	if _moment_goal == 1:
 		match_stats.me.conceded += 1
+	# ¿El fallo fue tuyo? Si tu pase llegó al compañero y él no la metió, no (tu pase
+	# ya suma como pase clave); si la perdiste o la tiraste fuera tú, sí.
+	var my_fail := not ok and not (is_attacking_moment() and _star_pass_received)
 	if ok:
 		match_stats.me.moments_ok += 1
+	elif my_fail:
+		match_stats.me.moments_fail += 1
 	# Nota de la jugada (la carrera la usa como "toques": perfecto / bueno / regular / flojo)
 	var grade := "bueno" if ok else "flojo"
 	if is_attacking_moment():
@@ -4841,13 +4900,16 @@ func _on_swiped(points: PackedVector2Array, duration: float) -> void:
 	if _try_skill_move(points, dir, to_goal):
 		return
 
-	# Deslizar hacia atrás con un rival delante = enganche (pisas y sales hacia el otro lado)
-	if (moment_type == Moment.ATTACK or moment_type == Moment.COUNTER) and dir.dot(to_goal) < -0.55:
-		if _do_enganche(dir, to_goal):
-			return
-	# Deslizar hacia un lado (no hacia la portería) = regate
+	# Regate, enganche o tiro: dirección + largo + velocidad del gesto (SwipeIntent).
 	if moment_type == Moment.ATTACK or moment_type == Moment.COUNTER:
-		if dir.dot(to_goal) < 0.45:
+		var vh := get_viewport().get_visible_rect().size.y
+		var len_frac := points[points.size() - 1].distance_to(points[0]) / maxf(vh, 1.0)
+		var intent := SwipeIntent.classify(dir.dot(to_goal), len_frac, len_frac / maxf(duration, 0.05),
+				flat_dist(human.global_position, opponent_goal_center(0)))
+		# Deslizar hacia atrás con un rival delante = enganche (pisas y sales hacia el otro lado)
+		if intent == SwipeIntent.HOOK and _do_enganche(dir, to_goal):
+			return
+		if intent == SwipeIntent.DODGE or intent == SwipeIntent.HOOK:
 			_do_dodge(dir)
 			return
 
@@ -5843,6 +5905,9 @@ func _give_ball(p: SoccerPlayer) -> void:
 	p.on_gained_ball()
 	if p == star:
 		pass_requested = false
+		_star_pass_received = false # vuelve a ser tuya: lo que pase ahora es cosa tuya
+	elif p == _star_passed_to and state == State.MOMENT:
+		_star_pass_received = true # tu pase llegó
 
 
 ## Solo manejas a tu jugador: tras pasar, se desmarca solo para la pared.
@@ -5858,7 +5923,7 @@ func on_pass(passer: SoccerPlayer, target: SoccerPlayer) -> void:
 	_reset_shot_chain()
 	_move_target = null
 	_reset_move_boost()
-	target.ai_timer = randf_range(0.5, 0.9) # el compañero controla antes de devolverla
+	target.ai_timer = randf_range(0.3, 0.55) # controla y decide (remata si está en zona)
 
 
 ## slide: barrida (planchazo). Más arriesgada: si llega tarde o se pasa, puede ser falta y amarilla.

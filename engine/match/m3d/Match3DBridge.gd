@@ -305,14 +305,6 @@ static func build_config(on_finish: Callable) -> Dictionary:
 		"final_trophy": _final_trophy(fixture), # final: si la ganas, ceremonia con la copa
 		"competition": _comp_label(fixture), # cinta del cartel de la salida
 		"final_trophy_id": _final_trophy_id(fixture, home_club), # qué trofeo 3D se levanta
-		# Nota en vivo del 3D con la misma fórmula que m3d_user_rating
-		"rating_weights": {"base": DecisionResolver.M3D_R_BASE, "goal": DecisionResolver.RATING_GOAL,
-			"assist": DecisionResolver.RATING_ASSIST, "key_pass": DecisionResolver.M3D_R_KEY_PASS,
-			"shot": DecisionResolver.M3D_R_SHOT, "recov": DecisionResolver.M3D_R_RECOV,
-			"save": DecisionResolver.RATING_GK_SAVE, "moment_ok": DecisionResolver.M3D_R_MOMENT_OK,
-			"moment_fail": DecisionResolver.M3D_R_MOMENT_FAIL, "conceded": DecisionResolver.M3D_R_CONCEDED,
-			"gk_goal_against": DecisionResolver.RATING_GOAL_AGAINST_GK, "win": DecisionResolver.M3D_R_WIN,
-			"loss": DecisionResolver.M3D_R_LOSS, "yellow": DecisionResolver.M3D_R_YELLOW, "red": DecisionResolver.M3D_R_RED},
 		# --- para to_match_result (el 3D no los lee)
 		"user_home": user_home, "us_team": us, "them_team": them,
 		"xg_us": xg_us, "xg_them": xg_them, "knockout": eng.is_knockout,
@@ -402,18 +394,15 @@ static func to_match_result(res: Dictionary, cfg: Dictionary) -> Dictionary:
 			winner_team = 0 if agg_us > agg_them else 1
 		elif shootout_winner != "":
 			winner_team = 0 if ((shootout_winner == "home") == uh) else 1
-	var won := winner_team == 0
-	var lost := winner_team == 1
 	var tie_winner := ""
 	if bool(cfg.knockout) and not bool(cfg.get("two_leg_first_leg", false)) and winner_team >= 0:
 		tie_winner = ("home" if uh else "away") if winner_team == 0 else ("away" if uh else "home")
 	var shootout_score: Array = res.get("shootout_score", [])
 	if shootout_score.size() == 2 and not uh:
 		shootout_score = [shootout_score[1], shootout_score[0]]
-	var rating: float = DecisionResolver.m3d_user_rating(me, int(st.moments), won, lost, p.position == "GK", int(sc[1]))
+	var rating: float = DecisionResolver.m3d_user_rating(me)
 	var yellows: int = int(me.get("yellows", 0))
 	var red: bool = bool(me.get("red", false))
-	rating = clampf(rating + DecisionResolver.M3D_R_YELLOW * mini(yellows, 1) + (DecisionResolver.M3D_R_RED if red else 0.0), 1.0, 10.0)
 	_fill_gesture_stats(st.get("moment_log", []))
 	var ev: Array[Dictionary] = []
 	for i in int(me.goals):

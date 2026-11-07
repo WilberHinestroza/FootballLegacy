@@ -14,10 +14,19 @@ var _pending_delete_slot: String = ""
 var _world_cache: Dictionary = {}   # world_seed -> world (evita rebuild por slot)
 
 func _ready() -> void:
-	# Prueba de rendimiento (un solo uso): ver tools/perf_test.gd.
+	# Medición de FPS en el celular (un solo uso, la crea adb): match3d/perf/perf_run.gd.
+	# 60 fps en el celular: las pantallas de 120 Hz hacían que la GPU fuera a tope todo
+	# el partido, el teléfono se calentaba y bajaba los fps justo al jugar.
+	if OS.has_feature("mobile"):
+		Engine.max_fps = 60
 	if FileAccess.file_exists("user://perftest"):
+		var args := FileAccess.get_file_as_string("user://perftest").strip_edges().split(" ", false)
+		if args.size() > 0 and args[0].is_valid_int():
+			Engine.set_meta("perf_seconds", int(args[0]))
+		if args.has("uncapped"):
+			Engine.max_fps = 0
 		DirAccess.remove_absolute("user://perftest")
-		get_tree().change_scene_to_file.call_deferred("res://tools/PerfTest.tscn")
+		get_tree().change_scene_to_file.call_deferred("res://match3d/perf/PerfRun.tscn")
 		return
 	SaveManager.migrate_legacy_slots_if_needed()
 	# Fondo de estadio (mismo helper que el partido / la barra superior).

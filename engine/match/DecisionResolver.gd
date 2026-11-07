@@ -1038,8 +1038,6 @@ const M3D_R_RECOV := 0.3
 const M3D_R_MOMENT_OK := 0.15
 const M3D_R_MOMENT_FAIL := -0.15
 const M3D_R_CONCEDED := -0.2         # gol rival en una jugada tuya de defensa
-const M3D_R_WIN := 0.3
-const M3D_R_LOSS := -0.3
 
 const M3D_R_YELLOW := -0.3            # amarilla tuya en el 3D (planchazo)
 const M3D_R_RED := -1.2               # expulsado por doble amarilla
@@ -1072,21 +1070,22 @@ static func m3d_possession(xg_us: float, xg_them: float, r: float) -> int:
 
 ## `me` = match_stats.me del partido 3D (goals, assists, shots, key_passes,
 ## recov, saves, conceded, moments_ok); `moments` = jugadas que te tocaron.
-static func m3d_user_rating(me: Dictionary, moments: int, won: bool, lost: bool, gk: bool, team_conceded: int) -> float:
-	var ok: int = int(me.get("moments_ok", 0))
+## Nota del jugador en el partido 3D: SOLO por lo que haces tú (7-nov, Wilber: "mi nota
+## depende de mis acciones, no del partido y mis compañeros; si tiro un pase y mi
+## compañero se come el gol no debería quitarme puntos"). Ya no suma ni resta ganar o
+## perder, ni los goles que encaja el equipo en la simulación, y una jugada solo cuenta
+## como fallada si el fallo fue tuyo (me.moments_fail). Única fórmula: la usan la nota
+## en vivo (SoccerMatch.live_rating) y la final (Match3DBridge.to_match_result).
+static func m3d_user_rating(me: Dictionary) -> float:
 	var r: float = M3D_R_BASE
 	r += int(me.get("goals", 0)) * RATING_GOAL + int(me.get("assists", 0)) * RATING_ASSIST
 	r += int(me.get("key_passes", 0)) * M3D_R_KEY_PASS + int(me.get("shots", 0)) * M3D_R_SHOT
 	r += int(me.get("recov", 0)) * M3D_R_RECOV + int(me.get("saves", 0)) * RATING_GK_SAVE
-	r += ok * M3D_R_MOMENT_OK + maxi(moments - ok, 0) * M3D_R_MOMENT_FAIL
-	r += int(me.get("conceded", 0)) * M3D_R_CONCEDED
-	if gk:
-		r += team_conceded * RATING_GOAL_AGAINST_GK
-	if won:
-		r += M3D_R_WIN
-	elif lost:
-		r += M3D_R_LOSS
-	return clampf(r, 3.0, 10.0)
+	r += int(me.get("moments_ok", 0)) * M3D_R_MOMENT_OK + int(me.get("moments_fail", 0)) * M3D_R_MOMENT_FAIL
+	r += int(me.get("conceded", 0)) * M3D_R_CONCEDED # gol rival en TU jugada de defensa/portería
+	r = clampf(r, 3.0, 10.0)
+	r += M3D_R_YELLOW * mini(int(me.get("yellows", 0)), 1) + (M3D_R_RED if bool(me.get("red", false)) else 0.0)
+	return clampf(r, 1.0, 10.0)
 
 ## Empate en un cruce: tanda de penaltis resuelta por la diferencia de xG.
 

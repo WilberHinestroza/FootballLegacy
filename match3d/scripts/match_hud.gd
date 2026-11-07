@@ -1112,7 +1112,7 @@ func show_final_card(data: Dictionary, hold := 6.0) -> void:
 	var gold := Color(1.0, 0.86, 0.4)
 
 	# Cinta: FINAL · competición
-	var top := "FINAL DEL PARTIDO"
+	var top := String(data.get("title", "FINAL DEL PARTIDO")) # "DESCANSO" en el entretiempo
 	if String(data.get("competition", "")) != "":
 		top += "  ·  " + String(data.competition).to_upper()
 	var tl := _label(22, root)

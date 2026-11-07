@@ -211,6 +211,16 @@ static func _with_ball(p: SoccerPlayer, m: SoccerMatch) -> void:
 		if for_star and (m.moment_type == SoccerMatch.Moment.CROSS or m.moment_type == SoccerMatch.Moment.CORNER):
 			p.cross_to(m.star) # centro / córner: a la cabeza de tu jugador
 			return
+		# Le llegó TU pase en zona de tiro: remata él (tu asistencia), no te la devuelve
+		if for_star and p == m._star_passed_to and dist < AiTuning.ASSIST_SHOT_RANGE 				and absf(p.global_position.z - goal.z) < 15.0:
+			if randf() < AiTuning.assist_shot_chance(p.stat("shooting"), p.stat("composure"), dist):
+				var keeper_a: SoccerPlayer = m.teams[1 - p.team][0]
+				var away_a := -signf(keeper_a.global_position.z - goal.z)
+				if away_a == 0.0:
+					away_a = 1.0 if randf() < 0.5 else -1.0
+				var side_a := SoccerMatch.GOAL_WIDTH * 0.5 - 0.6
+				p.shoot_at(goal + Vector3(0.0, 0.0, away_a * randf_range(side_a * 0.4, side_a)), clampf(0.5 + dist / 30.0, 0.55, 0.95))
+				return
 		if for_star:
 			var star := m.star
 			var lane := m.lane_clear(p.global_position, star.global_position, p.team)

@@ -25,6 +25,16 @@ static func star_cross_chance(passing: float, composure: float) -> float:
 
 
 ## Probabilidad de que un compañero resuelva solo (tiro) si tú no estás libre.
+## Compañero que recibe TU pase en zona de tiro (7-nov, Wilber: "mis compañeros casi
+## nunca patean para darme una asistencia"): remata con prioridad en vez de devolverla.
+## Muy probable dentro del área, menos desde lejos; su tiro y su calma lo ajustan.
+const ASSIST_SHOT_RANGE := 22.0
+static func assist_shot_chance(shooting: float, composure: float, dist: float) -> float:
+	var skill := clampf(shooting * 0.6 + composure * 0.4, 0.0, 1.0)
+	var near := 1.0 - clampf((dist - 8.0) / (ASSIST_SHOT_RANGE - 8.0), 0.0, 1.0)
+	return clampf(lerpf(0.35, 0.6, skill) + near * 0.4, 0.3, 0.95)
+
+
 static func star_solo_shot_chance(shooting: float, composure: float) -> float:
 	return lerpf(0.28, 0.52, clampf(shooting * 0.7 + composure * 0.3, 0.0, 1.0))
 
