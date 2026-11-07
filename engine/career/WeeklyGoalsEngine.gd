@@ -17,7 +17,7 @@ const POOL := [
 ]
 
 static func _week(day: int) -> int:
-	return int(day / 7)
+	return CalendarUtils.week_index(day)
 
 ## Los objetivos de esta semana (los crea si cambió la semana).
 static func current(season: Dictionary, day: int, world_seed: int) -> Array:

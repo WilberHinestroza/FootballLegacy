@@ -48,7 +48,7 @@ static func sprite_path(id: String) -> String:
 	return "res://assets/people/%s.png" % id
 
 static func outing_week(day: int) -> int:
-	return int(day / 7)
+	return CalendarUtils.week_index(day)
 
 static func outing_used(season: Dictionary, day: int) -> bool:
 	return int(season.get("outing_week", -1)) == outing_week(day)

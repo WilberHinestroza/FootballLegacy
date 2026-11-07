@@ -13,6 +13,14 @@ static func epoch_day_to_date(epoch_day: int) -> Dictionary:
 	var target_unix := base_unix + epoch_day * 86400
 	return Time.get_datetime_dict_from_unix_time(target_unix)
 
+## Semana de juego de un epoch_day: cambia SIEMPRE al llegar el domingo (7-nov, Wilber:
+## "que solo cambie de semana al pasar a domingo, para que sea más organizado").
+## ÚNICA fuente para todo lo semanal (tira "Tu semana", planificador, redes, objetivos,
+## sueldos…). Antes cada sistema usaba día / 7, que cortaba la semana en otro día.
+static func week_index(epoch_day: int) -> int:
+	var wd0: int = int(epoch_day_to_date(0).get("weekday", 0)) # 0 = domingo
+	return floori(float(epoch_day + wd0) / 7.0)
+
 static func season_start_year(epoch_day: int) -> int:
 	var date := epoch_day_to_date(epoch_day)
 	var year: int = date["year"]

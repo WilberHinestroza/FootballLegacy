@@ -26,7 +26,7 @@ const TITULAR_PROMISE_BOOST := 0.30
 const TITULAR_PROMISE_CAP := 0.85 # mismo techo que AgentEngine.LOBBY_CAP — nunca una garantía
 
 static func _week(day: int) -> int:
-	return int(day / 7.0)
+	return CalendarUtils.week_index(day)
 
 static func should_offer(player: PlayerData, day: int, season: Dictionary, rng: RandomNumberGenerator) -> bool:
 	if player == null or player.club_id == "":

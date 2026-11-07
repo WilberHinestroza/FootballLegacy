@@ -2714,7 +2714,7 @@ func _tick_press() -> void:
 	# jornada.
 	if season.is_empty() or user_club_id == "" or current_epoch_day % 7 != 0:
 		return
-	var week: int = int(current_epoch_day / 7.0)
+	var week: int = CalendarUtils.week_index(current_epoch_day)
 	if week < int(season.get("club_press_cd_week", -999)):
 		return
 	var rng := RandomNumberGenerator.new()
@@ -3061,7 +3061,7 @@ func _tick_life_events() -> void:
 	# COOLDOWN de 14 semanas entre propuestas — antes se rolaba cada semana
 	# sin memoria y el club te ofrecía subir el sueldo 4 veces en una
 	# temporada (reporte de Wilber). Máximo ~2 por temporada.
-	var wage_week: int = int(current_epoch_day / 7.0)
+	var wage_week: int = CalendarUtils.week_index(current_epoch_day)
 	if player.pending_wage_offer.is_empty() and wage_week >= int(season.get("wage_offer_cd_week", -999)):
 		var wage_rng := RandomNumberGenerator.new()
 		wage_rng.seed = hash("wage_offer:%d" % current_epoch_day) ^ world_seed
@@ -3091,7 +3091,7 @@ func _tick_life_events() -> void:
 	# jugás (misma condición que LoanEngine.can_request). Se avisa en la
 	# prensa y aparece el selector de destino en Traspasos. Caduca a los
 	# ~21 días si no decidís (cuesta un poco de confianza del DT).
-	var clw_week: int = int(current_epoch_day / 7.0)
+	var clw_week: int = CalendarUtils.week_index(current_epoch_day)
 	if not season.has("club_loan_offer") \
 			and clw_week >= int(season.get("club_loan_cooldown_week", -999)) \
 			and LoanEngine.can_request(player, season, current_epoch_day):
@@ -3158,7 +3158,7 @@ func _tick_life_events() -> void:
 	# cesión), el agente "filtra" a la prensa que hay clubes preguntando.
 	# Es solo ambiente — no genera oferta — pero hace sentir que el agente
 	# trabaja entre bambalinas. Cooldown de 5 semanas para no spamear.
-	var rumor_week: int = int(current_epoch_day / 7.0)
+	var rumor_week: int = CalendarUtils.week_index(current_epoch_day)
 	var nothing_on_table: bool = player.pending_wage_offer.is_empty() \
 			and player.pending_season_event.is_empty() \
 			and not season.has("club_loan_offer") \

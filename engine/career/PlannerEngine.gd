@@ -109,7 +109,7 @@ static func apply_day(player: PlayerData, season: Dictionary, id: String, rng: R
 	return ""
 
 static func week_of(day: int) -> int:
-	return int(day / 7.0)
+	return CalendarUtils.week_index(day)
 
 static func done_this_week(season: Dictionary, day: int) -> bool:
 	var pl: Dictionary = season.get("planner", {})

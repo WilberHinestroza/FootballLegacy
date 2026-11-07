@@ -101,7 +101,7 @@ const PSYCH_COST := 12
 const PSYCH_RECOVERY := 40.0
 
 static func _wellness_week(day: int) -> int:
-	return int(day / 7.0)
+	return CalendarUtils.week_index(day)
 
 static func wellness_used(season: Dictionary, key: String, day: int) -> bool:
 	var w: Dictionary = season.get("wellness", {})

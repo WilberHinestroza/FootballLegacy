@@ -930,9 +930,17 @@ func _refresh_week_strip() -> void:
 			_nat_wc = WorldTickEngine.world_cup_this_cycle()
 			_nat_ncup = WorldTickEngine.national_cup_for(nat_confederation)
 
+	# Semana fija de domingo a sábado (7-nov, Wilber: "que solo cambie de semana al
+	# pasar a domingo"). Antes era hoy + 6 días y la tira se corría cada día.
+	var today: int = WorldTickEngine.current_epoch_day
+	var wd: int = int(CalendarUtils.epoch_day_to_date(today).get("weekday", 0)) % 7
+	var sunday: int = today - wd
 	for offset in range(7):
-		var day: int = WorldTickEngine.current_epoch_day + offset
-		week_strip.add_child(_make_day_cell(day, offset == 0))
+		var day: int = sunday + offset
+		var cell := _make_day_cell(day, day == today)
+		if day < today:
+			cell.modulate = Color(1, 1, 1, 0.45) # ya pasó
+		week_strip.add_child(cell)
 
 ## Partido de selección de `day` (Mundial -> copa continental ->
 ## eliminatoria, mismo orden de prioridad que WorldTickEngine.

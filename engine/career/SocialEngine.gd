@@ -73,7 +73,7 @@ static func followed_tweets(season: Dictionary, world: Dictionary, world_seed: i
 	var following: Array = season.get("following", [])
 	if following.is_empty():
 		return []
-	var week: int = int(day / 7.0)
+	var week: int = CalendarUtils.week_index(day)
 	var out: Array = []
 	for key in following:
 		var k: String = String(key)
@@ -179,7 +179,7 @@ static func handle_for(player: PlayerData) -> String:
 ## --- Publicar ---
 
 static func week_of(day: int) -> int:
-	return int(day / 7.0)
+	return CalendarUtils.week_index(day)
 
 static func posts_left_this_week(season: Dictionary, day: int) -> int:
 	var s: Dictionary = season.get("social", {})

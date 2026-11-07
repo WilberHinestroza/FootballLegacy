@@ -17,7 +17,7 @@ static func weekly(wte, player: PlayerData, day: int) -> Array:
 	if wte == null or player == null or wte.world.is_empty():
 		return []
 	var rng := RandomNumberGenerator.new()
-	var week: int = int(day / 7.0)
+	var week: int = CalendarUtils.week_index(day)
 	rng.seed = hash("worldnews|%d" % week) ^ int(wte.world_seed)
 	var out: Array = []
 	var leagues: Array = wte.world.get("leagues", [])

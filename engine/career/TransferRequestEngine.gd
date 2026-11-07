@@ -19,7 +19,7 @@ const LISTEN_WEEKS := 8
 const STAY_COOLDOWN_WEEKS := 6
 
 static func _week(day: int) -> int:
-	return int(day / 7.0)
+	return CalendarUtils.week_index(day)
 
 ## ¿Se puede mostrar el botón "pedir salida"? (en el club, sin acuerdo
 ## pendiente, sin cesión en curso, sin un pedido ya activo y fuera del
