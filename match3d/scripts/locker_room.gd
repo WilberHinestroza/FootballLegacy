@@ -5,7 +5,7 @@ extends Node3D
 ## dando la charla. Tiene su propia cámara; SoccerMatch lo crea en el 45' y lo quita al volver.
 
 const SIZE := Vector3(13.0, 3.6, 9.0)  # ancho (x), alto, fondo (z)
-const SEAT_H := 0.45
+const SEAT_H := 0.26 # centro de la tabla: arriba a 0,30 (bajo, como un banco de vestuario)
 
 var camera: Camera3D
 var coach: PlayerAvatar
@@ -15,6 +15,10 @@ var _t := 0.0
 var _cam_from := Transform3D()
 var _cam_to := Transform3D()
 var _cam_time := 4.0
+## Cada compañero cambia de postura de vez en cuando (segundos que le quedan).
+var _fidget := {}
+## Tras los aplausos vuelven a sentarse normal.
+var _cheer_t := 0.0
 
 
 ## Construye la sala a partir del partido: colores del local y jugadores del equipo 0.
@@ -102,7 +106,8 @@ func build(m: SoccerMatch) -> void:
 		var sc := av.scale
 		av.transform = seats[order[seat_i]]
 		av.scale = sc
-		var anim: String = ["sit", "sit_2", "sit_3", "sit_talk"].pick_random()
+		av.position.y = av.sit_offset(SEAT_H + 0.04)
+		var anim: String = PlayerAvatar.SIT_ANIMS.pick_random()
 		if p == m.star:
 			you = av
 			anim = "sit"
@@ -182,12 +187,38 @@ func cheer() -> void:
 	coach.anim.play("fist_pump", 0.2)
 	if you:
 		you.anim.play("sit_clap", 0.2)
+	_cheer_t = 3.2
 
 
 func _process(delta: float) -> void:
 	_t += delta
 	var k := smoothstep(0.0, 1.0, clampf(_t / _cam_time, 0.0, 1.0))
 	camera.transform = _cam_from.interpolate_with(_cam_to, k)
-	# El míster alterna gritos y señalar la pizarra
+	# El míster alterna gritos y señalar la pizarra, y se va girando hacia
+	# distintos jugadores mientras habla
 	if not coach.anim.is_playing() or coach.anim.current_animation_position > 6.0:
-		coach.anim.play(["argue", "point", "yell"].pick_random(), 0.3)
+		coach.anim.play(["argue", "point", "yell", "argue_2"].pick_random(), 0.3)
+		if not mates.is_empty():
+			coach.set_meta("face", mates.pick_random().position)
+	if coach.has_meta("face"):
+		var to: Vector3 = coach.get_meta("face") - coach.position
+		var want := atan2(to.x, to.z)
+		coach.rotation.y = lerp_angle(coach.rotation.y, want, minf(delta * 1.5, 1.0))
+	var coach_head := coach.global_position + Vector3.UP * 1.65 * absf(coach.scale.y)
+	if _cheer_t > 0.0:
+		_cheer_t -= delta
+		if _cheer_t <= 0.0:
+			for av in mates + ([you] if you else []):
+				av.anim.play(PlayerAvatar.SIT_ANIMS.pick_random(), 0.6)
+	# Los compañeros escuchan al míster (lo miran) y se acomodan cada tanto
+	for av in mates:
+		av.look_at_point(coach_head, 0.8)
+		var left: float = _fidget.get(av, randf_range(3.0, 12.0)) - delta
+		if left <= 0.0 and _cheer_t <= 0.0:
+			left = randf_range(7.0, 16.0)
+			var cur := String(av.anim.current_animation)
+			var opts: Array = PlayerAvatar.SIT_ANIMS.filter(func(n: String) -> bool: return n != cur)
+			av.anim.play(opts.pick_random(), 0.8)
+		_fidget[av] = left
+	if you:
+		you.look_at_point(coach_head, 0.6)

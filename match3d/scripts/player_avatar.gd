@@ -389,6 +389,19 @@ func set_hair_style(id: String) -> void:
 	_hair_node = att
 
 
+## Sentados (animaciones de Mixamo "sit*"): a qué altura queda la parte de abajo de
+## los muslos con escala 1. Los asientos van a esa altura y cada jugador se sube o
+## baja según su estatura; si no, los muslos se hundían en el asiento.
+const SIT_SEAT_H := 0.37
+## Las de sentado en una silla normal ("sit_2" es encaramado, con las piernas en alto).
+const SIT_ANIMS := ["sit", "sit_3", "sit_talk"]
+
+
+## Altura del avatar para que se siente justo encima de un asiento a `seat_top`.
+func sit_offset(seat_top: float) -> float:
+	return seat_top - SIT_SEAT_H * absf(scale.y)
+
+
 func set_body_scale(s: Vector3) -> void:
 	scale = Vector3(s.x * (-1.0 if _mirrored else 1.0), s.y, s.z)
 

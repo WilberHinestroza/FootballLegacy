@@ -177,14 +177,14 @@ func _build_audience() -> void:
 			var side := -1.0 if k < 3 else 1.0
 			var x := side * (1.7 + (k % 3) * 1.15)
 			var z := 1.2 + row * 1.6
-			_add(FieldBuilder.box(Vector3(0.7, 0.45, 0.6)), Vector3(x, 0.225, z + 0.1), chair)
-			_add(FieldBuilder.box(Vector3(0.7, 0.8, 0.1)), Vector3(x, 0.6, z + 0.4), chair)
+			_add(FieldBuilder.box(Vector3(0.7, PlayerAvatar.SIT_SEAT_H, 0.6)), Vector3(x, PlayerAvatar.SIT_SEAT_H * 0.5, z + 0.1), chair)
+			_add(FieldBuilder.box(Vector3(0.7, 0.8, 0.1)), Vector3(x, PlayerAvatar.SIT_SEAT_H + 0.4, z + 0.4), chair)
 			var av := PlayerAvatar.new()
 			add_child(av)
 			_suit(av, rng, Color.from_hsv(rng.randf(), 0.4, 0.3))
-			av.position = Vector3(x, 0.0, z)
+			av.position = Vector3(x, av.sit_offset(PlayerAvatar.SIT_SEAT_H), z)
 			av.rotation.y = PI # mirando al escenario
-			av.anim.play(["sit_talk", "sit", "sit_2"][rng.randi() % 3])
+			av.anim.play(PlayerAvatar.SIT_ANIMS[rng.randi() % 3])
 			av.anim.seek(rng.randf() * av.anim.current_animation_length, true)
 			_audience.append(av)
 

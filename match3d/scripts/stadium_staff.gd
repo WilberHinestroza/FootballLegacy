@@ -17,7 +17,8 @@ const SIT_KNEE := -85.0
 const SIT_DROP := -0.38
 const KNEEL_BACK := -15.0
 const KNEEL_DROP := -0.45
-const SIT_ANIM_DROP := 0.0 # con las animaciones de sentado
+const DUGOUT_H := 1.85    # alto del banquillo (pared del fondo y techo)
+const DUGOUT_SEAT := 0.36 # alto del asiento del banquillo (PlayerAvatar.SIT_SEAT_H)
 const ROW_HALF := 0.6 # media fila: la primera fila de grada está centrada en la boca
 
 var _match: SoccerMatch
@@ -185,6 +186,7 @@ func seat_user(p: PlayerProfile, kit: Dictionary) -> Node3D:
 	var look := {"long_sleeves": true, "shorts_color": p.shorts, "socks_color": p.socks}
 	look.merge(kit, true)
 	av.set_colors(look)
+	av.position.y = av.sit_offset(DUGOUT_SEAT) # tu estatura puede ser otra
 	return user_seat
 
 
@@ -262,10 +264,21 @@ func _process(delta: float) -> void:
 				var left: float = float(p.get_meta("clap_t")) - delta
 				if left <= 0.0:
 					p.remove_meta("clap_t")
-					(p.get_meta("avatar") as PlayerAvatar).anim.play(["sit", "sit_2", "sit_talk"].pick_random(), 0.4)
+					(p.get_meta("avatar") as PlayerAvatar).anim.play(PlayerAvatar.SIT_ANIMS.pick_random(), 0.4)
 				else:
 					p.set_meta("clap_t", left)
-			elif not (p.get_meta("avatar") as PlayerAvatar).anim.has_animation("sit_clap"):
+			elif p != user_seat:
+				# Siguen el partido con la mirada y se acomodan en el asiento cada tanto
+				var sav: PlayerAvatar = p.get_meta("avatar")
+				sav.look_at_point(b, 0.75)
+				var left2: float = float(p.get_meta("fidget", randf_range(4.0, 14.0))) - delta
+				if left2 <= 0.0 and _celebrate[t] <= 0.0:
+					left2 = randf_range(8.0, 20.0)
+					var cur := String(sav.anim.current_animation)
+					var opts: Array = PlayerAvatar.SIT_ANIMS.filter(func(n: String) -> bool: return n != cur)
+					sav.anim.play(opts.pick_random(), 0.8)
+				p.set_meta("fidget", left2)
+			if not (p.get_meta("avatar") as PlayerAvatar).anim.has_animation("sit_clap") and not p.has_meta("clap_t"):
 				p.position.y = (p.get_meta("seat_y") as float) + (absf(sin(_t * 8.0 + p.position.x)) * 0.3 if _celebrate[t] > 0.0 else 0.0)
 	_update_refs(b, delta)
 	_update_sub(delta)
@@ -700,25 +713,27 @@ func _dugout(center: Vector3, color: Color, team: int) -> void:
 	var length := 9.0
 	var glass := FieldBuilder.mat(Color(0.75, 0.85, 0.95, 0.3))
 	var frame := Color(0.25, 0.27, 0.3)
-	FieldBuilder.add_mesh(self, FieldBuilder.box(Vector3(length, 2.3, 0.15)), center + Vector3(0.0, 1.15, -0.9), frame)
+	# Banquillo bajo (antes 2,3 m: tapaba la grada y se veía enorme)
+	FieldBuilder.add_mesh(self, FieldBuilder.box(Vector3(length, DUGOUT_H, 0.15)), center + Vector3(0.0, DUGOUT_H * 0.5, -0.9), frame)
 	var roof := MeshInstance3D.new()
 	roof.mesh = FieldBuilder.box(Vector3(length, 0.08, 2.1))
 	roof.material_override = glass
-	roof.position = center + Vector3(0.0, 2.3, 0.1)
+	roof.position = center + Vector3(0.0, DUGOUT_H, 0.1)
 	roof.rotation.x = -0.12
 	add_child(roof)
 	for sx: float in [-1.0, 1.0]:
 		var side := MeshInstance3D.new()
-		side.mesh = FieldBuilder.box(Vector3(0.06, 2.2, 2.0))
+		side.mesh = FieldBuilder.box(Vector3(0.06, DUGOUT_H - 0.1, 2.0))
 		side.material_override = glass
-		side.position = center + Vector3(sx * length * 0.5, 1.1, 0.1)
+		side.position = center + Vector3(sx * length * 0.5, (DUGOUT_H - 0.1) * 0.5, 0.1)
 		add_child(side)
 	# Asientos y suplentes
 	var seats := 8
 	for i in seats:
 		var x := center.x + (i - (seats - 1) * 0.5) * 1.0
-		FieldBuilder.add_mesh(self, FieldBuilder.box(Vector3(0.5, 0.45, 0.5)), Vector3(x, 0.22, center.z - 0.35), color.darkened(0.3))
-		FieldBuilder.add_mesh(self, FieldBuilder.box(Vector3(0.5, 0.7, 0.12)), Vector3(x, 0.8, center.z - 0.62), color.darkened(0.3))
+		# Asiento a la altura a la que se sienta el modelo (antes 0,45: se hundían)
+		FieldBuilder.add_mesh(self, FieldBuilder.box(Vector3(0.5, DUGOUT_SEAT, 0.5)), Vector3(x, DUGOUT_SEAT * 0.5, center.z - 0.35), color.darkened(0.3))
+		FieldBuilder.add_mesh(self, FieldBuilder.box(Vector3(0.5, 0.62, 0.12)), Vector3(x, DUGOUT_SEAT + 0.31, center.z - 0.62), color.darkened(0.3))
 		if i < 7:
 			# Suplente con la camiseta del equipo de manga larga; algunos con el peto de calentar
 			var look: Dictionary = {"shirt_color": color, "long_sleeves": true,
@@ -936,9 +951,9 @@ func _pose(av: PlayerAvatar, pose: String) -> void:
 		return
 	# Sentado: animaciones de Mixamo si el modelo las trae (cada uno una distinta)
 	if pose == "sit" and av.anim.has_animation("sit"):
-		av.anim.play(["sit", "sit_2", "sit_3", "sit_talk", "sit_talk"].pick_random())
+		av.anim.play((PlayerAvatar.SIT_ANIMS + ["sit_talk"]).pick_random())
 		av.anim.seek(randf() * av.anim.current_animation_length, true)
-		av.position.y = SIT_ANIM_DROP
+		av.position.y = av.sit_offset(DUGOUT_SEAT)
 		return
 	av.anim.seek(0.0, true)
 	av.anim.pause()

@@ -34,6 +34,27 @@ func _ready() -> void:
 				RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_OBJECTS_IN_FRAME),
 				RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME),
 				find_children("*", "PlayerAvatar", true, false).size()])
+	elif kind == "bench":
+		# Banquillo local de frente y de lado: suplentes sentados (que no se hundan)
+		var cam := Camera3D.new()
+		cam.fov = 40.0
+		m.add_child(cam)
+		cam.make_current()
+		var bench: Array = m.staff._bench_people[0]
+		var mid: Node3D = bench[bench.size() / 2]
+		for view: Vector3 in [Vector3(0.0, 1.3, 4.5), Vector3(3.0, 1.0, 2.2), Vector3(-2.0, 0.7, 1.8)]:
+			cam.global_position = mid.global_position + view
+			cam.look_at(mid.global_position + Vector3(0.0, 0.7, 0.0))
+			for k in 6:
+				await RenderingServer.frame_post_draw
+			get_viewport().get_texture().get_image().save_png("res://build/m3d_cer_%s_%02d.png" % [tag, shots])
+			shots += 1
+	elif kind == "locker":
+		m._start_locker()
+		for k in 4:
+			await get_tree().create_timer(1.5).timeout
+			get_viewport().get_texture().get_image().save_png("res://build/m3d_cer_%s_%02d.png" % [tag, shots])
+			shots += 1
 	elif kind == "staff":
 		# Primeros planos del personal de banda (camarógrafos, fotógrafos, recogepelotas)
 		var cam := Camera3D.new()
