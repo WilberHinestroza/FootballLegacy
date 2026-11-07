@@ -206,6 +206,7 @@ var _var := {}           # revisión en curso (estado VAR_REVIEW)
 var _var_cleared := false
 var _corner_exempt := false # del saque de esquina no hay fuera de juego
 var _trap_until := [0.0, 0.0]
+var _line_shift := [0.0, 0.0] # m que la línea defensiva de cada equipo sube (+) o recula (-)
 var _trap_next := [0.0, 0.0]
 ## Segundos de plano de la tarjeta (la cámara enfoca al árbitro y al infractor).
 var _card_cam_t := 0.0
@@ -6452,8 +6453,11 @@ func formation_target(p: SoccerPlayer, bpos: Variant = null, poss: int = -2) -> 
 		bxx = _df_base_mean(p.team) # defensa en línea: todos a la misma altura
 	var x: float = bxx + (bx + 5.0) * float(ROLE_SHIFT[role]) + (float(ROLE_PUSH[role]) if attacking else -3.0)
 	x += team_mentality(p.team) * (0.6 if role == "ST" else 1.0)
-	if role == "DF" and not attacking and _now_s() < float(_trap_until[p.team]):
-		x += 3.5 # salen todos a la vez: el delantero queda en fuera de juego
+	if role == "DF" and not attacking:
+		x += float(_line_shift[p.team]) # la línea sube o recula entera
+		if _now_s() < float(_trap_until[p.team]):
+			x += 3.5 # salen todos a la vez: el delantero queda en fuera de juego
+		x = minf(x, bx - Offside.LINE_BALL_GAP) # nunca por delante del balón
 	x = clampf(x, float(ROLE_MIN_X[role]), float(ROLE_MAX_X[role]))
 	# La defensa no se queda por detrás del balón cuando atacamos (fuera de juego del rival)
 	if attacking and role == "DF":
@@ -7011,6 +7015,7 @@ func _onside_setup(kind: Moment) -> void:
 ## Línea adelantada: cada pocos segundos, si el rival lleva el balón, la defensa
 ## puede salir a la vez (AiTuning.offside_trap_chance según su lectura).
 func _update_offside_trap() -> void:
+	_update_line_shift()
 	var holder := ball.owner_player
 	if holder == null:
 		return
@@ -7030,6 +7035,28 @@ func _update_offside_trap() -> void:
 			n += 1
 	if n > 0 and randf() < AiTuning.offside_trap_chance(dm / n):
 		_trap_until[t] = now + 1.4
+
+
+## Línea coordinada: el equipo que defiende mueve su línea entera a la vez
+## (reglas en Offside.line_shift).
+func _update_line_shift() -> void:
+	var dt := get_physics_process_delta_time()
+	var holder := ball.owner_player
+	for t in 2:
+		var target := 0.0
+		if holder != null and holder.team != t:
+			var hv := flat(holder.velocity)
+			var fwd := 0.0
+			if hv.length() > 1.0:
+				fwd = hv.x * attack_dir(holder.team) / hv.length()
+			var near: SoccerPlayer = _nearest_of_team(t, holder.global_position, [], 4.0)
+			target = Offside.line_shift(fwd, near != null, false)
+		elif holder == null:
+			var bv := flat(ball.linear_velocity)
+			# Balón suelto que vuelve hacia el campo de quien atacaba: la línea sube
+			if possession_team == 1 - t and bv.length() > 5.0 and bv.x * attack_dir(1 - t) < -3.0:
+				target = Offside.line_shift(0.0, false, true)
+		_line_shift[t] = move_toward(float(_line_shift[t]), target, Offside.LINE_EASE * dt)
 
 
 ## Altura media de los defensas en la formación (para defender en línea).

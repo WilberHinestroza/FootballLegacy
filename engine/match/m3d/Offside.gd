@@ -45,3 +45,27 @@ static func hold_x(line: float, slack: float) -> float:
 ## más de `gap` m por delante de la línea y el balón todavía está lejos.
 static func leave_offside_runner(attacker_x: float, line: float, ball_dist: float, gap := 1.0) -> bool:
 	return attacker_x > line + gap and ball_dist > 18.0
+
+
+## Línea defensiva coordinada (7-nov): los defensas suben o recúlan JUNTOS según lo
+## que hace el que lleva el balón (antes la línea solo seguía la altura del balón).
+## Sube cuando el rival juega hacia atrás o recibe de espaldas: deja atacantes en
+## fuera de juego. Recula cuando encara de frente y sin presión: tapa el pase al hueco.
+const LINE_STEP_UP := 4.0
+const LINE_DROP := 3.5
+## Velocidad (m/s) a la que se mueve la línea entera: todos a la vez, sin tirones.
+const LINE_EASE := 2.4
+## Distancia mínima entre la línea y el balón (no se queda nunca por delante de él).
+const LINE_BALL_GAP := 4.0
+
+
+## `forward` = cuánto avanza el poseedor hacia nuestra portería (-1..1, por su
+## velocidad); `back_pass` = el balón suelto viaja hacia su campo a buena velocidad.
+static func line_shift(forward: float, pressured: bool, back_pass: bool) -> float:
+	if back_pass:
+		return LINE_STEP_UP
+	if forward < -0.3 or (pressured and forward < 0.3):
+		return LINE_STEP_UP * 0.6 # de espaldas o apretado sin poder girar: arriba
+	if forward > 0.5 and not pressured:
+		return -LINE_DROP
+	return 0.0
