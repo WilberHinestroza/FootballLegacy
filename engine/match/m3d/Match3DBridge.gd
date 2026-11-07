@@ -108,6 +108,10 @@ static func profile_for(p: PlayerData, wseed: int, shirt: Color, shorts: Color, 
 		if ItemCatalog.GUAYOS.has(id) and (id == "" or p.cosmetics_owned.has(id)):
 			prof.guayos = id
 			break
+	# La cinta de la tienda también se lleva jugando (los gorros no)
+	var head: String = String(p.cosmetics_equipped.get("acc_head", ""))
+	if PlayerProfile.MATCH_HEADWEAR.has(head) and p.cosmetics_owned.has(head):
+		prof.headband = head
 	prof.stats = _stats(p)
 	# La energía del Hub pesa en el partido (DecisionResolver.m3d_energy_stats)
 	var en: Dictionary = DecisionResolver.m3d_energy_stats(prof.stats, clampf(100.0 - p.fatigue_physical, 0.0, 100.0))

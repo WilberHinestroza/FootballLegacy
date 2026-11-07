@@ -222,11 +222,113 @@ solid(ber, 0.7)
 stem = ball("boina_1", Vector((-3.0, TOP + 1.6, 2.0)), 1.0, 8)
 made += [ber, stem]
 
-# Todo pesado al hueso de la cabeza, con el mismo esqueleto
-for ob in made:
+# ---- Cadenas: un hilo que se apoya en la nuca y cae sobre la camiseta ----
+# (un aro rígido no podía seguir el cuello y el pecho a la vez: quedaba dentro de la
+# camiseta 3D o flotando delante). Se proyecta sobre el cuerpo en reposo, por fuera de
+# la camiseta, y se pesa entre el cuello y el pecho para moverse con los dos.
+torso = bpy.data.objects.new("TorsoTarget", body.data.copy())
+torso.matrix_world = body.matrix_world
+bpy.context.collection.objects.link(torso)
+NECK_BONE, CHEST_BONE = "mixamorig:Neck", "mixamorig:Spine2"
+SHIRT_OFF = 1.4  # lo que infla la camiseta (build_garments.py, top_short)
+
+
+def necklace_path(n, drop):
+    """Puntos del collar alrededor del cuello: arriba en la nuca, en V suave delante."""
+    pts = []
+    for i in range(n):
+        a = 2 * math.pi * i / n  # 0 = delante
+        c = (1.0 + math.cos(a)) * 0.5  # 1 delante, 0 detrás
+        y = 149.0 - drop * c ** 1.6
+        r = 14.5 + 9.0 * c
+        pts.append(Vector((math.sin(a) * r, y, -2.0 + math.cos(a) * r * (1.0 + 0.6 * c))))
+    return pts
+
+
+def project(pts, offset):
+    me = bpy.data.meshes.new("proj")
+    me.from_pydata([p for p in pts], [], [])
+    ob = bpy.data.objects.new("proj", me)
+    ob.matrix_world = body.matrix_world
+    bpy.context.collection.objects.link(ob)
+    sw = ob.modifiers.new("wrap", "SHRINKWRAP")
+    sw.target = torso
+    sw.wrap_method = "NEAREST_SURFACEPOINT"
+    sw.wrap_mode = "OUTSIDE_SURFACE"
+    sw.offset = offset
+    bpy.context.view_layer.objects.active = ob
+    bpy.ops.object.modifier_apply(modifier="wrap")
+    out = [v.co.copy() for v in ob.data.vertices]
+    bpy.data.objects.remove(ob, do_unlink=True)
+    # suaviza el recorrido (cerrado) para que no siga cada arista de la malla
+    for _ in range(3):
+        out = [(out[i - 1] + out[i] * 2 + out[(i + 1) % len(out)]) / 4 for i in range(len(out))]
+    return out
+
+
+def tube(name, pts, r, sides=8):
+    me = bpy.data.meshes.new(name)
+    bm = bmesh.new()
+    n = len(pts)
+    rings = []
+    for i in range(n):
+        t = (pts[(i + 1) % n] - pts[i - 1]).normalized()
+        u = t.cross(Vector((0, 1, 0)))
+        if u.length < 1e-4:
+            u = Vector((1, 0, 0))
+        u.normalize()
+        w = t.cross(u).normalized()
+        rings.append([bm.verts.new(pts[i] + (u * math.cos(k * 2 * math.pi / sides) + w * math.sin(k * 2 * math.pi / sides)) * r) for k in range(sides)])
+    for i in range(n):
+        a, b = rings[i], rings[(i + 1) % n]
+        for k in range(sides):
+            f = bm.faces.new((a[k], a[(k + 1) % sides], b[(k + 1) % sides], b[k]))
+            f.smooth = True
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
+    bm.to_mesh(me)
+    bm.free()
+    ob = bpy.data.objects.new(name, me)
+    ob.matrix_world = body.matrix_world
+    bpy.context.collection.objects.link(ob)
+    return ob
+
+
+def pendant(name, at, r, th):
+    """Medalla apoyada en el pecho: un disco de cara a +Z, algo inclinado."""
+    bpy.ops.mesh.primitive_cylinder_add(vertices=20, radius=r, depth=th)
+    ob = bpy.context.active_object
+    ob.name = name
+    ob.matrix_world = body.matrix_world
+    for v in ob.data.vertices:
+        # el cilindro ya tiene el eje en Z (malla: +Z hacia delante)
+        v.co = at + Vector((0.0, -r * 0.9, th * 0.5 + 0.2)) + v.co
+    for p in ob.data.polygons:
+        p.use_smooth = True
+    return ob
+
+
+chains = []
+for cid, thick, drop, pr in (("cadena_fina", 0.28, 12.0, 1.6), ("cadena_gruesa", 0.55, 14.0, 2.6)):
+    path = project(necklace_path(72, drop), SHIRT_OFF + thick + 0.35)
+    ch = tube(cid + "_0", path, thick)
+    front = max(path, key=lambda p: p.z)
+    pd = pendant(cid + "_1", front, pr, 0.5)
+    chains += [ch, pd]
+bpy.data.objects.remove(torso, do_unlink=True)
+
+# Gorras: todo al hueso de la cabeza. Cadenas: entre el cuello y el pecho por altura.
+for ob in made + chains:
     ob.vertex_groups.clear()
-    vg = ob.vertex_groups.new(name=HEAD_BONE)
-    vg.add(list(range(len(ob.data.vertices))), 1.0, "REPLACE")
+    if ob in chains:
+        gn = ob.vertex_groups.new(name=NECK_BONE)
+        gc = ob.vertex_groups.new(name=CHEST_BONE)
+        for v in ob.data.vertices:
+            k = max(0.0, min(1.0, (v.co.y - 139.0) / 8.0))
+            gn.add([v.index], k, "REPLACE")
+            gc.add([v.index], 1.0 - k, "REPLACE")
+    else:
+        vg = ob.vertex_groups.new(name=HEAD_BONE)
+        vg.add(list(range(len(ob.data.vertices))), 1.0, "REPLACE")
     ob.parent = rig
     ob.matrix_parent_inverse = rig.matrix_world.inverted()
     arm = ob.modifiers.new("arm", "ARMATURE")
@@ -234,6 +336,7 @@ for ob in made:
 
 bpy.data.objects.remove(target, do_unlink=True)
 bpy.data.objects.remove(body, do_unlink=True)
+made += chains
 for ob in list(bpy.data.objects):
     if ob.type == "MESH" and ob not in made:
         bpy.data.objects.remove(ob, do_unlink=True)

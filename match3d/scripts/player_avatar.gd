@@ -469,6 +469,7 @@ func apply_profile(p: PlayerProfile) -> void:
 	set_colors(p.colors())
 	set_body_scale(p.body_scale())
 	set_hair_style(p.hair_style)
+	set_accessories({"acc_head": p.headband} if p.headband != "" else {})
 
 
 ## Estampados de la camiseta (KitDecals): escudo, patrocinio, dorsal y apellido.
@@ -607,8 +608,8 @@ func set_accessories(acc: Dictionary) -> void:
 		var id := String(acc.get(slot, ""))
 		if id == "":
 			continue
-		# Gorras y gorros: modelados sobre la cabeza (Hats), no piezas sueltas encima
-		if slot == "acc_head" and Hats.has(id):
+		# Gorras, gorros y cadenas: modelados sobre el cuerpo (Hats), no piezas sueltas
+		if slot in ["acc_head", "acc_neck"] and Hats.has(id):
 			_items[slot] = Hats.make(id, skeleton)
 			continue
 		var bone := "LeftHand" if slot == "acc_wrist" else ("Neck" if slot == "acc_neck" else "Head")
@@ -683,8 +684,10 @@ func _visor_mesh(r0: float, depth: float) -> Mesh:
 
 ## Patilla de gafas: del borde del cristal (x = `from_x`, delante) a la oreja.
 func _temple(h: Node3D, sx: float, y: float, from_x: float, m: Material, t: float) -> void:
+	# Medido en la malla: a la altura de los ojos la cabeza mide ~0.19 de ancho por lado
+	# y la oreja queda cerca de z = 0 (las patillas antes acababan en el aire)
 	var a := Vector3(sx * from_x, y, HEAD_C.z + HEAD_R * 0.95)
-	var b := Vector3(sx * HEAD_R * 0.98, y + 0.005, HEAD_C.z + HEAD_R * 0.05)
+	var b := Vector3(sx * 0.188, y + 0.004, -0.005)
 	var bar := BoxMesh.new()
 	bar.size = Vector3(t, t, a.distance_to(b))
 	var mi := MeshInstance3D.new()
@@ -750,16 +753,19 @@ func _build_accessory(h: Node3D, id: String) -> void:
 		"cadena_fina", "cadena_gruesa":
 			var ring := TorusMesh.new()
 			var thick := 0.011 if id == "cadena_fina" else 0.02
-			ring.inner_radius = 0.16
-			ring.outer_radius = 0.16 + thick
-			# Cuelga sobre el pecho, por fuera de la camiseta 3D (abulta más que la
-			# pintada: la cadena quedaba dentro de la tela), con colgante delante
-			_acc_mesh(h, ring, Vector3(0, -0.07, 0.16), gold, Vector3(0.5, 0, 0), Vector3(0.85, 1.0, 1.0))
+			ring.inner_radius = 0.15
+			ring.outer_radius = 0.15 + thick
+			ring.rings = 48
+			# Rodea el cuello (antes el aro estaba centrado 16 cm por delante y quedaba
+			# como una sonrisa pintada en el pecho): atrás toca la nuca, delante cae
+			# sobre el pecho por fuera de la camiseta, con el colgante al final
+			_acc_mesh(h, ring, Vector3(0, 0.02, 0.012), gold, Vector3(0.47, 0, 0), Vector3(0.95, 1.0, 1.08))
 			var tag := CylinderMesh.new()
-			tag.top_radius = 0.02 if id == "cadena_fina" else 0.032
+			tag.top_radius = 0.018 if id == "cadena_fina" else 0.03
 			tag.bottom_radius = tag.top_radius
-			tag.height = 0.008
-			_acc_mesh(h, tag, Vector3(0, -0.17, 0.31), gold, Vector3(PI * 0.5 - 0.35, 0, 0))
+			tag.height = 0.007
+			var drop := 0.025 if id == "cadena_fina" else 0.035
+			_acc_mesh(h, tag, Vector3(0, -0.052 - drop, 0.168), gold, Vector3(PI * 0.5 - 0.2, 0, 0))
 		"auriculares":
 			# Al cuello: diadema por detrás y las dos almohadillas sobre las clavículas
 			var arc := TorusMesh.new()
@@ -783,15 +789,18 @@ func _build_accessory(h: Node3D, id: String) -> void:
 			# Vuelta de lana gruesa al cuello y una punta que cuelga por delante
 			var wool := _acc_mat(Color(0.62, 0.12, 0.16), 0.0, 1.0)
 			var loop := TorusMesh.new()
-			loop.inner_radius = 0.12
-			loop.outer_radius = 0.215
-			_acc_mesh(h, loop, Vector3(0, -0.05, 0.05), wool, Vector3(0.3, 0, 0), Vector3(1.0, 1.5, 0.95))
+			# Por fuera del cuello (radio ~0.135, centro algo atrás del hueso): antes el aro
+			# iba adelantado, se metía en la nuca y la punta quedaba dentro de la camiseta
+			loop.inner_radius = 0.14
+			loop.outer_radius = 0.235
+			loop.rings = 40
+			_acc_mesh(h, loop, Vector3(0, 0.035, 0.005), wool, Vector3(0.32, 0, 0), Vector3(1.0, 1.35, 1.0))
 			var tail := BoxMesh.new()
-			tail.size = Vector3(0.13, 0.34, 0.045)
-			_acc_mesh(h, tail, Vector3(0.07, -0.24, 0.25), wool, Vector3(-0.2, 0, 0.08))
+			tail.size = Vector3(0.12, 0.3, 0.035)
+			_acc_mesh(h, tail, Vector3(0.075, -0.19, 0.212), wool, Vector3(-0.1, 0, 0.06))
 			var fringe := BoxMesh.new()
-			fringe.size = Vector3(0.13, 0.035, 0.047)
-			_acc_mesh(h, fringe, Vector3(0.084, -0.42, 0.29), _acc_mat(Color(0.95, 0.92, 0.85), 0.0, 1.0), Vector3(-0.2, 0, 0.08))
+			fringe.size = Vector3(0.12, 0.03, 0.037)
+			_acc_mesh(h, fringe, Vector3(0.084, -0.352, 0.228), _acc_mat(Color(0.95, 0.92, 0.85), 0.0, 1.0), Vector3(-0.1, 0, 0.06))
 		"boina":
 			# Boina de tweed: plana, ladeada hacia un lado, con el rabito arriba
 			var tweed := _acc_mat(Color(0.36, 0.3, 0.22), 0.0, 1.0)
@@ -830,8 +839,20 @@ func _build_accessory(h: Node3D, id: String) -> void:
 			for sx: float in [-1.0, 1.0]:
 				_acc_mesh(h, gem, Vector3(sx * 0.188, EYE_Y - 0.06, HEAD_C.z - 0.02), _acc_mat(Color(0.85, 0.95, 1.0), 0.3, 0.05))
 		"reloj":
+			# En reposo el brazo va a lo largo de X y el dorso de la mano mira a +Y. La
+			# muñeca de la malla es un óvalo de ~9 cm de alto y ~13 de ancho: la correa
+			# lo rodea y la esfera va encima del dorso (antes quedaba dentro del brazo)
+			var strap := TorusMesh.new()
+			strap.inner_radius = 0.057
+			strap.outer_radius = 0.064
+			_acc_mesh(h, strap, Vector3(-0.05, 0.004, -0.012), _acc_mat(Color(0.12, 0.1, 0.09), 0.2, 0.5), Vector3(0, 0, PI * 0.5), Vector3(1.0, 2.4, 1.25))
 			var face := CylinderMesh.new()
-			face.top_radius = 0.028
-			face.bottom_radius = 0.028
-			face.height = 0.03
-			_acc_mesh(h, face, Vector3(0, 0, 0), gold, Vector3(0, 0, PI * 0.5))
+			face.top_radius = 0.019
+			face.bottom_radius = 0.021
+			face.height = 0.009
+			_acc_mesh(h, face, Vector3(-0.05, 0.069, -0.012), gold)
+			var dial := CylinderMesh.new()
+			dial.top_radius = 0.016
+			dial.bottom_radius = 0.016
+			dial.height = 0.002
+			_acc_mesh(h, dial, Vector3(-0.05, 0.0742, -0.012), _acc_mat(Color(0.06, 0.07, 0.1), 0.4, 0.15))

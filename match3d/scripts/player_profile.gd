@@ -39,6 +39,10 @@ var face := ""
 var height := 1.80
 var build := 1.0
 var guayos := ""
+## Lo que se puede llevar en la cabeza jugando (7-nov, Wilber: "que las bandas en la
+## cabeza se puedan usar en partido"): la cinta de la tienda.
+const MATCH_HEADWEAR := ["cinta"]
+var headband := ""
 var owned_items: Array[String] = [] # cosmetics_owned de FootballCareer (guayos_*…)
 ## Stats de PlayerData (FootballCareer). Al unir los juegos vendrán de tu carrera.
 var stats := {
@@ -93,7 +97,7 @@ func to_dict() -> Dictionary:
 		"name": player_name, "number": number, "position": position, "foot": foot,
 		"skin": skin.to_html(false), "hair": hair.to_html(false),
 		"hair_style": hair_style, "face": face,
-		"height": height, "build": build, "guayos": guayos, "owned_items": owned_items,
+		"height": height, "build": build, "guayos": guayos, "headband": headband, "owned_items": owned_items,
 		"stats": stats,
 		"shirt": shirt.to_html(false), "shorts": shorts.to_html(false), "socks": socks.to_html(false),
 	}
@@ -121,6 +125,9 @@ static func from_dict(d: Dictionary) -> PlayerProfile:
 	p.guayos = str(d.get("guayos", ""))
 	if not ItemCatalog.GUAYOS.has(p.guayos) or not p.owns(p.guayos):
 		p.guayos = ""
+	p.headband = str(d.get("headband", ""))
+	if not MATCH_HEADWEAR.has(p.headband) or not p.owns(p.headband):
+		p.headband = ""
 	var st: Variant = d.get("stats", {})
 	if st is Dictionary:
 		for k in p.stats.keys():

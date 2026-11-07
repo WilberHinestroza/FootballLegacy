@@ -1,5 +1,6 @@
 extends Control
 class_name PlayerPresentation
+const Match3DBridge = preload("res://engine/match/m3d/Match3DBridge.gd")
 
 ## Presentación oficial del jugador en su NUEVO club (9-oct, pedido de
 ## Wilber: "diseña una presentación de jugador cuando firme con un nuevo
@@ -23,6 +24,8 @@ var _club: ClubData = null
 var _flash_layer: Control
 var _rng := RandomNumberGenerator.new()
 var _flash_t: float = 0.0
+var _stage: PresentationStage = null   # presentación 3D (con el 3D activado)
+var _bottom: Control = null
 
 func setup(data: Dictionary) -> PlayerPresentation:
 	_d = data
@@ -40,6 +43,10 @@ func _ready() -> void:
 	var prim: Color = cols[0]
 	var sec: Color = cols[1]
 
+	# 7-nov: con el 3D, presentación de verdad en el estadio (PresentationStage)
+	if Preferences.match_3d and _club != null and p != null and DisplayServer.get_name() != "headless":
+		_build_3d(p, prim, sec)
+		return
 	# --- Estadio de noche, oscurecido ---
 	var bg := StadiumBg.build(prim, sec, 7, "night")
 	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -166,8 +173,132 @@ func _ready() -> void:
 		Audio.match_sfx("trophy"))
 	Haptics.hit("big")
 
+## Presentación 3D: el estadio a pantalla completa con la ceremonia, arriba el rótulo
+## del club y, cuando posa ante la grada, la ficha y "Continuar". Tocar la salta.
+func _build_3d(p: PlayerData, prim: Color, sec: Color) -> void:
+	var wseed: int = SaveManager.load_world_seed()
+	var year: int = WorldTickEngine.get_season_start_year()
+	var number: int = int(_d.get("number", 0))
+	if number <= 0:
+		number = Kit.suggested_number(p.position, "%s|%d" % [p.player_name, wseed])
+	var words: PackedStringArray = p.player_name.split(" ", false)
+	var cid: String = _club.club_id
+	var club: ClubData = _club
+	var view := PresentationStage.make_view({
+		"profile": Match3DBridge.profile_for(p, wseed, prim, sec, prim),
+		"shirt": prim, "shirt2": sec,
+		"pattern": Match3DBridge._pattern(_club, year, false),
+		"crest_center": Kit.crest_centered(cid, year),
+		"crest": func() -> Control: return Styles.club_crest(cid, 256),
+		"held_shirt": func() -> Control: return Kit.build_for_club_kit(club, year, false, 256, number),
+		"club_name": _club.club_name,
+		"sponsor": KitDecals.sponsor_for(_club.club_name),
+		"surname": words[words.size() - 1] if words.size() > 0 else "",
+		"number": number,
+		"stars": Venue.stars(_club),
+	}, get_viewport_rect().size)
+	view.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(view)
+	_stage = view.get_node("SubViewport/Stage") if view.has_node("SubViewport/Stage") else null
+	if _stage == null:
+		for c in view.get_children():
+			if c is SubViewport and c.get_child_count() > 0:
+				_stage = c.get_child(0) as PresentationStage
+	# Viñeta para que se lea el texto encima
+	var top_shade := _gradient(true)
+	add_child(top_shade)
+	var bot_shade := _gradient(false)
+	add_child(bot_shade)
+	# Rótulo de arriba: tipo de presentación y club
+	var top := VBoxContainer.new()
+	top.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
+	top.offset_top = 14
+	top.add_theme_constant_override("separation", 2)
+	top.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(top)
+	top.add_child(_label("CESIÓN · PRESENTACIÓN OFICIAL" if bool(_d.get("loan", false)) else "PRESENTACIÓN OFICIAL", 14, Styles.GOLD, true))
+	top.add_child(_label(_club.club_name.to_upper(), 22, Color.WHITE, true))
+	# Ficha de abajo (aparece al final)
+	var bottom := VBoxContainer.new()
+	bottom.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
+	bottom.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	bottom.offset_bottom = -16
+	bottom.add_theme_constant_override("separation", 4)
+	bottom.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bottom.modulate.a = 0.0
+	add_child(bottom)
+	_bottom = bottom
+	bottom.add_child(_label(p.player_name.to_upper(), 30, Color.WHITE, true))
+	var yrs: int = int(_d.get("years", p.contract_years_remaining))
+	bottom.add_child(_label("%s · %d años · Dorsal %d" % [Positions.label_of(p.detailed_position), p.age, number], 15, Color(0.88, 0.9, 0.95), false))
+	bottom.add_child(_label("Cedido por una temporada" if bool(_d.get("loan", false)) else "Contrato hasta %d" % (year + maxi(1, yrs)), 14, Styles.GOLD, false))
+	var cont := Button.new()
+	cont.text = "Continuar"
+	cont.custom_minimum_size = Vector2(260, 52)
+	cont.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	cont.focus_mode = Control.FOCUS_NONE
+	Styles.styled_button(cont, Styles.pill_filled(Styles.GREEN), Color.BLACK)
+	cont.pressed.connect(func():
+		finished.emit()
+		queue_free())
+	bottom.add_child(cont)
+	var hint := _label("Toca para saltar", 11, Color(1, 1, 1, 0.6), false)
+	hint.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
+	hint.offset_top = -30
+	hint.offset_bottom = -10
+	hint.name = "SkipHint"
+	add_child(hint)
+	if _stage != null:
+		_stage.finale.connect(_show_card)
+	else:
+		_show_card()
+	Haptics.hit("big")
+
+
+func _show_card() -> void:
+	if _bottom == null or _bottom.modulate.a > 0.5:
+		return
+	if has_node("SkipHint"):
+		get_node("SkipHint").queue_free()
+	var tw := create_tween()
+	tw.tween_property(_bottom, "modulate:a", 1.0, 0.5).set_delay(0.6)
+	Audio.match_sfx("trophy")
+
+
+func _gui_input(event: InputEvent) -> void:
+	if _stage == null:
+		return
+	var tap: bool = (event is InputEventMouseButton and (event as InputEventMouseButton).pressed) 			or (event is InputEventScreenTouch and (event as InputEventScreenTouch).pressed)
+	if tap and _bottom != null and _bottom.modulate.a < 0.5:
+		_stage.skip_to_end()
+
+
+func _gradient(top: bool) -> TextureRect:
+	var g := Gradient.new()
+	g.colors = PackedColorArray([Color(0, 0, 0, 0.7), Color(0, 0, 0, 0)])
+	var gt := GradientTexture2D.new()
+	gt.gradient = g
+	gt.fill_from = Vector2(0, 0) if top else Vector2(0, 1)
+	gt.fill_to = Vector2(0, 1) if top else Vector2(0, 0)
+	gt.width = 8
+	gt.height = 64
+	var r := TextureRect.new()
+	r.texture = gt
+	r.stretch_mode = TextureRect.STRETCH_SCALE
+	r.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	r.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	r.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE if top else Control.PRESET_BOTTOM_WIDE)
+	if top:
+		r.offset_bottom = 110
+	else:
+		r.offset_top = -230
+	return r
+
+
 ## Flashes de fotógrafos: destellos blancos que aparecen y se apagan al azar.
 func _process(delta: float) -> void:
+	if _stage != null:
+		return
 	_flash_t -= delta
 	if _flash_t > 0.0 or Preferences.reduce_motion:
 		return

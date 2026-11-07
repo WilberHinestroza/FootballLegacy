@@ -874,6 +874,7 @@ func reset_generic_look() -> void:
 		"hair_style": ItemCatalog.shader_hair_index("rapado")})
 	_avatar.set_hair_style("rapado")
 	_avatar.set_body_scale(Vector3.ONE)
+	_avatar.set_accessories({})
 
 
 ## Cara de un jugador real de FootballCareer (la de su ficha): piel, pelo, peinado y barba.
@@ -1103,6 +1104,9 @@ func _build_model(shirt: Color) -> void:
 	_avatar.set_colors({"hair_style": ItemCatalog.shader_hair_index(style), "show_hair": style != "calvo"})
 	_avatar.set_hair_style(style)
 	_avatar.set_body_scale(Vector3.ONE * randf_range(0.95, 1.04))
+	# Algunos juegan con cinta en la cabeza, como en un partido de verdad
+	if randf() < 0.1:
+		_avatar.set_accessories({"acc_head": "cinta"})
 	if is_keeper:
 		# Portero: manga larga y guantes (blancos con el puño oscuro, o al revés si la
 		# camiseta es muy clara, para que se distingan del brazo)

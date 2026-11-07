@@ -256,6 +256,16 @@ const COSMETIC_PRICE := {
 	"gabardina": [2.4, 60], "blazer_terciopelo": [2.8, 70],
 	"zapatillas_blancas": [0.6, 15], "mocasines": [1.4, 35], "botas_chelsea": [1.6, 40],
 	"guayos_plata": [1.6, 40], "guayos_lava": [1.4, 35],
+	# 7-nov: más camisas, chaquetas y pantalones
+	"marinera": [0.8, 20],
+	"tiedye": [0.9, 22],
+	"camisa_denim": [1.2, 30],
+	"escocesa": [1.0, 25],
+	"militar": [1.4, 35],
+	"noventas": [1.3, 32],
+	"tecnica": [1.6, 40],
+	"sobrecamisa": [1.5, 38],
+	"diplomatico": [3.2, 75],
 	# 7-nov: guayos con diseños locos
 	"guayos_tormenta": [2.2, 55], "guayos_galaxia": [2.8, 70], "guayos_tigre": [2.0, 50],
 	"guayos_camo": [1.8, 45], "guayos_fuego": [2.2, 55], "guayos_hielo": [1.8, 45],

@@ -16,41 +16,53 @@ const W_PATTERN := [4, 14, 3, 1, 1, 2, 0, 11, 7, 0, 12, 6, 13, 6, 10, 0,
 
 ## Ropa de calle -> colores del 3D: [camisa, pantalón, manga larga, diseño, color 2]
 ## (diseño 9 = traje con camisa y corbata del color 2; 13 = chándal con franjas).
+## Opcional: [5] tipo de pantalón (shader pants_style: 1 jeans, 2 rotos, 3 cuadros,
+## 4 diplomático, 5 camuflaje, 6 jogger, 7 pana) y [6] su segundo color.
 const STREET := {
-	"hoodie": ["#8a8d93", "#6b6e74", true, 0, ""],
-	"hoodie_negro": ["#2a2a2e", "#2a2a2e", true, 0, ""],
-	"jeans": ["#1e1e22", "#3b5a86", false, 0, ""],
+	"hoodie": ["#8a8d93", "#6b6e74", true, 0, "", 6, ""],
+	"hoodie_negro": ["#2a2a2e", "#2a2a2e", true, 0, "", 6, ""],
+	"jeans": ["#1e1e22", "#3b5a86", false, 0, "", 2, ""],
 	"polo": ["#c0392b", "#d8c7a0", false, 23, "#f2f2f2"],
-	"chandal": ["#2e5fb0", "#2e5fb0", true, 13, "#f2f2f2"],
+	"chandal": ["#2e5fb0", "#2e5fb0", true, 13, "#f2f2f2", 6, ""],
 	"hawaiana": ["#2bb3a6", "#d8c7a0", false, 18, "#f6e27a"],
 	"lino": ["#efe9dc", "#efe9dc", true, 0, ""],
 	"bomber": ["#3e5a36", "#222226", true, 0, ""],
 	"vaquera": ["#4a6fa5", "#222226", true, 0, ""],
-	"universitaria": ["#7a1f2b", "#222226", true, 7, "#f0f0f0"],
+	"universitaria": ["#7a1f2b", "#222226", true, 7, "#f0f0f0", 1, ""],
 	"camisa_vestir": ["#9cc3e6", "#233552", true, 0, ""],
 	"cuello_alto": ["#2b2b2b", "#6e6e6e", true, 0, ""],
 	"plumifero": ["#151517", "#222226", true, 2, "#2a2a30"],
-	"cuero": ["#1c1c1c", "#2f4466", true, 0, ""],
+	"cuero": ["#1c1c1c", "#2f4466", true, 0, "", 1, ""],
 	"abrigo": ["#b48a5a", "#233552", true, 0, ""],
 	"traje_azul": ["#1f3566", "#1f3566", true, 9, "#8a1c2b"],
 	"traje_negro": ["#15151a", "#15151a", true, 9, "#1a1a1a"],
 	"smoking_blanco": ["#f2f2f2", "#141414", true, 9, "#141414"],
-	"franela": ["#b5322f", "#3b5a86", true, 10, "#2b2b2b"],
+	"franela": ["#b5322f", "#3b5a86", true, 10, "#2b2b2b", 1, ""],
 	"chaleco": ["#2d4a7a", "#3b3b40", true, 0, ""],
 	"oversize": ["#e8e8e8", "#8b7d5a", false, 0, ""],
 	"traje_gris": ["#6d7078", "#6d7078", true, 9, "#2e5fb0"],
-	"retro": ["#c0392b", "#c0392b", true, 13, "#f2f2f2"],
+	"retro": ["#c0392b", "#c0392b", true, 13, "#f2f2f2", 6, ""],
 	"seda": ["#2a1f3d", "#141414", true, 18, "#c9a227"],
 	"camisa_chinos": ["#f4f4f4", "#d8c7a0", true, 0, ""],
 	"gabardina": ["#c8b48a", "#6e6e6e", true, 0, ""],
 	"parka_roja": ["#c0392b", "#3e4a33", true, 0, ""],
 	"blazer_terciopelo": ["#5a1f3a", "#141414", true, 9, "#141414"],
-	"cortavientos": ["#2e7bd6", "#a0a0a6", true, 19, "#f0f0f0"],
+	"cortavientos": ["#2e7bd6", "#a0a0a6", true, 19, "#f0f0f0", 6, ""],
 	"traje_oro": ["#d4af37", "#d4af37", true, 9, "#141414"],
-	"chandal_oro": ["#d4af37", "#d4af37", true, 13, "#141414"],
+	"chandal_oro": ["#d4af37", "#d4af37", true, 13, "#141414", 6, ""],
 	"bomber_oro": ["#d4af37", "#141414", true, 0, ""],
 	"polo_oro": ["#d4af37", "#141414", false, 23, "#141414"],
 	"cuero_oro": ["#c9a227", "#141414", true, 0, ""],
+	# 7-nov: más camisas, chaquetas y pantalones (con su tipo de pantalón)
+	"marinera": ["#f4f2ec", "#e6dcc6", false, 34, "#1f2f5a", 0, ""],
+	"tiedye": ["#ff4fa3", "#7aa0cc", false, 30, "#2ed1ff", 2, ""],
+	"camisa_denim": ["#5b7fb5", "#7a5230", true, 35, "#e9e2cf", 7, ""],
+	"escocesa": ["#b3222c", "#2f4466", true, 32, "#1d2a4a", 1, ""],
+	"militar": ["#4b5a32", "#55603a", true, 29, "#2a3320", 5, "#2a3320"],
+	"noventas": ["#7a2cff", "#3a1f66", true, 33, "#19e3b1", 6, ""],
+	"tecnica": ["#22252b", "#1c1c20", true, 31, "#ff6a1a", 6, ""],
+	"sobrecamisa": ["#3e5a36", "#6d7078", true, 32, "#141414", 3, "#2b2b30"],
+	"diplomatico": ["#1d2333", "#1d2333", true, 9, "#8a1c2b", 4, "#c9ccd6"],
 }
 
 ## Zapatos de calle -> [color, suela]. "" = los de siempre con ropa de calle.
@@ -213,6 +225,9 @@ static func apply(av: PlayerAvatar, cfg: Dictionary) -> void:
 		var b: Array = STREET[bottom]
 		c["shorts_color"] = Color(String(b[1]))
 		c["long_pants"] = not SHORT_BOTTOMS.has(bottom)
+		c["pants_style"] = int(b[5]) if b.size() > 5 else 0
+		if b.size() > 6 and String(b[6]) != "":
+			c["pants_color2"] = Color(String(b[6]))
 		street = true
 	# Calzado: guayos de la tienda con el kit; zapatos de calle con ropa de calle
 	if street:

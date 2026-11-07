@@ -26,6 +26,10 @@ uniform vec3 shirt_color2 : source_color = vec3(1.0);
 // Ropa de calle / banquillo: manga larga y pantalón largo (DT, suplentes, cámaras)
 uniform bool long_sleeves = false;
 uniform bool long_pants = false;
+// Tipo de pantalón largo: 0 de vestir · 1 jeans · 2 jeans rotos · 3 cuadros
+// 4 rayas diplomáticas · 5 camuflaje · 6 jogger con puño · 7 pana
+uniform int pants_style = 0;
+uniform vec3 pants_color2 : source_color = vec3(0.2);
 // Zapatos de calle: suela de otro color (los guayos no la llevan)
 uniform bool use_sole = false;
 uniform vec3 sole_color : source_color = vec3(0.1);
@@ -340,6 +344,57 @@ vec3 boot_color(float ax, float f, float dn) {
 	return c;
 }
 
+// Pantalón largo de calle según pants_style (x, ax, f, dn como en el tronco)
+vec3 pants_color(float x, float ax, float f, float dn) {
+	vec3 a = shorts_color;
+	vec3 b = pants_color2;
+	bool front = dn < 0.55;
+	vec2 q = vec2(x * 14.0 + (front ? 0.0 : 23.0), f * 14.0);
+	float knee = below(abs(f - 0.17), 0.045);
+	vec3 c = a;
+	if (pants_style == 1 || pants_style == 2) {
+		// Jeans: trama, muslos y rodillas desgastados por delante, costura clara
+		float n = boot_noise(q * 5.0) * 0.5 + boot_noise(q * 15.0) * 0.5;
+		// (degradado suave: un escalón en la rodilla parecía otra tela)
+		float soft_knee = 1.0 - smoothstep(0.015, 0.07, abs(f - 0.17));
+		float thigh = 1.0 - smoothstep(0.02, 0.09, abs(f - 0.3));
+		float wear = (front ? 1.0 : 0.25) * (thigh * 0.45 + soft_knee * 0.45) * smoothstep(0.03, 0.08, ax);
+		c = a * (0.86 + n * 0.2) + vec3(0.09, 0.1, 0.12) * wear * (0.5 + n * 0.8);
+		if (pants_style == 2 && front) {
+			// Rotos: dos rasgaduras horizontales con hilos blancos y piel debajo
+			float rip = below(abs(f - 0.175 - sin(x * 90.0) * 0.004), 0.008) * below(abs(ax - 0.09), 0.03)
+					+ below(abs(f - 0.3 - sin(x * 70.0) * 0.004), 0.006) * below(abs(ax - 0.1), 0.022) * step(0.0, x);
+			float thread = below(abs(fract(f * 260.0) - 0.5), 0.2);
+			c = mix(c, mix(skin_color, vec3(0.92), thread), clamp(rip, 0.0, 1.0));
+		}
+	} else if (pants_style == 3) {
+		float vx = below(fract(x / 0.05 + 0.5), 0.3);
+		float hz = below(fract(f / 0.05), 0.3);
+		c = mix(a, b, (vx + hz) * 0.45);
+		c = mix(c, vec3(0.9), max(below(abs(fract(x / 0.05 + 0.5) - 0.65), 0.03), below(abs(fract(f / 0.05) - 0.65), 0.03)) * 0.5);
+	} else if (pants_style == 4) {
+		c = mix(a, b, below(fract(x / 0.022 + 0.5), 0.035) * 0.6);
+	} else if (pants_style == 5) {
+		float n = boot_noise(q * 1.4) * 0.65 + boot_noise(q * 3.3) * 0.35;
+		c = mix(mix(a, b, step(0.47, n)), mix(a, b, 0.5) * 0.55, step(0.68, n));
+	} else if (pants_style == 6) {
+		// Jogger: puño elástico en el tobillo (canalé) y algo más claro en las rodillas
+		c = a * (1.0 + knee * (front ? 0.08 : 0.0));
+		float cuff = below(f, BOOTS_TOP + 0.03);
+		c = mix(c, a * (0.8 + 0.12 * below(fract(x * 160.0), 0.5)), cuff);
+	} else if (pants_style == 7) {
+		// Pana: canalé vertical fino
+		c = a * (0.85 + 0.2 * smoothstep(0.2, 0.8, abs(fract(x / 0.009) - 0.5) * 2.0));
+	}
+	if (pants_style == 0 || pants_style == 4) {
+		// Vestir: raya de la plancha por delante de cada pernera
+		float crease = (front ? 1.0 : 0.0) * below(abs(ax - (0.085 - (f - 0.15) * 0.16)), 0.0025) * below(f, 0.36);
+		c = mix(c, c * 0.86, crease);
+	}
+	// Bajo algo más oscuro (dobladillo)
+	return c * mix(1.0, 0.82, below(f, BOOTS_TOP + 0.012));
+}
+
 vec3 head_color(float x, float ax, float f, float dn) {
 	float fn = f - NOSE_F;
 	vec3 c = skin_color;
@@ -503,6 +558,58 @@ vec3 kit_base(float x, float ax, float f, float dn) {
 		float zz = abs(fract(x / 0.06) - 0.5) * 0.05;
 		return mix(a, b, below(abs(f - 0.58 - zz), 0.016));
 	}
+	// Ropa de calle (7-nov): 29 camuflaje, 30 tie-dye, 31 chaqueta técnica con cremallera,
+	// 32 escocés, 33 bloques de color noventeros, 34 marinera, 35 vaquera
+	vec2 q = vec2(x * 9.0 + (front ? 0.0 : 31.0), f * 9.0);
+	if (shirt_pattern == 29) {
+		float n = boot_noise(q * 1.6) * 0.65 + boot_noise(q * 3.7) * 0.35;
+		vec3 c = mix(a, b, step(0.47, n));
+		return mix(c, mix(a, b, 0.5) * 0.55, step(0.68, n));
+	}
+	if (shirt_pattern == 30) {
+		// Espiral de dos colores que se funden, desde el centro del pecho
+		vec2 d = vec2(x, f - 0.58);
+		float ang = atan(d.y, d.x) + length(d) * 38.0 + boot_noise(q * 1.3) * 1.5;
+		float k = 0.5 + 0.5 * sin(ang * 2.0);
+		return mix(mix(a, b, k), mix(a, b, 0.5) * 1.15, smoothstep(0.85, 1.0, k) * 0.5);
+	}
+	if (shirt_pattern == 31) {
+		// Cremallera central, ribete del pecho y bolsillos de corte en diagonal
+		float zip = front ? below(ax, 0.004) * (1.0 - below(f, 0.43)) : 0.0;
+		float yoke = below(abs(f - 0.655), 0.006) * (1.0 - below(ax, 0.006));
+		float pocket = front ? below(abs((ax - 0.08) - (f - 0.5) * 0.35), 0.003) * below(abs(f - 0.5), 0.035) : 0.0;
+		return mix(a, b, max(max(zip, yoke), pocket));
+	}
+	if (shirt_pattern == 32) {
+		// Escocés: dos tramas cruzadas a media transparencia y una raya fina clara
+		float vx = below(fract(x / 0.06 + 0.5), 0.35);
+		float hz = below(fract(f / 0.06), 0.35);
+		vec3 c = mix(a, b, (vx + hz) * 0.42);
+		float fine = max(below(abs(fract(x / 0.06 + 0.5) - 0.7), 0.04), below(abs(fract(f / 0.06) - 0.7), 0.04));
+		return mix(c, mix(c, vec3(0.95), 0.6), fine);
+	}
+	if (shirt_pattern == 33) {
+		// Bloques de color: pecho y hombros del segundo color con un filo blanco
+		float k = f - (0.6 + x * 0.12);
+		vec3 c = mix(a, b, 1.0 - below(k, 0.0));
+		return mix(c, vec3(0.96), below(abs(k), 0.008));
+	}
+	if (shirt_pattern == 34) {
+		// Marinera: rayas finas que empiezan bajo un canesú liso
+		float st = below(fract(f / 0.032), 0.42) * below(f, 0.665);
+		return mix(a, b, st);
+	}
+	if (shirt_pattern == 35) {
+		// Vaquera: tela con desgaste, tapeta y dos bolsillos de pecho con costura clara
+		float n = boot_noise(q * 6.0) * 0.5 + boot_noise(q * 18.0) * 0.5;
+		vec3 c = a * (0.88 + n * 0.22);
+		float placket = front ? below(abs(ax - 0.006), 0.0025) * (1.0 - below(f, 0.43)) : 0.0;
+		float pk = front ? below(abs(ax - 0.075), 0.035) * below(abs(f - 0.625), 0.028) : 0.0;
+		float edge = front ? max(below(abs(abs(ax - 0.075) - 0.035), 0.002) * below(abs(f - 0.625), 0.028),
+				below(abs(abs(f - 0.625) - 0.028), 0.002) * below(abs(ax - 0.075), 0.035)) : 0.0;
+		c = mix(c, a * 0.8, pk * 0.35);
+		return mix(c, b, max(placket, edge));
+	}
 	return a;
 }
 
@@ -595,9 +702,7 @@ vec3 body_color() {
 	if (long_pants) {
 		// Pantalón: bajo un poco más oscuro (el dobladillo), raya de la plancha por
 		// delante de cada pernera y cinturón bajo la camiseta
-		shorts *= mix(1.0, 0.82, below(f, BOOTS_TOP + 0.012));
-		float crease = (dn < 0.55 ? 1.0 : 0.0) * below(abs(ax - (0.085 - (f - 0.15) * 0.16)), 0.0025) * below(f, 0.36);
-		shorts = mix(shorts, shorts * 0.86, crease);
+		shorts = pants_color(x, ax, f, dn);
 		shorts = mix(shorts, vec3(0.07, 0.05, 0.04), (1.0 - below(f, SHIRT_BOTTOM - 0.014)) * below(f, SHIRT_BOTTOM + 0.002));
 	} else {
 		// Pantaloneta: franja lateral del color del ribete (como las de verdad)

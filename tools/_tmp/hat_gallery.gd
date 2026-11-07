@@ -1,6 +1,7 @@
 extends Node3D
 ## Temporal: gorras de frente, de lado y 3/4 -> build/hats.png
-const IDS := ["gorra", "gorro_lana", "cinta", "boina"]
+const IDS := ["lentes_sol", "aviador", "lentes_redondos", "auriculares", "cadena_fina", "cadena_gruesa", "bufanda", "pendientes", "reloj"]
+var only := []
 func _ready() -> void:
 	var env := WorldEnvironment.new()
 	env.environment = Environment.new()
@@ -17,20 +18,26 @@ func _ready() -> void:
 	cam.fov = 22.0
 	add_child(cam)
 	get_viewport().size = Vector2i(400, 400)
-	var sheet := Image.create(400 * 3, 400 * IDS.size(), false, Image.FORMAT_RGBA8)
-	for r in IDS.size():
+	var sheet: Image
+	var ids: Array = IDS
+	for a in OS.get_cmdline_user_args():
+		ids = ["gorra", "gorro_lana", "cinta", "boina"] if a == "hats" else IDS
+	sheet = Image.create(400 * 3, 400 * ids.size(), false, Image.FORMAT_RGBA8)
+	for r in ids.size():
 		var av := PlayerAvatar.new()
 		add_child(av)
 		var cfg := Avatar.random_config(7)
-		cfg["acc_head"] = IDS[r]
+		var id: String = ids[r]
+		cfg[Avatar.slot_of(id)] = id
 		Avatar3D.apply(av, cfg)
 		for k in 8:
 			await get_tree().process_frame
-		var head := av.skeleton.global_transform * av.skeleton.get_bone_global_pose(ItemCatalog.find_bone(av.skeleton, "Head")).origin + Vector3(0, 0.12, 0)
+		var wrist: bool = id == "reloj"
+		var head := av.skeleton.global_transform * av.skeleton.get_bone_global_pose(ItemCatalog.find_bone(av.skeleton, "LeftHand" if wrist else "Head")).origin + Vector3(0, 0.12 if ids.size() == 4 else -0.08, 0)
 		var angs := [0.0, 0.9, 1.57]
 		for c in 3:
 			var a: float = angs[c]
-			cam.global_position = head + Vector3(sin(a), 0.25, cos(a)) * 1.5
+			cam.global_position = head + Vector3(sin(a), 0.25, cos(a)) * (0.8 if wrist else (1.5 if ids.size() == 4 else 1.9))
 			cam.look_at(head)
 			for k in 4:
 				await get_tree().process_frame
