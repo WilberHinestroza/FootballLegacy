@@ -6,9 +6,6 @@ extends RefCounted
 const LAYER_WALLS := 1
 const LAYER_GROUND := 8
 
-const AD_COLORS := [
-	Color(0.98, 0.76, 0.1), Color(0.1, 0.3, 0.85), Color(0.9, 0.18, 0.2), Color(0.12, 0.12, 0.14),
-]
 
 
 ## Devuelve las dos áreas de gol: [0] = portería en +X (marca el equipo 0), [1] = portería en -X.
@@ -179,7 +176,6 @@ const NET_SHADER := preload("res://match3d/shaders/net.gdshader")
 const CROWD_SHADER := preload("res://match3d/shaders/crowd.gdshader")
 const FLAG_SHADER := preload("res://match3d/shaders/flag.gdshader")
 const FLASH_SHADER := preload("res://match3d/shaders/flash.gdshader")
-const AD_TEXTS := ["FOOTBALL LEGACY", "¡GOOOL!", "TU CARRERA", "TU LEYENDA"]
 
 
 static func _grass(stripes: bool) -> ShaderMaterial:
@@ -368,6 +364,7 @@ static func _walls(root: Node3D) -> void:
 	var h := 8.0
 	var side_z := W * 0.5 + SIDE_BOARDS
 	var end_x := L * 0.5 + END_BOARDS
+	var boards: Array = []
 
 	for s: float in [-1.0, 1.0]:
 		# Muro lateral invisible + vallas publicitarias
@@ -378,30 +375,14 @@ static func _walls(root: Node3D) -> void:
 			var x := -(L + 2.0 * END_BOARDS) * 0.5 + (i + 0.5) * seg
 			if s < 0.0 and absf(x - TUNNEL_X) < 1.0:
 				continue # hueco en las vallas para la salida del túnel
-			_ad_board(root, Vector3(x, 0.5, s * (side_z + 0.08)), seg - 0.05, PI if s > 0.0 else 0.0, i + (1 if s > 0.0 else 0))
+			boards.append({"pos": Vector3(x, 0.5, s * (side_z + 0.08)), "length": seg - 0.05, "yaw": PI if s > 0.0 else 0.0})
 		# Muro de fondo con vallas (la portería queda por delante)
 		add_static_box(root, Vector3(1.0, h, W + 2.0 * SIDE_BOARDS + 2.0), Vector3(s * (end_x + 0.5), h * 0.5, 0.0))
 		var ecount := int(ceil((W + 2.0 * SIDE_BOARDS) / seg))
 		for i in ecount:
 			var z := -(W + 2.0 * SIDE_BOARDS) * 0.5 + (i + 0.5) * seg
-			_ad_board(root, Vector3(s * (end_x + 0.08), 0.5, z), seg - 0.05, -s * PI * 0.5, i + 2)
-
-
-## Valla publicitaria con su texto mirando al campo.
-static func _ad_board(root: Node3D, pos: Vector3, length: float, yaw: float, i: int) -> void:
-	var holder := Node3D.new()
-	holder.position = pos
-	holder.rotation.y = yaw
-	root.add_child(holder)
-	add_mesh(holder, box(Vector3(length, 1.0, 0.15)), Vector3.ZERO, AD_COLORS[i % AD_COLORS.size()])
-	var lab := Label3D.new()
-	lab.text = AD_TEXTS[i % AD_TEXTS.size()]
-	lab.font_size = 72
-	lab.pixel_size = 0.007
-	lab.outline_size = 0
-	lab.modulate = Color(0.08, 0.08, 0.1) if i % AD_COLORS.size() == 0 else Color.WHITE
-	lab.position = Vector3(0.0, 0.02, 0.085)
-	holder.add_child(lab)
+			boards.append({"pos": Vector3(s * (end_x + 0.08), 0.5, z), "length": seg - 0.05, "yaw": -s * PI * 0.5})
+	AdBoards.build(root, boards)
 
 
 static func _stands(root: Node3D) -> void:
@@ -1047,6 +1028,7 @@ static func _confetti(root: Node3D) -> void:
 
 ## Lanza el confeti en el fondo de la portería `area` (la del gol).
 static func celebrate(root: Node, area: Area3D) -> void:
+	AdBoards.goal(root)
 	var goal_x := area.global_position.x
 	var p := root.get_node_or_null("Confetti0" if goal_x > 0.0 else "Confetti1") as CPUParticles3D
 	if p:

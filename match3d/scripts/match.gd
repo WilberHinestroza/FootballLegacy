@@ -306,6 +306,7 @@ func _ready() -> void:
 	# Trapos de la grada: los tuyos (config.crowd) y los de la hinchada del estadio
 	FieldBuilder.crowd = config.get("crowd", {}) as Dictionary
 	FieldBuilder.banner_seed_name = String(config.get("stadium", config.get("home_name", "LOCAL")))
+	AdBoards.home_name = String(config.get("home_name", ""))
 	var goal_areas := FieldBuilder.build(self)
 	FieldBuilder.build_tifo(self, String(config.get("home_name", "LOCAL")))
 	_goal_areas = goal_areas
