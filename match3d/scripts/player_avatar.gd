@@ -597,27 +597,76 @@ func _acc_mesh(holder: Node3D, mesh: Mesh, pos: Vector3, mat: Material, rot := V
 	holder.add_child(mi)
 
 
+## Visera curva de gorra: media corona de radio interior `r0` y `depth` de vuelo,
+## con algo de caída hacia el borde (de frente se ve la curva, no una tabla).
+func _visor_mesh(r0: float, depth: float) -> Mesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var n := 12
+	var pts: Array = []
+	for i in n + 1:
+		var a := lerpf(-1.15, 1.15, float(i) / n)
+		var inner := Vector3(sin(a) * r0, 0.0, cos(a) * r0)
+		var reach := depth * (1.0 - 0.55 * absf(a) / 1.15)
+		var outer := Vector3(sin(a) * (r0 + reach * 0.35), -0.035 * (1.0 - absf(a) / 1.6), cos(a) * (r0 + reach))
+		pts.append([inner, outer])
+	for i in n:
+		var p0: Array = pts[i]
+		var p1: Array = pts[i + 1]
+		for v: Vector3 in [p0[0], p1[0], p1[1], p0[0], p1[1], p0[1]]:
+			st.add_vertex(v)
+	st.generate_normals()
+	return st.commit()
+
+
+## Patilla de gafas: del borde del cristal (x = `from_x`, delante) a la oreja.
+func _temple(h: Node3D, sx: float, y: float, from_x: float, m: Material, t: float) -> void:
+	var a := Vector3(sx * from_x, y, HEAD_C.z + HEAD_R * 0.95)
+	var b := Vector3(sx * HEAD_R * 0.98, y + 0.005, HEAD_C.z + HEAD_R * 0.05)
+	var bar := BoxMesh.new()
+	bar.size = Vector3(t, t, a.distance_to(b))
+	var mi := MeshInstance3D.new()
+	mi.mesh = bar
+	mi.material_override = m
+	h.add_child(mi)
+	mi.position = (a + b) * 0.5
+	mi.basis = Basis.looking_at(b - a, Vector3.UP)
+
+
 func _build_accessory(h: Node3D, id: String) -> void:
 	var gold := _acc_mat(Color(1.0, 0.78, 0.3), 1.0, 0.25)
 	match id:
-		"gorra", "gorro_lana":
+		"gorra":
+			# Gorra: copa ajustada a la cabeza (algo aplanada) y visera curva de verdad
+			var col := Color(0.08, 0.08, 0.1)
 			var cap := SphereMesh.new()
-			cap.radius = HEAD_R * 1.08
-			cap.height = HEAD_R * 1.25
+			cap.radius = HEAD_R * 1.07
+			cap.height = HEAD_R * 1.07
 			cap.is_hemisphere = true
-			var col := Color(0.08, 0.08, 0.1) if id == "gorra" else Color(0.75, 0.15, 0.18)
-			_acc_mesh(h, cap, Vector3(0, HEAD_C.y + HEAD_R * 0.18, HEAD_C.z), _acc_mat(col, 0.0, 0.9))
-			if id == "gorra":
-				var visor := CylinderMesh.new()
-				visor.top_radius = HEAD_R * 0.75
-				visor.bottom_radius = HEAD_R * 0.75
-				visor.height = 0.012
-				_acc_mesh(h, visor, Vector3(0, HEAD_C.y + HEAD_R * 0.15, HEAD_C.z + HEAD_R * 1.05), _acc_mat(col), Vector3(0.22, 0, 0), Vector3(1.0, 1.0, 0.7))
-			else:
-				var pom := SphereMesh.new()
-				pom.radius = HEAD_R * 0.28
-				pom.height = HEAD_R * 0.56
-				_acc_mesh(h, pom, Vector3(0, HEAD_C.y + HEAD_R * 1.32, HEAD_C.z), _acc_mat(Color(0.95, 0.95, 0.95), 0.0, 1.0))
+			_acc_mesh(h, cap, Vector3(0, HEAD_C.y + HEAD_R * 0.2, HEAD_C.z - 0.005), _acc_mat(col, 0.0, 0.85), Vector3(-0.12, 0, 0), Vector3(1.0, 0.92, 1.04))
+			var vm := _acc_mat(col.lightened(0.05), 0.0, 0.8)
+			vm.cull_mode = BaseMaterial3D.CULL_DISABLED
+			_acc_mesh(h, _visor_mesh(HEAD_R * 1.0, HEAD_R * 1.0), Vector3(0, HEAD_C.y + HEAD_R * 0.32, HEAD_C.z + 0.01), vm, Vector3(0.22, 0, 0))
+			var button := SphereMesh.new()
+			button.radius = 0.014
+			button.height = 0.014
+			_acc_mesh(h, button, Vector3(0, HEAD_C.y + HEAD_R * 1.12, HEAD_C.z - 0.03), _acc_mat(col))
+		"gorro_lana":
+			var wool0 := _acc_mat(Color(0.75, 0.15, 0.18), 0.0, 1.0)
+			var beanie := SphereMesh.new()
+			beanie.radius = HEAD_R * 1.08
+			beanie.height = HEAD_R * 1.3
+			beanie.is_hemisphere = true
+			_acc_mesh(h, beanie, Vector3(0, HEAD_C.y + HEAD_R * 0.18, HEAD_C.z - 0.01), wool0, Vector3(-0.1, 0, 0))
+			# Vuelta doblada en el borde y pompón
+			var cuff := TorusMesh.new()
+			cuff.inner_radius = HEAD_R * 1.0
+			cuff.outer_radius = HEAD_R * 1.14
+			_acc_mesh(h, cuff, Vector3(0, HEAD_C.y + HEAD_R * 0.25, HEAD_C.z - 0.01), _acc_mat(Color(0.68, 0.12, 0.15), 0.0, 1.0), Vector3(-0.1, 0, 0), Vector3(1.0, 0.9, 1.0))
+			var pom := SphereMesh.new()
+			pom.radius = HEAD_R * 0.3
+			pom.height = HEAD_R * 0.6
+			_acc_mesh(h, pom, Vector3(0, HEAD_C.y + HEAD_R * 1.45, HEAD_C.z - 0.05), _acc_mat(Color(0.95, 0.95, 0.95), 0.0, 1.0))
 		"cinta":
 			var band := TorusMesh.new()
 			band.inner_radius = 0.192
@@ -631,39 +680,43 @@ func _build_accessory(h: Node3D, id: String) -> void:
 			var glass := _acc_mat(Color(0.05, 0.05, 0.07) if id == "lentes_sol" else Color(0.35, 0.22, 0.08), 0.6, 0.1)
 			for sx: float in [-1.0, 1.0]:
 				_acc_mesh(h, lens, Vector3(sx * HEAD_R * 0.36, EYE_Y, HEAD_C.z + HEAD_R * 1.0), glass, Vector3(PI * 0.5, 0, 0))
-				# Patillas hasta las orejas
-				var arm := BoxMesh.new()
-				arm.size = Vector3(0.008, 0.008, HEAD_R * 0.95)
-				_acc_mesh(h, arm, Vector3(sx * HEAD_R * 0.8, EYE_Y + 0.01, HEAD_C.z + HEAD_R * 0.5), gold if id == "aviador" else glass)
+				# Patillas pegadas a la cabeza, del borde del cristal a la oreja
+				_temple(h, sx, EYE_Y + 0.01, HEAD_R * 0.62, gold if id == "aviador" else glass, 0.008)
 			var bridge := BoxMesh.new()
 			bridge.size = Vector3(HEAD_R * 0.2, 0.01, 0.01)
 			_acc_mesh(h, bridge, Vector3(0, EYE_Y + 0.012, HEAD_C.z + HEAD_R * 1.02), gold if id == "aviador" else glass)
 		"cadena_fina", "cadena_gruesa":
 			var ring := TorusMesh.new()
-			var thick := 0.008 if id == "cadena_fina" else 0.016
-			ring.inner_radius = 0.15
-			ring.outer_radius = 0.15 + thick
-			# Cuelga sobre el pecho, por fuera de la camiseta, con un colgante delante
-			_acc_mesh(h, ring, Vector3(0, -0.06, 0.13), gold, Vector3(0.35, 0, 0), Vector3(0.8, 1.0, 1.0))
-			if id == "cadena_gruesa":
-				var tag := CylinderMesh.new()
-				tag.top_radius = 0.022
-				tag.bottom_radius = 0.022
-				tag.height = 0.006
-				_acc_mesh(h, tag, Vector3(0, -0.13, 0.28), gold, Vector3(PI * 0.5 - 0.2, 0, 0))
+			var thick := 0.011 if id == "cadena_fina" else 0.02
+			ring.inner_radius = 0.16
+			ring.outer_radius = 0.16 + thick
+			# Cuelga sobre el pecho, por fuera de la camiseta 3D (abulta más que la
+			# pintada: la cadena quedaba dentro de la tela), con colgante delante
+			_acc_mesh(h, ring, Vector3(0, -0.07, 0.16), gold, Vector3(0.5, 0, 0), Vector3(0.85, 1.0, 1.0))
+			var tag := CylinderMesh.new()
+			tag.top_radius = 0.02 if id == "cadena_fina" else 0.032
+			tag.bottom_radius = tag.top_radius
+			tag.height = 0.008
+			_acc_mesh(h, tag, Vector3(0, -0.17, 0.31), gold, Vector3(PI * 0.5 - 0.35, 0, 0))
 		"auriculares":
+			# Al cuello: diadema por detrás y las dos almohadillas sobre las clavículas
 			var arc := TorusMesh.new()
-			arc.inner_radius = 0.12
-			arc.outer_radius = 0.14
+			arc.inner_radius = 0.13
+			arc.outer_radius = 0.155
 			var dark := _acc_mat(Color(0.1, 0.1, 0.12), 0.2, 0.4)
-			_acc_mesh(h, arc, Vector3(0, 0.0, 0.08), dark, Vector3(0.25, 0, 0))
-			# Almohadillas a los lados del cuello
+			_acc_mesh(h, arc, Vector3(0, 0.04, 0.07), dark, Vector3(0.6, 0, 0), Vector3(1.05, 1.0, 1.0))
 			var cup := CylinderMesh.new()
-			cup.top_radius = 0.042
-			cup.bottom_radius = 0.042
-			cup.height = 0.03
+			cup.top_radius = 0.06
+			cup.bottom_radius = 0.06
+			cup.height = 0.045
+			var pad := _acc_mat(Color(0.85, 0.85, 0.88), 0.3, 0.35)
 			for sx: float in [-1.0, 1.0]:
-				_acc_mesh(h, cup, Vector3(sx * 0.13, -0.02, 0.19), dark, Vector3(0, 0, PI * 0.5))
+				_acc_mesh(h, cup, Vector3(sx * 0.14, 0.0, 0.15), dark, Vector3(0.5, 0, PI * 0.5 - sx * 0.35))
+				var cap2 := CylinderMesh.new()
+				cap2.top_radius = 0.035
+				cap2.bottom_radius = 0.035
+				cap2.height = 0.01
+				_acc_mesh(h, cap2, Vector3(sx * 0.168, -0.008, 0.16), pad, Vector3(0.5, 0, PI * 0.5 - sx * 0.35))
 		"bufanda":
 			# Vuelta de lana gruesa al cuello y una punta que cuelga por delante
 			var wool := _acc_mat(Color(0.62, 0.12, 0.16), 0.0, 1.0)
@@ -704,9 +757,7 @@ func _build_accessory(h: Node3D, id: String) -> void:
 			for sx: float in [-1.0, 1.0]:
 				_acc_mesh(h, ring, Vector3(sx * HEAD_R * 0.36, EYE_Y, HEAD_C.z + HEAD_R * 1.0), frame, Vector3(PI * 0.5, 0, 0))
 				_acc_mesh(h, glass2, Vector3(sx * HEAD_R * 0.36, EYE_Y, HEAD_C.z + HEAD_R * 1.0), clear, Vector3(PI * 0.5, 0, 0))
-				var arm2 := BoxMesh.new()
-				arm2.size = Vector3(0.006, 0.006, HEAD_R * 0.95)
-				_acc_mesh(h, arm2, Vector3(sx * HEAD_R * 0.8, EYE_Y + 0.01, HEAD_C.z + HEAD_R * 0.5), frame)
+				_temple(h, sx, EYE_Y + 0.01, HEAD_R * 0.58, frame, 0.006)
 			var bridge2 := BoxMesh.new()
 			bridge2.size = Vector3(HEAD_R * 0.24, 0.006, 0.006)
 			_acc_mesh(h, bridge2, Vector3(0, EYE_Y + 0.01, HEAD_C.z + HEAD_R * 1.02), frame)

@@ -316,6 +316,13 @@ func _wardrobe_tile(id: String) -> PanelContainer:
 		# Gorras, lentes, pendientes, cadenas, bufanda: primer plano (de cuerpo
 		# entero, a este tamaño, apenas se distinguían)
 		cc.add_child(Avatar.build(cfg, 96))
+	elif slot == "top" or slot == "bottom":
+		# La prenda encuadrada en su zona y grande: a cuerpo entero (96 px) apenas
+		# se distinguían las camisas de las chaquetas
+		var framed := cfg.duplicate()
+		framed["frame"] = "top" if slot == "top" else "legs"
+		framed["full"] = true # sin el fondo redondeado del busto
+		cc.add_child(Avatar.build(framed, 132))
 	else:
 		cc.add_child(Avatar.build_full(cfg, 96))
 	col.add_child(cc)

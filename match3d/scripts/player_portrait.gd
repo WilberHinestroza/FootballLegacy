@@ -109,6 +109,16 @@ func _process(_delta: float) -> void:
 			var c := avatar.global_position + Vector3(0.0, 1.0, 0.0) * k
 			_cam.global_position = c + Vector3(1.1, 0.0, 4.5) * k
 			_cam.look_at(c, Vector3.UP)
+		"top":
+			# De cintura para arriba (tienda: camisas y chaquetas)
+			var t := avatar.global_position + Vector3(0.0, 1.28, 0.0) * k
+			_cam.global_position = t + Vector3(0.7, 0.05, 2.7) * k
+			_cam.look_at(t, Vector3.UP)
+		"legs":
+			# De cintura para abajo (tienda: pantalones)
+			var l := avatar.global_position + Vector3(0.0, 0.52, 0.0) * k
+			_cam.global_position = l + Vector3(0.7, 0.15, 2.5) * k
+			_cam.look_at(l, Vector3.UP)
 		"feet":
 			# Piernas y botas (tienda de guayos): de lado y desde arriba
 			var f := avatar.global_position + Vector3(0.0, 0.25, 0.1) * k

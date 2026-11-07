@@ -37,6 +37,18 @@ func _ready() -> void:
 			var parts := a.substr(7).split(",")
 			Avatar3D.apply(av, {"top": parts[0], "bottom": parts[1] if parts.size() > 1 else parts[0],
 				"tint_base": "#8d5a3c", "hair": "corto"})
+	# acc=<id>,<id>…: accesorios de la tienda (ranura según Avatar.ACCESSORIES)
+	for a: String in OS.get_cmdline_user_args():
+		if a.begins_with("acc="):
+			var acc := {}
+			for id: String in a.substr(4).split(","):
+				acc[Avatar.slot_of(id)] = id
+			av.set_accessories(acc)
+	# hair=<id>: peinado de ItemCatalog
+	for a: String in OS.get_cmdline_user_args():
+		if a.begins_with("hair="):
+			av.set_hair_style(a.substr(5))
+			av.set_colors({"show_hair": true, "hair_style": ItemCatalog.shader_hair_index(a.substr(5))})
 	# pintada: sin prendas por piezas (la ropa pintada del shader), para comparar
 	if OS.get_cmdline_user_args().has("pintada"):
 		av.set_garments([])

@@ -100,6 +100,8 @@ static func build(cfg: Dictionary, px: int) -> Control:
 		bg.add_theme_stylebox_override("panel", sb)
 		root.add_child(bg)
 	var mode := "feet" if feet else ("full" if full else "bust")
+	if String(cfg.get("frame", "")) in ["top", "legs"]:
+		mode = String(cfg["frame"]) # encuadre de la prenda (tienda)
 	var key := "%s|%d|%s" % [mode, px, JSON.stringify(cfg, "", true)]
 	var cached: Texture2D = PlayerPortrait.cached(key)
 	if cached != null:
@@ -199,13 +201,18 @@ static func apply(av: PlayerAvatar, cfg: Dictionary) -> void:
 		if Avatar.GUAYOS_TINT.has(g):
 			c["boots_color"] = Color(String(Avatar.GUAYOS_TINT[g]))
 	av.set_colors(c)
-	# Ropa de calle como prendas 3D de verdad (Garments): la manga y el largo los da
-	# la prenda; con el kit del club, nada (la equipación va pintada)
+	# Ropa como prendas 3D de verdad (Garments): la de calle con su manga y su largo,
+	# y la mitad que va con el kit del club, con la camiseta y la pantaloneta nuevas
+	# (antes se quedaba pintada sobre el cuerpo, con el diseño viejo)
 	var wear: Array = []
 	if STREET.has(top):
 		wear.append("top_long" if bool((STREET[top] as Array)[2]) else "top_short")
+	else:
+		wear.append("top_short")
 	if STREET.has(bottom):
 		wear.append("shorts" if SHORT_BOTTOMS.has(bottom) else "trousers")
+	else:
+		wear.append("shorts")
 	av.set_garments(wear)
 	av.set_hair_style(hair)
 	var acc := {}
