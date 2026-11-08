@@ -1689,7 +1689,10 @@ func _landscape_fit() -> void:
 	if not _is_land() or not is_inside_tree():
 		return
 	var root_scroll := $Root/Scroll as ScrollContainer
-	root_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	# SHOW_NEVER y no DISABLED: con DISABLED el scroll mide lo que su contenido y,
+	# si este crecía (p. ej. con "Planificar la semana"), empujaba la barra de
+	# navegación fuera de la pantalla (Wilber: "los botones se tapan").
+	root_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_SHOW_NEVER
 	root_scroll.scroll_vertical = 0
 	get_tree().process_frame.connect(func(): root_scroll.scroll_vertical = 0, CONNECT_ONE_SHOT)
 	var margin := $Root/Scroll/BodyMargin as MarginContainer
@@ -1751,6 +1754,13 @@ func _landscape_fit() -> void:
 	# DÍA DE PARTIDO: un solo botón grande "Ir al partido" en lugar de
 	# Pasar el día / Avanzar (los dos juntos confundían).
 	var adv: Control = next_match_button.get_parent() as Control
+	# "Planificar la semana" en la misma fila que Pasar el día / Avanzar (sola en
+	# su fila ocupaba media pantalla de alto y no cabía todo)
+	if _planner_button != null and adv is GridContainer:
+		_planner_button.reparent(adv)
+		adv.move_child(_planner_button, 0)
+		(adv as GridContainer).columns = 3
+		_planner_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_land_match_btn = Button.new()
 	_land_match_btn.focus_mode = Control.FOCUS_NONE
 	_land_match_btn.custom_minimum_size = Vector2(0, 56)

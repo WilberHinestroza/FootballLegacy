@@ -177,6 +177,8 @@ func _build_settings() -> void:
 	_content.add_child(_label("AJUSTES", 20, GOLD, true))
 	_content.add_child(_choice("Ritmo del partido", ["lento", "normal", "rapido"], ["Lento", "Normal", "Rápido"],
 		Preferences.match_speed, func(v: String) -> void: Preferences.set_match_speed(v)))
+	_content.add_child(_choice("Cámara de jugada", Preferences.MATCH_CAMERAS, ["Cerca", "Lejos"],
+		Preferences.match_camera, func(v: String) -> void: Preferences.set_match_camera(v)))
 	_content.add_child(_choice("Ayuda de puntería", Preferences.AIM_ASSIST_LEVELS, ["Alta", "Media", "Manual"],
 		Preferences.aim_assist, func(v: String) -> void: Preferences.set_aim_assist(v)))
 	_content.add_child(_choice("Sonido de la afición", ["si", "no"], ["Sí", "No"],

@@ -82,6 +82,17 @@ var match_3d: bool = true
 var aim_assist: String = "media"
 const AIM_ASSIST_LEVELS := ["alta", "media", "manual"]
 
+## Cámara de las jugadas del partido 3D (8-nov, Wilber: "una camara cercana que
+## seria la actual y otra mas lejitos"): "cerca" | "lejos". Preferencia global,
+## no entra en el save de carrera.
+var match_camera: String = "cerca"
+const MATCH_CAMERAS := ["cerca", "lejos"]
+
+func set_match_camera(v: String) -> void:
+	if MATCH_CAMERAS.has(v):
+		match_camera = v
+		_save()
+
 func set_aim_assist(v: String) -> void:
 	if AIM_ASSIST_LEVELS.has(v):
 		aim_assist = v
@@ -171,6 +182,8 @@ func _load() -> void:
 		match_3d = true   # 6-nov: siempre 3D (se ignora un "apagado" guardado)
 	if parsed is Dictionary and AIM_ASSIST_LEVELS.has(parsed.get("aim_assist", "")):
 		aim_assist = parsed["aim_assist"]
+	if parsed is Dictionary and MATCH_CAMERAS.has(parsed.get("match_camera", "")):
+		match_camera = parsed["match_camera"]
 	if parsed is Dictionary and parsed.has("live_tutorial_seen"):
 		live_tutorial_seen = bool(parsed["live_tutorial_seen"])
 
@@ -183,6 +196,6 @@ func _save() -> void:
 		"confirm_advance": confirm_advance, "reduce_motion": reduce_motion, "crowd_sound": crowd_sound,
 		"text_scale": text_scale, "pitch_camera": pitch_camera, "live_play": live_play,
 		"live_tutorial_seen": live_tutorial_seen, "match_3d": match_3d,
-		"aim_assist": aim_assist,
+		"aim_assist": aim_assist, "match_camera": match_camera,
 	}))
 	f.close()

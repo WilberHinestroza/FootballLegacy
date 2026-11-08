@@ -62,11 +62,17 @@ func _test_pure() -> void:
 		arch.append(Vector2(t * 240.0, 50.0 * (pow(2.0 * t - 1.0, 2.0) - 1.0)))
 	_check(SkillMove.classify(arch) == "sombrero", "el arco no se clasifica como sombrero")
 
-	# Curva de un solo lado -> rabona.
-	var curve := PackedVector2Array()
+	# Un tiro con efecto normal (cuarto de vuelta) NO es jugada de lujo.
+	var soft := PackedVector2Array()
 	for i in 13:
 		var a := (PI * 0.5) * float(i) / 12.0
-		curve.append(Vector2(cos(a), sin(a)) * 80.0)
+		soft.append(Vector2(cos(a), sin(a)) * 160.0)
+	_check(SkillMove.classify(soft) == "", "un tiro con efecto se clasifica como jugada de lujo")
+	# Gancho claro de un solo lado -> rabona.
+	var curve := PackedVector2Array()
+	for i in 17:
+		var a := deg_to_rad(130.0) * float(i) / 16.0
+		curve.append(Vector2(cos(a), sin(a)) * 90.0)
 	_check(SkillMove.classify(curve) == "rabona", "la curva no se clasifica como rabona")
 
 	# Atributos y defensor.

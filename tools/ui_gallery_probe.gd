@@ -51,6 +51,9 @@ func _ready() -> void:
 			var pl := SaveManager.load_player()
 			var fx: Dictionary = WorldTickEngine.next_user_fixture(pl.club_id)
 			MatchLauncher.prepare(WorldTickEngine.world, pl, fx, "res://scenes/Hub/Hub.tscn", false)
+		if nm == "Hub" and OS.get_environment("HUB_EARLY") != "":
+			# Partido dentro de unos días: Hub con "Planificar" + "Pasar el día / Avanzar"
+			WorldTickEngine.current_epoch_day -= 3
 		if nm == "Sponsors":
 			var bp := SaveManager.load_player()
 			bp.boot_deal = {"brand": String(BootBrands.BRANDS[0]["id"]), "weekly_income": 111000, "weeks_remaining": 36}

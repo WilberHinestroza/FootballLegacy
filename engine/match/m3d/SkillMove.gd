@@ -14,8 +14,11 @@ const MIN_LENGTH := 100.0
 const LOOP_TURN := 250.0
 ## Ángulo (grados) entre la salida y la llegada que delata una elástica (V).
 const REVERSAL_DEG := 110.0
-## Giro acumulado (grados) que delata una rabona (curva de un solo lado).
-const CURVE_DEG := 65.0
+## Giro acumulado (grados) que delata una rabona: un gancho claro, más de un
+## cuarto de vuelta. Antes era 65° y un tiro con efecto normal (~90°) salía como
+## rabona y pasaba hacia atrás (Wilber, 8-nov: "tiro un tiro curveado y termina
+## yendo para atras el pase").
+const CURVE_DEG := 115.0
 ## Cuánto (px) tiene que subir el arco del sombrero sobre sus extremos.
 const ARCH_RISE := 32.0
 ## Ventana del arco: el punto más alto debe caer en el medio del gesto.

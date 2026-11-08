@@ -203,8 +203,11 @@ func _process(delta: float) -> void:
 		if _auto_left <= 0.0:
 			_stop()
 			return
-		_apply(int(_t))
-		_slider.set_value_no_signal(_t / maxf(_frames.size() - 1, 1.0))
+	# Bug real (Wilber: "la repetición no anda"): estas dos líneas estaban dentro
+	# del bloque de cierre automático, así que la repetición normal se quedaba
+	# congelada en el primer fotograma.
+	_apply(int(_t))
+	_slider.set_value_no_signal(_t / maxf(_frames.size() - 1, 1.0))
 	_blink += delta
 	_rec_label.modulate.a = 1.0 if fmod(_blink, 1.0) < 0.6 else 0.35
 	if _follow:

@@ -5753,7 +5753,9 @@ func _execute_skill_move(move: String, dir: Vector3, to_goal: Vector3,
 			human.chip_ball(over, 1.0 if ok else 0.62, true)
 			_hud.show_message("¡SOMBRERO!" if ok else "¡SE QUEDÓ CORTO!", 0.7)
 		"rabona":
-			var mate := _nearest_open_teammate()
+			# Al compañero libre hacia donde dibujaste el gesto, nunca a uno que
+			# quede a tu espalda (antes iba al más cercano, aunque estuviera detrás).
+			var mate := _nearest_open_teammate(dir)
 			_reset_dodge_combo()
 			if mate != null:
 				human.rabona_pass(mate, SkillMove.rabona_curl(points) * (1.0 if ok else 0.55))
@@ -5803,13 +5805,16 @@ func _stun_near(radius: float, t: float) -> void:
 
 
 ## Compañero más cercano con espacio (sin un rival encima) para la rabona.
-func _nearest_open_teammate() -> SoccerPlayer:
+func _nearest_open_teammate(toward := Vector3.ZERO) -> SoccerPlayer:
 	var best: SoccerPlayer = null
 	var best_d := 999.0
+	var aim := flat(toward).normalized()
 	for mate: SoccerPlayer in teams[0]:
 		if mate == human or mate.is_keeper:
 			continue
 		var d := flat_dist(mate.global_position, human.global_position)
+		if aim != Vector3.ZERO and flat(mate.global_position - human.global_position).normalized().dot(aim) < 0.5:
+			continue # fuera del cono del gesto (±60°)
 		if d >= best_d:
 			continue
 		var open := true
@@ -6848,6 +6853,8 @@ func _camera_declutter() -> void:
 			star.name_tag.scale = Vector3.ONE * (0.001 if hide_mark else 1.0)
 
 
+var _cam_hold_fwd := Vector3.ZERO
+
 func _update_camera(delta: float) -> void:
 	if state == State.REPLAY:
 		return # la cámara libre de la repetición manda
@@ -7071,16 +7078,30 @@ func _update_camera(delta: float) -> void:
 			fwd = flat(look_point - p).normalized()
 		if fwd == Vector3.ZERO:
 			fwd = Vector3(attack_dir(0), 0.0, 0.0)
+		var far: bool = Preferences.match_camera == "lejos"
+		if far:
+			# Lejos: más estable, gira solo a medias con el jugador (se ve el juego)
+			fwd = fwd.lerp(Vector3(attack_dir(0), 0.0, 0.0), 0.5).normalized()
+			if fwd == Vector3.ZERO:
+				fwd = Vector3(attack_dir(0), 0.0, 0.0)
+		# Mientras arrastras el dedo la cámara no gira: el gesto se lee contra el
+		# plano en que empezaste (si giraba a mitad de gesto, el tiro salía torcido).
+		if _hud.gesture.is_holding() and _cam_hold_fwd != Vector3.ZERO:
+			fwd = _cam_hold_fwd
+		_cam_hold_fwd = fwd
 		var right := fwd.cross(Vector3.UP)
-		target_pos = p - fwd * 2.9 - right * 0.5 + Vector3(0.0, 3.3, 0.0)
+		if far:
+			target_pos = p - fwd * 7.0 - right * 0.8 + Vector3(0.0, 6.2, 0.0)
+		else:
+			target_pos = p - fwd * 2.9 - right * 0.5 + Vector3(0.0, 3.3, 0.0)
 		# Mira hacia delante; si el balón vuela lejos, se gira un poco hacia él
 		var look_dir := fwd
 		if ball.owner_player == null and flat_dist(p, b) > 4.0:
 			look_dir = flat(look_point.lerp(flat(b), 0.35) - p).normalized()
 			if look_dir.dot(fwd) < 0.2:
 				look_dir = fwd
-		target_look = p + look_dir * 6.0 + Vector3(0.0, 0.3, 0.0)
-		target_fov = 65.0
+		target_look = p + look_dir * (9.0 if far else 6.0) + Vector3(0.0, 0.3, 0.0)
+		target_fov = 58.0 if far else 65.0
 	else:
 		# Cámara de transmisión: alta en la banda de enfrente de los banquillos.
 		# El foco no va pegado al balón: con dueño mira un poco por delante de él (se ve
