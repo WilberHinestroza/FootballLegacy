@@ -196,6 +196,7 @@ func _build_3d(p: PlayerData, prim: Color, sec: Color) -> void:
 		"surname": words[words.size() - 1] if words.size() > 0 else "",
 		"number": number,
 		"stars": Venue.stars(_club),
+		"design": Venue.design(_club),
 	}, get_viewport_rect().size)
 	view.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(view)

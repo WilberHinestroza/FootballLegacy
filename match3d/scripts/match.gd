@@ -324,6 +324,7 @@ func _ready() -> void:
 	FieldBuilder.weather = int(config.get("weather", Engine.get_meta("force_weather", -1))) # -1 = al azar (Weather.pick)
 	# Estadio del club local: estrellas (1-5), colores y cuánta gente viene
 	FieldBuilder.stars = int(config.get("stadium_stars", 4))
+	FieldBuilder.design = String(config.get("stadium_design", ""))
 	FieldBuilder.home_color = Color(String(config.get("stadium_home_color", "#db2129")))
 	FieldBuilder.home_color2 = Color(String(config.get("stadium_home_color2", "#f2f2f2")))
 	FieldBuilder.away_color = Color(String(config.get("stadium_away_color", "#2961eb")))

@@ -307,6 +307,8 @@ static func _arc(root: Node3D, center: Vector3, radius: float, a0: float, a1: fl
 ## Tamaño del estadio según sus estrellas: de un campo de barrio (1) a un gran estadio (5).
 static func _apply_stars() -> void:
 	stars = clampi(stars, 1, 5)
+	if stars < 5 or not (design in BigStadium.DESIGNS):
+		design = ""
 	SIDE_ROWS = [4, 6, 8, 10, 13][stars - 1]
 	END_ROWS = [2, 3, 5, 8, 10][stars - 1]
 
@@ -335,7 +337,10 @@ static func _extras(root: Node3D) -> void:
 			f.rotation.y = 0.0 if xs < 0.0 else PI # la tela hacia dentro del campo
 			root.add_child(f)
 
-	# Focos en las cuatro esquinas, detrás de las gradas
+	# Focos en las cuatro esquinas, detrás de las gradas (el gran estadio cubierto
+	# los lleva en el borde del techo, ver BigStadium)
+	if design != "":
+		return
 	var mast := CylinderMesh.new()
 	mast.top_radius = 0.25
 	mast.bottom_radius = 0.4
@@ -377,6 +382,9 @@ static var END_ROWS := 8
 ## estrellas de infraestructura 1-5, colores del club local, color de la afición
 ## visitante y qué parte del aforo se llena (0-1).
 static var stars := 4
+## Estilo de gran estadio cubierto ("cuenco" | "catedral" | "anillo", ver
+## BigStadium / Venue.design); "" = estadio de siempre. Solo con 5 estrellas.
+static var design := ""
 static var home_color := Color(0.86, 0.13, 0.16)
 static var home_color2 := Color(0.95, 0.95, 0.95)
 static var away_color := Color(0.16, 0.38, 0.92)
@@ -434,7 +442,8 @@ static func _stands(root: Node3D) -> void:
 		if stars < 3:
 			return seat_a if (stars == 2 and k == 0) else concrete[k % 2]
 		return band if k % 4 == 3 else (seat_a if k % 2 == 0 else seat_b)
-	var side_len := L + 2.0 * END_STANDS
+	# Gran estadio cubierto: la grada lateral baja llega hasta el fondo (esquinas cerradas).
+	var side_len: float = BigStadium.lower_side_len() if design != "" else L + 2.0 * END_STANDS
 	var end_len := W + 2.0 * SIDE_STANDS
 
 	# Gradas laterales
@@ -485,8 +494,8 @@ static func _stands(root: Node3D) -> void:
 				strip.material_override = led
 				strip.position = Vector3((a + b) * 0.5, 0.62, s * (W * 0.5 + SIDE_STANDS - ROW_DEPTH * 0.5 - 0.04))
 				root.add_child(strip)
-		if stars < 2 or (stars == 2 and s > 0.0):
-			continue
+		if design != "" or stars < 2 or (stars == 2 and s > 0.0):
+			continue   # sin techo propio (o lo pone BigStadium)
 		var roof_col := Color(0.82, 0.84, 0.88) if stars < 4 else home_color.lerp(Color(0.85, 0.87, 0.9), 0.55)
 		var roof := add_mesh(root, box(Vector3(side_len + 2.0, 0.3, depth + 2.0)), Vector3(0.0, roof_h, roof_z), roof_col)
 		roof.rotation.x = s * 0.1
@@ -517,7 +526,7 @@ static func _stands(root: Node3D) -> void:
 					xforms.append(Transform3D(face, Vector3(x, top, z + randf_range(-0.1, 0.1))))
 					colors.append(_fan_color(s > 0.0)) # la afición visitante, en el fondo de +X
 				z += 0.75
-		if stars == 5:
+		if stars == 5 and design == "":
 			# Gran estadio: también los fondos cubiertos
 			var edepth := END_ROWS * ROW_DEPTH
 			var eroof_h := 0.9 + END_ROWS * ROW_RISE + 3.5
@@ -531,7 +540,9 @@ static func _stands(root: Node3D) -> void:
 	# Muros traseros que cierran el estadio (que no se vea el vacío detrás de la grada)
 	var back := Color(0.42, 0.45, 0.52) if stars < 3 else home_color.darkened(0.55)
 	var trim := Color(0.85, 0.87, 0.9)
-	for s: float in [-1.0, 1.0]:
+	if design != "":
+		BigStadium.build(root, xforms, colors)   # segundo piso, techo de anillo y muros
+	for s: float in ([] if design != "" else [-1.0, 1.0]):
 		var bz := s * (W * 0.5 + SIDE_STANDS + SIDE_ROWS * ROW_DEPTH)
 		var roofed := stars >= 3 or (stars == 2 and s < 0.0)
 		var bh := 0.9 + SIDE_ROWS * ROW_RISE + (4.5 if roofed else 1.2) # sin techo, muro bajo
@@ -1284,6 +1295,11 @@ static func _scoreboard(root: Node3D) -> void:
 	var roof_top := 0.9 + END_ROWS * ROW_RISE + 3.5 + 1.0
 	var y := roof_top + 3.8 + 1.4
 	var wall_top := 0.9 + END_ROWS * ROW_RISE + 2.5 # muro trasero de la grada (stars >= 3)
+	if design != "":
+		# Colgado del techo sobre el fondo, con cables en vez de patas.
+		var spot: Vector2 = BigStadium.scoreboard_spot()
+		x = spot.x
+		y = spot.y
 	var leg_len := y - 3.8 - wall_top
 	var board := Node3D.new()
 	board.name = "Scoreboard"
@@ -1303,7 +1319,11 @@ static func _scoreboard(root: Node3D) -> void:
 	screen.position = Vector3(0.0, 0.0, 0.0)
 	board.add_child(screen)
 	for leg: float in [-6.5, 6.5]:
-		add_mesh(board, box(Vector3(0.5, leg_len, 0.5)), Vector3(leg, -3.8 - leg_len * 0.5, -0.4), Color(0.3, 0.32, 0.36))
+		if design != "":
+			var cable := BigStadium.roof_y() - y - 3.8
+			add_mesh(board, box(Vector3(0.08, cable, 0.08)), Vector3(leg, 3.8 + cable * 0.5, -0.3), Color(0.25, 0.26, 0.3))
+		else:
+			add_mesh(board, box(Vector3(0.5, leg_len, 0.5)), Vector3(leg, -3.8 - leg_len * 0.5, -0.4), Color(0.3, 0.32, 0.36))
 	var label := Label3D.new()
 	label.name = "Text"
 	label.font_size = 200

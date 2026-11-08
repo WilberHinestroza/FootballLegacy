@@ -290,6 +290,7 @@ func _build_field() -> void:
 	FieldBuilder.crowd_fill = 0.0
 	FieldBuilder.crowd = {}
 	FieldBuilder.stars = Venue.stars(_club) if _club != null else 3
+	FieldBuilder.design = ""   # la ciudad deportiva no es el gran estadio
 	if _club != null:
 		FieldBuilder.home_color = Color(_club.primary_color_hex)
 		FieldBuilder.home_color2 = Color(_club.secondary_color_hex)

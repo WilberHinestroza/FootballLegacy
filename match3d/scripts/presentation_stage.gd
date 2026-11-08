@@ -72,6 +72,7 @@ func setup(d: Dictionary) -> void:
 	# Estadio de noche y lleno, todo con la hinchada del club
 	FieldBuilder.time_of_day = 2
 	FieldBuilder.stars = clampi(int(d.get("stars", 4)), 1, 5)
+	FieldBuilder.design = String(d.get("design", ""))
 	FieldBuilder.home_color = _prim
 	FieldBuilder.home_color2 = _sec
 	FieldBuilder.away_color = _prim

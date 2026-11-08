@@ -303,6 +303,7 @@ static func build_config(on_finish: Callable) -> Dictionary:
 		"stadium": Venue.stadium_name(home_club) if home_club != null else ("Estadio Nacional · %s" % String(fixture.get("home_country", "")) if national else ""),
 		# Estadio del LOCAL (puede ser el rival): estrellas, colores y lleno
 		"stadium_stars": Venue.stars(home_club) if home_club != null else 3,
+		"stadium_design": Venue.design(home_club) if home_club != null else "",
 		"stadium_home_color": "#" + (us_col if user_home else them_col).to_html(false) if home_club == null else home_club.primary_color_hex.trim_prefix("#").insert(0, "#"),
 		"stadium_home_color2": "#" + (us_sec if user_home else them_sec).to_html(false) if home_club == null else home_club.secondary_color_hex.trim_prefix("#").insert(0, "#"),
 		"stadium_away_color": "#" + (them_col if user_home else us_col).to_html(false),
@@ -417,6 +418,7 @@ static func practice_config(mode: String, facet: String, on_finish: Callable) ->
 		"home_coach": coach.coach_name if coach != null else "", "away_coach": "",
 		"stadium": Venue.stadium_name(club),
 		"stadium_stars": Venue.stars(club),
+		"stadium_design": Venue.design(club),
 		"stadium_home_color": club.primary_color_hex if club.primary_color_hex.begins_with("#") else "#" + club.primary_color_hex,
 		"stadium_home_color2": club.secondary_color_hex if club.secondary_color_hex.begins_with("#") else "#" + club.secondary_color_hex,
 		"stadium_away_color": "#" + bib.to_html(false),

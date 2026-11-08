@@ -47,6 +47,14 @@ static func stars(club: ClubData) -> int:
 		return 4
 	return 5
 
+## Estilo del gran estadio cubierto (solo 5 estrellas; BigStadium): cada club
+## grande tiene el suyo, fijo por su id. "" = estadio de siempre.
+const DESIGNS := ["cuenco", "catedral", "anillo"]
+static func design(club: ClubData) -> String:
+	if club == null or stars(club) < 5:
+		return ""
+	return String(DESIGNS[absi(hash("stadium_design:" + club.club_id)) % DESIGNS.size()])
+
 ## Público del partido: crece con la ambición/prestigio de los dos clubes y
 ## si es derbi; nunca supera el aforo.
 static func attendance(home: ClubData, away: ClubData, is_derby: bool, seed_key: String, world_seed: int) -> int:
