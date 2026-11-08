@@ -213,6 +213,7 @@ func advance_day(day_activity: String = "rest") -> void:
 	_tick_transfer_window_news()
 	_tick_deadline_day()
 	_tick_precontract()
+	_tick_potm()
 	_tick_international_window()
 	_tick_national_trophies()
 	_tick_life_events()
@@ -3257,6 +3258,51 @@ func _rebuild_season_for_new_club(new_club_id: String) -> void:
 ## Fichaje de mitad de temporada recién ejecutado → el Hub muestra la
 ## presentación oficial (PlayerPresentation) y lo vacía. No se persiste.
 var pending_presentation: Dictionary = {}
+
+## Jugador del mes (SeasonAwardsEngine): al cambiar de mes se juzga lo que
+## hiciste el mes que termina (desde la foto season["potm_snap"]).
+func _tick_potm() -> void:
+	if season.is_empty() or user_club_id == "":
+		return
+	var month: int = SeasonAwardsEngine.month_of(current_epoch_day)
+	var snap: Dictionary = season.get("potm_snap", {})
+	if not snap.is_empty() and int(snap.get("month", 0)) == month:
+		return
+	var player := SaveManager.load_player()
+	if player == null:
+		return
+	if not snap.is_empty():
+		var closed: int = int(snap.get("month", 1))
+		var lg := _find_league(int(season.get("league_id", -1)))
+		var rng := RandomNumberGenerator.new()
+		rng.seed = hash("potm:%d" % current_epoch_day) ^ world_seed
+		var line: Dictionary = SeasonAwardsEngine.month_line(player, season, snap)
+		var res: Dictionary = SeasonAwardsEngine.judge_month(player.position, line, lg.reputation if lg != null else 60, rng)
+		var mname: String = SeasonAwardsEngine.MONTHS[clampi(closed, 1, 12)]
+		var lname: String = lg.league_name if lg != null else "la liga"
+		var stats: String = "%d partidos, %d goles, %d asistencias y un %.1f de media" % [int(line.games), int(line.goals), int(line.assists), float(line.avg)]
+		if not res.is_empty() and bool(res.winner):
+			SeasonAwardsEngine.apply_potm(player, season, closed)
+			PressGenerator.append_to_feed(player, {
+				"headline": "%s, jugador del mes de %s en %s" % [Nickname.press_name(player, world_seed), mname, lname],
+				"body": "Un mes de escándalo: %s. +%d reputación." % [stats, SeasonAwardsEngine.POTM_REP],
+				"source": "PREMIOS", "sentiment": "POSITIVE",
+			}, current_epoch_day)
+		elif not res.is_empty() and bool(res.nominee):
+			var rival: String = ""
+			var scorers: Array = top_performers_for_league(int(season.get("league_id", -1))).get("scorers", [])
+			for r in scorers:
+				if String(r.get("name", "")) != player.player_name:
+					rival = String(r.get("name", ""))
+					break
+			PressGenerator.append_to_feed(player, {
+				"headline": "Nominado a jugador del mes de %s" % mname,
+				"body": "Tus números (%s) te metieron en la terna, pero el premio se lo lleva %s." % [stats, rival if rival != "" else "otro jugador"],
+				"source": "PREMIOS", "sentiment": "NEUTRAL",
+			}, current_epoch_day)
+	season["potm_snap"] = SeasonAwardsEngine.snapshot(player, season, current_epoch_day)
+	SaveManager.save_season(season)
+	SaveManager.save_player(player)
 
 ## Precontrato (PreContractEngine): en tu último año de contrato, desde el
 ## mercado de invierno, un club puede ofrecerte irte libre a final de

@@ -109,8 +109,33 @@ static func collect_season(wte, player: PlayerData, season_year: int) -> Array:
 		out.append(_entry("ballon_dor_podio", "Podio del Balón de Oro", "individual", season_year, 2 if world_rank == 1 else 3))
 	if league_rank == 1:
 		out.append(_entry("mvp_liga_%d" % league_id, "MVP de %s" % league_name, "individual", season_year, 1))
-	if league_rank != -1 and league_rank <= 11:
-		out.append(_entry("once_ideal_%d" % league_id, "11 ideal · %s" % league_name, "individual", season_year, 2))
+	# Equipo de la temporada (SeasonAwardsEngine): por goles+asistencias del
+	# ranking O por nota media según tu puesto — así entran porteros y defensas.
+	var r_games: int = int(wte.season.get("user_rating_games", 0))
+	var r_avg: float = float(wte.season.get("user_rating_sum", 0.0)) / float(maxi(r_games, 1))
+	var tots: bool = SeasonAwardsEngine.in_tots(player.position, r_avg, r_games, int(my_row.get("pj", 0)))
+	if (league_rank != -1 and league_rank <= 11) or tots:
+		out.append(_entry("once_ideal_%d" % league_id, "Equipo de la temporada · %s" % league_name, "individual", season_year, 2))
+
+	# --- Jugador del mes (los meses ganados esta temporada) ---
+	var potm: Array = wte.season.get("potm_wins", [])
+	if not potm.is_empty():
+		var pname: String = ("Jugador del mes (%s)" % String(potm[0])) if potm.size() == 1 else ("Jugador del mes ×%d" % potm.size())
+		out.append(_entry("potm_%d" % league_id, "%s · %s" % [pname, league_name], "individual", season_year, 1))
+
+	# --- Golden Boy: mejor sub-21 del mundo (la edad ya subió en el rollover) ---
+	if player.age - 1 <= SeasonAwardsEngine.GB_MAX_AGE:
+		var gb_rng := RandomNumberGenerator.new()
+		gb_rng.seed = hash("golden_boy:%d" % season_year) ^ int(wte.world_seed)
+		var rivals: Array = SeasonAwardsEngine.gb_rivals(wte.world, user_club_id, gb_rng)
+		var lrep: int = league.reputation if league != null else 60
+		var gb_bonus: float = SeasonAwardsEngine.gb_user_bonus(r_avg if r_games > 0 else 6.0, player.season_goals, player.season_key_passes, lrep)
+		var mine: float = SeasonAwardsEngine.gb_score(player.overall, player.potential, gb_bonus)
+		var gb_pos: int = SeasonAwardsEngine.gb_rank(mine, rivals)
+		if gb_pos == 1:
+			out.append(_entry("golden_boy", "Golden Boy", "individual", season_year, 1))
+		elif gb_pos <= 3:
+			out.append(_entry("golden_boy_podio", "Podio del Golden Boy", "individual", season_year, gb_pos))
 
 	return out
 
@@ -147,6 +172,10 @@ static func trophy_key_for(entry: Dictionary) -> String:
 		return "mvp_liga"
 	if id.begins_with("once_ideal"):
 		return "once_ideal"
+	if id.begins_with("potm_"):
+		return "mvp_match"
+	if id.begins_with("golden_boy"):
+		return "mvp_temporada"
 	if id == "world_cup":
 		return "mundial_seleccion"
 	if id.begins_with("natcup_"):

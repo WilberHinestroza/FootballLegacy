@@ -37,6 +37,10 @@ static func for_honors(honors: Array, league_rep: int, rng: RandomNumberGenerato
 					amount = 1500
 				elif id.begins_with("botaoro_") or id.begins_with("mvp_"):
 					amount = 500
+				elif id == "golden_boy":
+					amount = 600
+				elif id.begins_with("potm_"):
+					amount = 250
 		if amount > 0:
 			amount = maxi(amount, 200)
 			lines.append({"name": String(h.get("name", "Título")), "amount": amount})
