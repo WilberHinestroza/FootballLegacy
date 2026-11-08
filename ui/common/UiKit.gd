@@ -142,6 +142,7 @@ static func hero_sidebar(hero: Control, width: float = 300.0) -> void:
 	row.add_child(right)
 	for k in after:
 		(k as Node).reparent(right)
+	fixed_column(left) # la barra izquierda no se mueve ni empuja nada (8-nov)
 
 ## Chip redondeado con borde del color (texto chico).
 static func chip(text: String, col: Color) -> PanelContainer:
@@ -513,4 +514,34 @@ static func fixed_column(content: Control) -> Control:
 	else:
 		holder.add_child(content)
 	content.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	# Ancho: el que pida el contenido (si no, los textos se cortan a la derecha)
+	var fit_w := func() -> void:
+		if is_instance_valid(holder) and is_instance_valid(content):
+			holder.custom_minimum_size.x = maxf(content.custom_minimum_size.x, content.get_combined_minimum_size().x)
+	content.minimum_size_changed.connect(fit_w)
+	fit_w.call()
 	return holder
+
+
+## Columna que se desplaza sola (la derecha de las pantallas de dos columnas).
+## Envuelve `content` en un ScrollContainer táctil en el mismo sitio.
+static func scroll_column(content: Control) -> ScrollContainer:
+	var sc := ScrollContainer.new()
+	sc.name = String(content.name) + "Scroll"
+	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	sc.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_SHOW_NEVER
+	sc.size_flags_horizontal = content.size_flags_horizontal
+	sc.size_flags_stretch_ratio = content.size_flags_stretch_ratio
+	sc.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	sc.custom_minimum_size = Vector2(content.custom_minimum_size.x, 0.0)
+	var p := content.get_parent()
+	if p != null:
+		var i := content.get_index()
+		p.add_child(sc)
+		p.move_child(sc, i)
+		content.reparent(sc, false)
+	else:
+		sc.add_child(content)
+	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	UiScroll.make_touch(sc)
+	return sc

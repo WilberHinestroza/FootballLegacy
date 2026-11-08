@@ -572,7 +572,9 @@ static func land_columns(box: VBoxContainer, keep_top: int = 1) -> void:
 	if old != null:
 		var back: Array = []
 		for col in old.get_children():
-			for k in col.get_children():
+			# Con héroe cada columna va envuelta (marco fijo / scroll): su VBox es el hijo
+			var colv: Node = col if col is VBoxContainer else col.get_child(0)
+			for k in colv.get_children():
 				if not k.is_queued_for_deletion():
 					back.append(k)
 		back.sort_custom(func(a, b): return int(a.get_meta("land_order", 0)) < int(b.get_meta("land_order", 0)))
@@ -625,6 +627,23 @@ static func land_columns(box: VBoxContainer, keep_top: int = 1) -> void:
 		side_hero.reparent(col_v[0])
 		col_h[0] = side_hero.get_combined_minimum_size().y + 8.0
 		(col_v[0] as Control).size_flags_stretch_ratio = 0.8
+	# Con héroe (8-nov, Wilber: "la de la izquierda no deberia moverse"): la
+	# ficha queda SOLA y fija a la izquierda y todas las secciones van a la
+	# derecha, que se desplaza por su cuenta.
+	if side_hero != null:
+		for g in groups:
+			for n in g:
+				(n as Node).reparent(col_v[1])
+		cols.size_flags_vertical = Control.SIZE_EXPAND_FILL
+		# Las columnas ya no transmiten su alto: toda la cadena hasta el scroll
+		# de la pantalla tiene que llenar el alto (si no, quedaban en 0: Club en blanco)
+		var up: Node = box
+		while up != null and up is Control and not (up is ScrollContainer):
+			(up as Control).size_flags_vertical = Control.SIZE_EXPAND_FILL
+			up = up.get_parent()
+		UiKit.fixed_column(col_v[0])
+		UiKit.scroll_column(col_v[1])
+		groups = []
 	# En orden: cada sección va a la columna más baja hasta ese momento.
 	for g in groups:
 		var h: float = 0.0

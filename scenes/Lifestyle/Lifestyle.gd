@@ -35,7 +35,7 @@ func _ready() -> void:
 ## la derecha solo la sección elegida (antes era una lista larga en dos columnas).
 var _land := false
 var _land_page := "social"
-var _land_menu: VBoxContainer = null
+var _land_menu: Container = null
 const _LAND_PAGES := [["social", "Vida social"], ["wellbeing", "Bienestar"], ["home", "Casa y coche"],
 	["staff", "Staff personal"], ["money", "Finanzas"], ["foundation", "Fundación"]]
 
@@ -50,20 +50,18 @@ func _build_land_menu() -> void:
 	left.custom_minimum_size.x = 270
 	left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	left.add_theme_constant_override("separation", 8)
-	# La columna (tarjeta + 6 botones) es más alta que la pantalla del móvil: con
-	# scroll propio, en vez de empujar todo hacia arriba bajo la barra (se cortaba).
-	var lsc := ScrollContainer.new()
-	lsc.custom_minimum_size.x = 270
-	lsc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	lsc.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	UiScroll.make_touch(lsc)
-	lsc.add_child(left)
-	row.add_child(lsc)
+	# Columna izquierda FIJA (8-nov, Wilber: "la de la izquierda no deberia
+	# moverse"): tarjeta compacta + menú, sin scroll.
+	row.add_child(left)
+	UiKit.fixed_column(left)
 	if _hero_card != null:
 		UiKit.hero_to_column(_hero_card)
 		_hero_card.reparent(left)
-	_land_menu = VBoxContainer.new()
-	_land_menu.add_theme_constant_override("separation", 6)
+	# Menú en dos columnas: los 7 apartados caben con la columna fija
+	_land_menu = GridContainer.new()
+	(_land_menu as GridContainer).columns = 2
+	_land_menu.add_theme_constant_override("h_separation", 6)
+	_land_menu.add_theme_constant_override("v_separation", 6)
 	left.add_child(_land_menu)
 	scroll.reparent(row)
 	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -80,6 +78,8 @@ func _refresh_land_menu() -> void:
 		var b := Button.new()
 		b.text = String(p[1])
 		b.custom_minimum_size.y = 40
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		b.clip_text = true
 		b.focus_mode = Control.FOCUS_NONE
 		Styles.tab(b, p[0] == _land_page)
 		var key: String = String(p[0])

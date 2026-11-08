@@ -488,6 +488,9 @@ func _land_setup() -> void:
 		_land_right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		_land_right.add_theme_constant_override("separation", 10)
 		cols.add_child(_land_right)
+		# Izquierda fija, derecha con su propio scroll (8-nov, Wilber)
+		UiKit.fixed_column(_land_left)
+		UiKit.scroll_column(_land_right)
 		_land_right.add_child(Styles.section_label("Foco de entrenamiento"))
 		_focus_grid = GridContainer.new()
 		_focus_grid.columns = 2
@@ -495,7 +498,10 @@ func _land_setup() -> void:
 		_focus_grid.add_theme_constant_override("v_separation", 10)
 		_land_right.add_child(_focus_grid)
 		options_box.visible = false
-		_progress_card.reparent(_land_left)
+		# La tarjeta de progreso va a la derecha, debajo de intensidad y
+		# habilidades (había sitio): en la columna fija de la izquierda se cortaba.
+		_progress_card.reparent(_land_right)
+		(func(): if is_instance_valid(_progress_card): _land_right.move_child(_progress_card, -1)).call_deferred()
 		current_label.reparent(_land_left)
 		current_label.add_theme_font_size_override("font_size", 13)
 		current_label.add_theme_color_override("font_color", Styles.GRAY_TEXT)
