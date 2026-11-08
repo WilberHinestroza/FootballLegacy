@@ -195,9 +195,10 @@ static func _attribute_national_goals(
 ## Reemplaza (o agrega) la fila del usuario con sus cifras REALES —
 ## PlayerData.season_goals/season_key_passes, ya registrados partido a
 ## partido — en vez de dejar la atribución sintética que le tocara.
-static func inject_user(result: Dictionary, player: PlayerData, club_name: String) -> void:
-	_upsert(result["scorers"], player.player_name, club_name, player.season_goals, player.club_id)
-	_upsert(result["assists"], player.player_name, club_name, player.season_key_passes, player.club_id)
+## `goals`/`assists`: los tuyos EN ESA competición (WorldTickEngine.user_comp_stats).
+static func inject_user(result: Dictionary, player: PlayerData, club_name: String, goals: int, assists: int) -> void:
+	_upsert(result["scorers"], player.player_name, club_name, goals, player.club_id)
+	_upsert(result["assists"], player.player_name, club_name, assists, player.club_id)
 
 static func _upsert(rows: Array, name: String, club_name: String, count: int, club_id: String = "") -> void:
 	for r in rows:

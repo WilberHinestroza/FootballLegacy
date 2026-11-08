@@ -1220,6 +1220,33 @@ func other_matchday_scores(fixture: Dictionary, progress: float) -> Array:
 ## cada club (ver TopPerformersEngine) — si el club del usuario es de
 ## esta liga, sus goles/asistencias REALES (ya registrados en su
 ## PlayerData) reemplazan la atribución sintética para él.
+## Tus goles/asistencias de la temporada POR COMPETICIÓN ("league", "cup",
+## "continental"...). Bug real (Wilber: "hice 1 solo gol y me aparecen 3"): la
+## tabla de goleadores de la liga usaba season_goals, que suma todas las
+## competiciones. Estado no-schema en season["user_comp"]; se reinicia con la
+## temporada. Sin el dict (partida de antes del arreglo) devuelve {} y quien
+## llama cae al total de la temporada.
+func user_comp_stats(comp: String) -> Dictionary:
+	var all: Dictionary = season.get("user_comp", {})
+	if all.is_empty():
+		return {}
+	var d: Dictionary = all.get(_comp_bucket(comp), {})
+	return {"g": int(d.get("g", 0)), "a": int(d.get("a", 0))}
+
+func add_user_comp_stats(comp: String, goals: int, assists: int) -> void:
+	var all: Dictionary = season.get("user_comp", {})
+	var k := _comp_bucket(comp)
+	var d: Dictionary = all.get(k, {"g": 0, "a": 0})
+	d["g"] = int(d.get("g", 0)) + goals
+	d["a"] = int(d.get("a", 0)) + assists
+	all[k] = d
+	season["user_comp"] = all
+
+## La copa nacional del club llega como "cup" o "national_cup": misma tabla.
+static func _comp_bucket(comp: String) -> String:
+	return "cup" if comp == "national_cup" else comp
+
+
 func top_performers_for_league(league_id: int) -> Dictionary:
 	if world.is_empty():
 		return {"scorers": [], "assists": []}
@@ -1247,7 +1274,9 @@ func top_performers_for_league(league_id: int) -> Dictionary:
 	if user_club_id != "" and clubs_by_id.has(user_club_id):
 		var player := SaveManager.load_player()
 		if player != null:
-			TopPerformersEngine.inject_user(result, player, clubs_by_id[user_club_id].club_name)
+			var mine := user_comp_stats("league")
+			TopPerformersEngine.inject_user(result, player, clubs_by_id[user_club_id].club_name,
+					int(mine.get("g", player.season_goals)), int(mine.get("a", player.season_key_passes)))
 	return result
 
 ## Tabla de amarillas/rojas/lesiones de una liga cualquiera al día de hoy
@@ -1533,7 +1562,14 @@ func top_performers_for_cup(league_id: int) -> Dictionary:
 		var c := WorldFactory.find_club(world, cid)
 		if c != null:
 			clubs_by_id[cid] = c
-	return TopPerformersEngine.compute_cup(resolved_cup, world, clubs_by_id, world_seed, int(season.get("season_start_epoch_day", 0)))
+	var res: Dictionary = TopPerformersEngine.compute_cup(resolved_cup, world, clubs_by_id, world_seed, int(season.get("season_start_epoch_day", 0)))
+	# Tú en la tabla de tu copa, con tus goles de copa (solo si ya se cuentan aparte)
+	var mine := user_comp_stats("cup")
+	if user_club_id != "" and clubs_by_id.has(user_club_id) and not mine.is_empty():
+		var player := SaveManager.load_player()
+		if player != null:
+			TopPerformersEngine.inject_user(res, player, clubs_by_id[user_club_id].club_name, int(mine.g), int(mine.a))
+	return res
 
 ## Goleadores y asistentes del Mundial de este ciclo (ver
 ## TopPerformersEngine.compute_national_tournament) — {} si no hay Mundial

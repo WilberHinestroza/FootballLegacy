@@ -48,8 +48,17 @@ func _build_land_menu() -> void:
 	vb.move_child(row, scroll.get_index())
 	var left := VBoxContainer.new()
 	left.custom_minimum_size.x = 270
+	left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	left.add_theme_constant_override("separation", 8)
-	row.add_child(left)
+	# La columna (tarjeta + 6 botones) es más alta que la pantalla del móvil: con
+	# scroll propio, en vez de empujar todo hacia arriba bajo la barra (se cortaba).
+	var lsc := ScrollContainer.new()
+	lsc.custom_minimum_size.x = 270
+	lsc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	lsc.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	UiScroll.make_touch(lsc)
+	lsc.add_child(left)
+	row.add_child(lsc)
 	if _hero_card != null:
 		UiKit.hero_to_column(_hero_card)
 		_hero_card.reparent(left)

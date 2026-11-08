@@ -48,6 +48,7 @@ var user_seat: Node3D
 signal sub_entered(pos: Vector3) # el suplente pisa el campo
 var _sub_walker: Node3D       # suplente que va a entrar: se levanta, espera junto al cuarto árbitro y entra
 var _sub_phase := 0
+var _leavers: Array = []     # los que salen en un cambio: andan del campo al banquillo y desaparecen
 ## Árbitro central y los dos asistentes (en el campo, siguen la jugada).
 var refs: Array[Node3D] = []
 ## Durante la salida de los equipos: a dónde camina cada árbitro (lo pone el partido).
@@ -212,6 +213,11 @@ func substitution(team: int, num_off: int, num_on: int, person: Node3D = null) -
 		var av: PlayerAvatar = p.get_meta("avatar")
 		av.position.y = 0.0
 		av.anim.play("idle", 0.3)
+		# Se quita el peto de calentar: entra con la camiseta del partido
+		if p != user_seat:
+			var look: Dictionary = {"shirt_pattern": 0, "long_sleeves": false}
+			look.merge(_kits[team], true)
+			av.set_colors(look)
 		_sub_walker = p
 		_sub_phase = 0
 
@@ -282,6 +288,7 @@ func _process(delta: float) -> void:
 				p.position.y = (p.get_meta("seat_y") as float) + (absf(sin(_t * 8.0 + p.position.x)) * 0.3 if _celebrate[t] > 0.0 else 0.0)
 	_update_refs(b, delta)
 	_update_sub(delta)
+	_update_leavers(delta)
 	# Cartel de cambios: arriba unos segundos, con los números parpadeando
 	if _board_time > 0.0:
 		_board_time -= delta
@@ -403,6 +410,43 @@ func _update_card(delta: float) -> void:
 			av.anim.play("idle", 0.2)
 			av.anim.speed_scale = 1.0
 			av.pose_arms("card", 0.15)
+
+
+## El que sale en un cambio: aparece donde estaba el jugador (mismo sitio y
+## rumbo, con la camiseta del equipo; tu cara si eres tú) y anda hasta su
+## banquillo, donde desaparece. Así en cada cambio se ve uno salir y otro entrar.
+func walk_off(at: Vector3, yaw: float, team: int, prof: PlayerProfile = null) -> Node3D:
+	var look: Dictionary = {"long_sleeves": false}
+	look.merge(_kits[team], true)
+	if prof != null:
+		look.merge({"shorts_color": prof.shorts, "socks_color": prof.socks}, true)
+	var n := _person(look)
+	var av: PlayerAvatar = n.get_meta("avatar")
+	if prof != null:
+		av.apply_profile(prof)
+		av.set_colors(look)
+	n.position = Vector3(at.x, 0.0, at.z)
+	n.rotation.y = yaw
+	av.anim.play("walk" if av.anim.has_animation("walk") else "run", 0.2)
+	var cx := -11.0 if team == 0 else 11.0
+	n.set_meta("leave_to", Vector3(cx + randf_range(-2.0, 2.0), 0.0, -SoccerMatch.FIELD_WIDTH * 0.5 - 3.0))
+	_leavers.append(n)
+	return n
+
+
+func _update_leavers(delta: float) -> void:
+	for n: Node3D in _leavers.duplicate():
+		if not is_instance_valid(n):
+			_leavers.erase(n)
+			continue
+		if not _walk(n, n.get_meta("leave_to"), 1.5, delta):
+			_leavers.erase(n)
+			n.queue_free()
+
+
+## El suplente que está entrando ahora (para la cámara), o null.
+func current_sub_walker() -> Node3D:
+	return _sub_walker
 
 
 ## El suplente: va a la banda junto al cuarto árbitro, espera el cartel y entra corriendo.

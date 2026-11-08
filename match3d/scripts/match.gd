@@ -596,10 +596,12 @@ func _physics_process(delta: float) -> void:
 			_freeze_players()
 			_update_var_review(delta)
 		State.CUTSCENE:
-			_run_ai()
-			if _sub_walk:
-				_sub_walk_step()
-			_update_possession(delta)
+			# Cambio (Wilber: "cuando entra o sale el partido sigue, no debería"):
+			# el juego se para; solo se mueve el que sale (y el que entra, en StadiumStaff).
+			_freeze_players()
+			ball.linear_velocity *= 0.9
+			if _leave_walk:
+				_leave_step(delta)
 			_cut_timer -= delta
 			if _cut_timer <= 0.0:
 				_end_cutscene()
@@ -2716,7 +2718,7 @@ func _update_hud_extras() -> void:
 		star.energy = maxf(stamina, 0.3)
 	_hud.set_stamina(stamina * lerpf(0.85, 1.0, clampf(star.energy / maxf(stamina, 0.3), 0.0, 1.0)), on_pitch)
 	_hud.show_exit_button(on_pitch and state == State.SIMULATING and minute < _match_end_minute() - 2.0)
-	var can_request := state == State.SIMULATING and _bench_until > 0.0 and not entered and minute < _bench_until
+	var can_request := state == State.SIMULATING and _bench_until > 0.0 and not entered and not subbed_off and minute < _bench_until
 	_hud.show_request_button(can_request)
 	# Tu marca "TÚ" se pone naranja si estás adelantado y tu equipo tiene el balón
 	if star.star_label != null:
@@ -2788,6 +2790,7 @@ var _sub_walk_pick := {}
 var _sub_walk_m := 0
 var _sub_exit := Vector3.ZERO
 var _sub_clapped := false
+var _sub_enter_pos := Vector3.INF
 
 
 func _sub_walk_off(m: int, pick: Dictionary) -> void:
@@ -2800,6 +2803,7 @@ func _sub_walk_off(m: int, pick: Dictionary) -> void:
 		if mate != null:
 			_give_ball_now(mate)
 	_sub_exit = Vector3(clampf(star.global_position.x, -30.0, 30.0), 0.0, -FIELD_WIDTH * 0.5 - 0.6)
+	_begin_leave(true)
 	star.walk_normal = true
 	staff.substitution(0, int(profile.number), _sub_number)
 	_hud.show_substitution(TEAM_NAMES[0], profile.shirt, int(profile.number), _sub_number)
@@ -2807,21 +2811,57 @@ func _sub_walk_off(m: int, pick: Dictionary) -> void:
 	var r := live_rating()
 	SoundFx.play("applause", -4.0 if r >= 7.0 else (-9.0 if r >= 6.0 else -15.0))
 	_hud.show_message("Sales del campo\nla grada te despide con aplausos" if r >= 7.0 else "Sales del campo", 2.2)
-	_start_cutscene(star, 6.0, false)
+	_start_cutscene(star, 16.0, false) # se acaba cuando el suplente pisa el campo
 
 
-## Cada cuadro de la escena: el usuario va caminando a la banda (la IA del resto sigue).
-func _sub_walk_step() -> void:
-	var d := flat_dist(star.global_position, _sub_exit)
-	if d < 0.7:
-		_end_cutscene()
+## Cambio, el que SALE (tú o el compañero de tu hueco): camina hacia la banda de
+## los banquillos con el partido parado. Si está lejos, a los LEAVE_SECS lo
+## releva un figurante igual (StadiumStaff.walk_off) que sigue hasta el banquillo:
+## el cuerpo del partido queda libre para el que entra.
+const LEAVE_SECS := 4.5
+var _leave_walk := false
+var _leave_is_user := false
+var _leave_t := 0.0
+
+func _begin_leave(is_user: bool) -> void:
+	_leave_walk = true
+	_leave_is_user = is_user
+	_leave_t = 0.0
+	_sub_exit = Vector3(clampf(star.global_position.x, -30.0, 30.0), 0.0, -FIELD_WIDTH * 0.5 - 0.6)
+	if star.has_ball():
+		var mate := _nearest_of_team(0, star.global_position, [star], 40.0)
+		if mate != null:
+			_give_ball_now(mate)
+
+
+func _leave_step(delta: float) -> void:
+	if not star.visible:
+		return
+	_leave_t += delta
+	if flat_dist(star.global_position, _sub_exit) < 0.7 or _leave_t > LEAVE_SECS:
+		_hand_to_leaver()
 		return
 	AiBrain.move_to(star, _sub_exit, 0.3, false)
 	star.move_input *= _walk_pace(star) / WALK_PACE * 0.75
 	star.sprinting = false
-	if not _sub_clapped and _cut_timer < 3.5:
+	if _leave_is_user and not _sub_clapped and _leave_t > 1.0:
 		_sub_clapped = true
 		star.play_action("clap", 1.0, 1.2) # aplaude a la grada
+
+
+## El que sale pasa al figurante (sigue andando al banquillo) y el cuerpo del
+## partido se esconde hasta que entra el otro.
+func _hand_to_leaver() -> void:
+	if not _leave_walk:
+		return
+	_leave_walk = false
+	if star.visible:
+		staff.walk_off(star.global_position, star.global_rotation.y, 0, profile if _leave_is_user else null)
+		star.visible = false
+	# La cámara pasa al que entra
+	var w := staff.current_sub_walker()
+	if w != null and state == State.CUTSCENE:
+		_cut_target = w
 
 
 func _swap_out_star(m: int, pick: Dictionary) -> void:
@@ -2846,7 +2886,11 @@ func _swap_out_star(m: int, pick: Dictionary) -> void:
 	_bake_kit_decals()
 	if walked:
 		# El suplente entra por donde saliste, hacia dentro del campo
-		star.reset_to(Vector3(_sub_exit.x, 0.0, -FIELD_WIDTH * 0.5 + 0.4), Vector3.BACK)
+		# El suplente aparece donde pisó el campo el que venía del banquillo
+		var at: Vector3 = _sub_enter_pos if _sub_enter_pos != Vector3.INF else Vector3(_sub_exit.x, 0.0, -FIELD_WIDTH * 0.5 + 0.4)
+		_sub_enter_pos = Vector3.INF
+		star.reset_to(Vector3(at.x, 0.0, at.z), Vector3.BACK)
+		star.visible = true
 	else:
 		staff.substitution(0, int(profile.number), _sub_number)
 		_hud.show_substitution(TEAM_NAMES[0], profile.shirt, int(profile.number), _sub_number)
@@ -2883,6 +2927,7 @@ func _enter_from_bench(m: int) -> void:
 	var seat := staff.user_seat
 	staff.substitution(0, num_off, profile.number, seat)
 	if seat != null:
+		_begin_leave(false) # sale el compañero de tu hueco, andando a la banda
 		_start_cutscene(seat, 16.0, true) # se acaba cuando pisas el campo (_on_sub_entered)
 		_hud.show_message("¡TE TOCA!\nEntras al campo", 2.5)
 	else:
@@ -2901,11 +2946,18 @@ func _swap_in_star(at: Vector3) -> void:
 		star.star_label.visible = true
 	if at != Vector3.INF:
 		star.reset_to(Vector3(at.x, 0.0, at.z), Vector3.BACK)
+	star.visible = true
 
 
 func _on_sub_entered(pos: Vector3) -> void:
-	if state == State.CUTSCENE and _cut_sub:
+	if state != State.CUTSCENE:
+		return
+	_hand_to_leaver() # por si el que sale aún no había llegado
+	if _cut_sub:
 		_swap_in_star(pos)
+		_end_cutscene()
+	elif _sub_walk:
+		_sub_enter_pos = pos
 		_end_cutscene()
 
 
@@ -2923,8 +2975,11 @@ func _start_cutscene(target: Node3D, secs: float, is_sub: bool) -> void:
 func _end_cutscene() -> void:
 	if state != State.CUTSCENE:
 		return
+	_hand_to_leaver()
 	if _cut_sub and staff.user_seat != null:
 		_swap_in_star(Vector3.INF) # por si la escena se acabó antes de pisar el campo
+	if not star.visible and not sent_off:
+		star.visible = true # red de seguridad: nunca un hueco vacío en el campo
 	if _sub_walk:
 		_swap_out_star(_sub_walk_m, _sub_walk_pick)
 	_cut_target = null

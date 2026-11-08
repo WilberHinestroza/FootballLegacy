@@ -51,6 +51,10 @@ func _ready() -> void:
 			var pl := SaveManager.load_player()
 			var fx: Dictionary = WorldTickEngine.next_user_fixture(pl.club_id)
 			MatchLauncher.prepare(WorldTickEngine.world, pl, fx, "res://scenes/Hub/Hub.tscn", false)
+		if nm == "Sponsors":
+			var bp := SaveManager.load_player()
+			bp.boot_deal = {"brand": String(BootBrands.BRANDS[0]["id"]), "weekly_income": 111000, "weeks_remaining": 36}
+			SaveManager.save_player(bp)
 		if nm == "Shop":
 			var sp := SaveManager.load_player()
 			sp.cosmetics_owned = ["hoodie", "top_camisa_chinos", "bot_jeans", "mocasines"]

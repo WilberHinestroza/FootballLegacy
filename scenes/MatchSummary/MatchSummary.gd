@@ -518,6 +518,14 @@ func _apply_match_consequences() -> CoachData:
 				if not is_friendly:
 					_player.season_key_passes += 1
 
+	# Goles y asistencias también por competición (tabla de goleadores de cada torneo)
+	if not is_friendly and bool(_result.get("user_played", started)):
+		var assists_this_match: int = 0
+		for ev2 in _result.get("rating_events", []):
+			if String(ev2.get("type", "")) == "key_pass_success":
+				assists_this_match += 1
+		WorldTickEngine.add_user_comp_stats(String(_fixture.get("competition", "league")), goals_this_match, assists_this_match)
+
 	# Prima por gol negociada en el contrato (ContractNegotiation): se paga
 	# de verdad al balance del jugador por cada gol oficial.
 	if goals_this_match > 0 and not is_friendly:

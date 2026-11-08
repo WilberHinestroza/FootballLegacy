@@ -213,18 +213,27 @@ func _empty_card(title: String, body: String, accent: Color) -> Control:
 	return pv[0]
 
 ## Los modelos de la marca que tenés por contrato, con zoom a los pies.
+## Rejilla de 4 por fila (antes una fila de 8 que ensanchaba la página más que
+## la pantalla y la cortaba por los dos lados).
 func _models_row(brand: Dictionary) -> Control:
-	var row := HBoxContainer.new()
-	row.alignment = BoxContainer.ALIGNMENT_CENTER
-	row.add_theme_constant_override("separation", 10)
+	var row := GridContainer.new()
+	row.columns = 4
+	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_theme_constant_override("h_separation", 8)
+	row.add_theme_constant_override("v_separation", 8)
 	var base: Dictionary = Avatar.celebration_config_for_player(_player, SaveManager.load_world_seed())
 	for m in brand.get("models", []):
 		var cfg: Dictionary = base.duplicate(true)
 		cfg["acc_feet"] = String(m)
 		var cell := VBoxContainer.new()
 		cell.alignment = BoxContainer.ALIGNMENT_CENTER
-		cell.add_child(Avatar.build_feet(cfg, 104))
+		cell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var feet: Control = Avatar.build_feet(cfg, 84)
+		feet.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		cell.add_child(feet)
 		var l := Label.new()
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		l.custom_minimum_size.x = 80
 		l.text = Avatar.label_of(String(m)) + ("  ✓" if String(_player.cosmetics_equipped.get("acc_feet", "")) == String(m) else "")
 		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		l.add_theme_font_size_override("font_size", 11)
