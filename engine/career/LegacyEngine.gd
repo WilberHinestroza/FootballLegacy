@@ -15,6 +15,7 @@ static func tier(p: PlayerData) -> int:
 	pts += mini(p.trophies_won, 6)
 	pts += _count(p, "ballon_dor") * 3 + _count(p, "world_cup") * 3
 	pts += mini(p.club_seniority / 3, 3)
+	pts += FoundationEngine.legacy_points(p)   # lo que dejaste fuera del campo
 	if pts >= 14:
 		return 3
 	if pts >= 9:

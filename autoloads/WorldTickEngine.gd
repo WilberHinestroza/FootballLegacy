@@ -2652,6 +2652,10 @@ func _tick_finances() -> void:
 	player.balance += int(round(ContractEngine.weekly_income(player.wage) * StaffEngine.income_factor(player)))
 	# Derechos de imagen (ImageRightsEngine): tu parte de lo que genera tu imagen.
 	player.balance += ImageRightsEngine.weekly_income(player)
+	# Tu fundación (FoundationEngine): el % del sueldo que donas cada semana.
+	var fnd: Dictionary = FoundationEngine.weekly_tick(player)
+	if int(fnd.get("level_up", 0)) > 0:
+		PressGenerator.append_to_feed(player, FoundationEngine.level_up_press(player, int(fnd.level_up)), current_epoch_day)
 	SaveManager.save_player(player)
 
 ## Resuelve inversiones vencidas (InvestmentEngine) — se acredita el pago

@@ -128,6 +128,7 @@ static func followers(player: PlayerData, bonus: int = 0) -> int:
 	total += float(player.career_assists) * 700.0
 	total += float(player.trophies_won) * 40000.0
 	total += float(player.career_matches) * 250.0
+	total += float(FoundationEngine.followers_bonus(player))   # tu fundación también suma
 	return maxi(int(total) + maxi(bonus, 0), 0)
 
 ## Empujón de seguidores DESPUÉS de un partido notable — la gente de las

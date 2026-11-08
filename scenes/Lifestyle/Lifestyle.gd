@@ -37,7 +37,7 @@ var _land := false
 var _land_page := "social"
 var _land_menu: VBoxContainer = null
 const _LAND_PAGES := [["social", "Vida social"], ["wellbeing", "Bienestar"], ["home", "Casa y coche"],
-	["staff", "Staff personal"], ["money", "Finanzas"]]
+	["staff", "Staff personal"], ["money", "Finanzas"], ["foundation", "Fundación"]]
 
 func _build_land_menu() -> void:
 	var vb: VBoxContainer = $Margin/VBox
@@ -128,6 +128,7 @@ func _render() -> void:
 		func(): _build_tier_section("Garaje", LifestyleEngine.CAR_TIERS, "car"),
 		_build_staff,
 		_build_investments,
+		_build_foundation,
 	]
 	var land: bool = _land
 	if land:
@@ -137,6 +138,7 @@ func _render() -> void:
 			"home": sections = [func(): _build_tier_section("Residencia", LifestyleEngine.HOME_TIERS, "home"),
 				func(): _build_tier_section("Garaje", LifestyleEngine.CAR_TIERS, "car")]
 			"staff": sections = [_build_staff]
+			"foundation": sections = [_build_foundation]
 			_: sections = [_build_money, _build_investments]
 	var groups: Array = []
 	for i in range(sections.size()):
@@ -887,6 +889,120 @@ func _build_investments() -> void:
 			nope.add_theme_font_size_override("font_size", Styles.SIZE_LABEL)
 			v.add_child(nope)
 		body.add_child(card)
+
+## Tu fundación (FoundationEngine): crearla eligiendo causa, el % del sueldo
+## que donas cada semana, su nivel y la gala benéfica.
+func _build_foundation() -> void:
+	var today: int = WorldTickEngine.current_epoch_day
+	var d: Dictionary = FoundationEngine.data(_player)
+	if d.is_empty():
+		body.add_child(Styles.section_label("Fundación"))
+		var intro := _plain("Crea tu fundación y dona cada semana una parte de tu sueldo. Te da reputación, ánimo y seguidores, y cuenta para tu legado. Aporte inicial: %s." % CurrencyFormat.format(FoundationEngine.CREATE_COST))
+		intro.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		body.add_child(intro)
+		var blk: String = FoundationEngine.create_blocker(_player)
+		if blk != "":
+			var bl := _plain(blk)
+			bl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			bl.add_theme_color_override("font_color", Styles.AMBER)
+			body.add_child(bl)
+		for c in FoundationEngine.CAUSES:
+			var card := _card(Styles.CARD_DARK)
+			var v := _card_body(card)
+			var row := HBoxContainer.new()
+			row.add_theme_constant_override("separation", 10)
+			var tx := VBoxContainer.new()
+			tx.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			var n := Label.new()
+			n.text = String(c["name"])
+			n.add_theme_font_override("font", Styles.font_semibold())
+			tx.add_child(n)
+			var ds := _plain(String(c["desc"]))
+			ds.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			ds.add_theme_font_size_override("font_size", Styles.SIZE_LABEL)
+			tx.add_child(ds)
+			row.add_child(tx)
+			var b := Button.new()
+			b.text = "Crear"
+			b.custom_minimum_size = Vector2(96, 40)
+			b.focus_mode = Control.FOCUS_NONE
+			b.disabled = blk != ""
+			Styles.styled_button(b, Styles.pill_outlined(Styles.GOLD), Styles.GOLD)
+			var cid: String = String(c["id"])
+			b.pressed.connect(func():
+				var r: Dictionary = FoundationEngine.create(_player, cid, today)
+				if bool(r.ok):
+					PressGenerator.append_to_feed(_player, {
+						"headline": "%s crea la %s" % [Nickname.press_name(_player, SaveManager.load_world_seed()), FoundationEngine.foundation_name(_player)],
+						"body": "Su causa: %s. %s" % [String(c["name"]).to_lower(), String(c["desc"])],
+						"source": "SOCIEDAD", "sentiment": "POSITIVE",
+					}, today)
+					SaveManager.save_player(_player)
+				_toast(String(r.message))
+				_render())
+			row.add_child(b)
+			v.add_child(row)
+			body.add_child(card)
+		return
+	var c2: Dictionary = FoundationEngine.cause(String(d.get("cause", "")))
+	var lv: int = int(d.get("level", 1))
+	body.add_child(Styles.section_label("%s · %s" % [String(d.get("name", "")), String(c2["name"])]))
+	var card2 := _card(Styles.GOLD)
+	var v2 := _card_body(card2)
+	var lvl := Label.new()
+	lvl.text = "Alcance %s (nivel %d de 5) · %s donados" % [String(FoundationEngine.LEVEL_NAMES[lv]).to_lower(), lv, CurrencyFormat.format(int(d.get("donated", 0)))]
+	lvl.add_theme_font_override("font", Styles.font_semibold())
+	v2.add_child(lvl)
+	if lv < 5:
+		v2.add_child(_bar("Hacia alcance %s (%s)" % [String(FoundationEngine.LEVEL_NAMES[lv + 1]).to_lower(), CurrencyFormat.format(int(FoundationEngine.LEVEL_AT[lv]))], int(round(FoundationEngine.progress(int(d.get("donated", 0))) * 100.0)), false))
+	var fl := _plain("+%s seguidores gracias a la fundación" % SocialEngine.followers_label(FoundationEngine.followers_bonus(_player)))
+	fl.add_theme_font_size_override("font_size", Styles.SIZE_LABEL)
+	v2.add_child(fl)
+	body.add_child(card2)
+	body.add_child(Styles.section_label("Donación semanal · %s" % CurrencyFormat.format(FoundationEngine.weekly_donation(_player))))
+	var pr := HBoxContainer.new()
+	pr.add_theme_constant_override("separation", 6)
+	for pct in FoundationEngine.PCTS:
+		var pb := Button.new()
+		pb.text = "%d%%" % pct
+		pb.custom_minimum_size = Vector2(0, 40)
+		pb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		pb.focus_mode = Control.FOCUS_NONE
+		var on: bool = int(d.get("pct", 0)) == pct
+		Styles.styled_button(pb, Styles.pill_filled(Styles.GREEN) if on else Styles.pill_outlined(Styles.GREEN), Color.BLACK if on else Styles.GREEN)
+		var pv: int = pct
+		pb.pressed.connect(func():
+			FoundationEngine.set_pct(_player, pv)
+			SaveManager.save_player(_player)
+			_render())
+		pr.add_child(pb)
+	body.add_child(pr)
+	var hint := _plain("Del %d%% en adelante, donar también te sube el ánimo cada semana." % FoundationEngine.WEEKLY_MOOD_PCT)
+	hint.add_theme_font_size_override("font_size", Styles.SIZE_LABEL)
+	body.add_child(hint)
+	var gb := Button.new()
+	var gblk: String = FoundationEngine.gala_blocker(_player, today)
+	gb.text = "Organizar gala benéfica (%s)" % CurrencyFormat.format(FoundationEngine.GALA_COST) if gblk == "" else gblk
+	gb.custom_minimum_size = Vector2(0, 46)
+	gb.focus_mode = Control.FOCUS_NONE
+	gb.disabled = gblk != ""
+	Styles.styled_button(gb, Styles.pill_outlined(Styles.GOLD), Styles.GOLD)
+	gb.pressed.connect(func():
+		var rng := RandomNumberGenerator.new()
+		rng.seed = hash("gala:%d" % today) ^ SaveManager.load_world_seed()
+		var r: Dictionary = FoundationEngine.hold_gala(_player, today, rng)
+		if bool(r.ok):
+			PressGenerator.append_to_feed(_player, {
+				"headline": "Gala benéfica de la %s" % String(FoundationEngine.data(_player).get("name", "")),
+				"body": "%s Famosos, compañeros y aficionados llenaron la sala." % String(r.message),
+				"source": "SOCIEDAD", "sentiment": "POSITIVE",
+			}, today)
+			if int(r.level_up) > 0:
+				PressGenerator.append_to_feed(_player, FoundationEngine.level_up_press(_player, int(r.level_up)), today)
+			SaveManager.save_player(_player)
+		_toast(String(r.message))
+		_render())
+	body.add_child(gb)
 
 func _on_invest(type_id: String, amount: int) -> void:
 	var res: Dictionary = InvestmentEngine.open(_player, type_id, amount, WorldTickEngine.current_epoch_day)
