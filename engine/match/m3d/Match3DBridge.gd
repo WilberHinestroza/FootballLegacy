@@ -91,7 +91,7 @@ static func portrait(p: PlayerData, club: ClubData, px: int, full_body := false,
 	# Escudo, patrocinio, dorsal y apellido en la camiseta (los mismos del partido)
 	if club != null and stamp:
 		var words: PackedStringArray = p.player_name.split(" ", false)
-		Avatar3D.stamp_kit(face, club.club_id, Kit.suggested_number(p.position, "%s|%d" % [p.player_name, wseed]),
+		Avatar3D.stamp_kit(face, club.club_id, ShirtNumberEngine.number_for(p, wseed),
 			words[words.size() - 1] if words.size() > 0 else "", shirt, sec)
 	return face
 
@@ -105,7 +105,7 @@ static func profile_for(p: PlayerData, wseed: int, shirt: Color, shorts: Color, 
 	var prof := PlayerProfile.new()
 	prof.player_name = p.player_name
 	# Mismo dorsal que el perfil y la camiseta del RPG (PlayerProfile, Avatar)
-	prof.number = Kit.suggested_number(p.position, "%s|%d" % [p.player_name, wseed])
+	prof.number = ShirtNumberEngine.number_for(p, wseed)
 	prof.position = int(POS_INDEX.get(p.position, 2))
 	prof.foot = int(FOOT.get(p.dominant_foot, 0))
 	var lk: Dictionary = look_for(p, wseed)
@@ -436,7 +436,7 @@ static func practice_config(mode: String, facet: String, on_finish: Callable) ->
 ## Pancartas de la hinchada (6-nov): misma entrada que usaba el partido 2D.
 static func _crowd_banners(p: PlayerData, fixture: Dictionary, user_home: bool, wseed: int, world: Dictionary) -> Dictionary:
 	var fs: int = int(WorldTickEngine.season.get("fan_sentiment", InterviewEngine.FAN_DEFAULT))
-	var num: int = Kit.suggested_number(p.position, "%s|%d" % [p.player_name, wseed])
+	var num: int = ShirtNumberEngine.number_for(p, wseed)
 	# Ex club (v34): de visitante en una cancha donde jugaste.
 	var ex_rec: String = "" if user_home else ImmersionEngine.ex_club_reception(p, world, String(fixture.get("home_club_id", "")), wseed)
 	return ImmersionEngine.crowd_banners(p, wseed, fs, user_home, bool(fixture.get("derby", false)), num, ex_rec)

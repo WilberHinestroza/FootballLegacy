@@ -82,7 +82,7 @@ func _ready() -> void:
 		vbox.add_child(Styles.section_label("CAMISETA RETIRADA"))
 		var jrow := HBoxContainer.new()
 		jrow.add_theme_constant_override("separation", 12)
-		var num: int = Kit.suggested_number(player.position, "%s|%d" % [player.player_name, SaveManager.load_world_seed()])
+		var num: int = ShirtNumberEngine.number_for(player, SaveManager.load_world_seed())
 		jrow.add_child(Kit.build_for_club_kit(club, WorldTickEngine.get_season_start_year(), false, 72, num))
 		var jl := Label.new()
 		jl.text = "%s colgó tu N.º %d: nadie más lo va a usar." % [club.club_name, num]

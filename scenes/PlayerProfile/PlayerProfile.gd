@@ -125,7 +125,7 @@ func _build_portrait() -> void:
 		chips.append(["«%s»" % nick, Color(0.6, 0.75, 1.0)])
 	var right: Control = null
 	if _club != null:
-		var num: int = Kit.suggested_number(_player.position, "%s|%d" % [_player.player_name, SaveManager.load_world_seed()])
+		var num: int = ShirtNumberEngine.number_for(_player, SaveManager.load_world_seed())
 		right = Kit.build_for_club_kit(_club, WorldTickEngine.get_season_start_year(), false, 72, num)
 	# Carta "Ultimate" grande (10-oct, Wilber: "mejora la carta de jugador
 	# ... la de mi perfil"): la carta a la izquierda y, al lado, nombre,
@@ -185,6 +185,21 @@ func _build_portrait() -> void:
 	vbox.move_child(hero, sub_label.get_index() + 1)
 	vbox.add_child(edit_btn)
 	vbox.move_child(edit_btn, hero.get_index() + 1)
+	# Elegir dorsal (ShirtNumberEngine): con el mercado abierto, una vez por temporada.
+	if _club != null:
+		var num_btn := Button.new()
+		num_btn.text = "Cambiar dorsal (llevas el %d)" % ShirtNumberEngine.number_for(_player, SaveManager.load_world_seed())
+		num_btn.custom_minimum_size = Vector2(0, 44)
+		num_btn.focus_mode = Control.FOCUS_NONE
+		Styles.styled_button(num_btn, Styles.pill_outlined(Styles.GREEN), Styles.GREEN)
+		num_btn.pressed.connect(_open_number_picker)
+		vbox.add_child(num_btn)
+		vbox.move_child(num_btn, edit_btn.get_index() + 1)
+
+func _open_number_picker() -> void:
+	var bo: int = int(WorldTickEngine.world.get("club_meta_by_id", {}).get(_player.club_id, {}).get("base_overall", -1))
+	var picker := ShirtNumberPicker.open(self, _player, bo, bool(WorldTickEngine.season.get("is_captain", false)))
+	picker.chosen.connect(func(_n): get_tree().reload_current_scene())
 
 func _on_back_pressed() -> void:
 	get_tree().change_scene_to_file("res://scenes/CareerMenu/CareerMenu.tscn")

@@ -580,7 +580,7 @@ static func config_for_player(player: PlayerData, world_seed: int) -> Dictionary
 		cfg["tint_hair"] = "#" + hc.lerp(gray, t).to_html(false)
 	cfg = _apply_kit_tint(cfg)
 	if cfg.has("kit_club"):
-		cfg["kit_num"] = Kit.suggested_number(player.position, "%s|%d" % [player.player_name, world_seed])
+		cfg["kit_num"] = ShirtNumberEngine.number_for(player, world_seed)
 		var words: PackedStringArray = player.player_name.split(" ", false)
 		cfg["kit_name"] = words[words.size() - 1] if words.size() > 0 else ""
 	return cfg

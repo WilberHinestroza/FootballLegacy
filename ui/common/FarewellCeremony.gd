@@ -63,7 +63,7 @@ func _club_col() -> Color:
 	return c
 
 func _number() -> int:
-	return Kit.suggested_number(_p.position, "%s|%d" % [_p.player_name, SaveManager.load_world_seed()])
+	return ShirtNumberEngine.number_for(_p, SaveManager.load_world_seed())
 
 func _show(i: int) -> void:
 	_i = i

@@ -93,7 +93,7 @@ func _ready() -> void:
 	var number: int = int(_d.get("number", 0))
 	if number <= 0 and p != null:
 		# Mismo dorsal que muestra el Perfil (Kit.suggested_number).
-		number = Kit.suggested_number(p.position, "%s|%d" % [p.player_name, SaveManager.load_world_seed()])
+		number = ShirtNumberEngine.number_for(p, SaveManager.load_world_seed())
 	var stage := HBoxContainer.new()
 	stage.alignment = BoxContainer.ALIGNMENT_CENTER
 	stage.add_theme_constant_override("separation", -6)
@@ -180,7 +180,7 @@ func _build_3d(p: PlayerData, prim: Color, sec: Color) -> void:
 	var year: int = WorldTickEngine.get_season_start_year()
 	var number: int = int(_d.get("number", 0))
 	if number <= 0:
-		number = Kit.suggested_number(p.position, "%s|%d" % [p.player_name, wseed])
+		number = ShirtNumberEngine.number_for(p, wseed)
 	var words: PackedStringArray = p.player_name.split(" ", false)
 	var cid: String = _club.club_id
 	var club: ClubData = _club
