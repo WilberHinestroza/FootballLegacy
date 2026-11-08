@@ -489,3 +489,28 @@ static func club_backdrop(primary: Color) -> TextureRect:
 	r.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	r.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	return r
+
+
+## Columna fija de las pantallas de dos columnas en horizontal: no se desplaza
+## y su alto NO se transmite hacia arriba (un VBox alto ya no empuja la barra de
+## navegación fuera de la pantalla; lo que sobre se recorta abajo). `content`
+## se mueve dentro del marco devuelto, que hay que añadir al padre.
+static func fixed_column(content: Control) -> Control:
+	var holder := Control.new()
+	holder.name = String(content.name) + "Fixed"
+	holder.clip_contents = true
+	holder.mouse_filter = Control.MOUSE_FILTER_PASS
+	holder.size_flags_horizontal = content.size_flags_horizontal
+	holder.size_flags_stretch_ratio = content.size_flags_stretch_ratio
+	holder.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	holder.custom_minimum_size = Vector2(content.custom_minimum_size.x, 0.0)
+	if content.get_parent() != null:
+		var p := content.get_parent()
+		var i := content.get_index()
+		p.add_child(holder)
+		p.move_child(holder, i)
+		content.reparent(holder, false)
+	else:
+		holder.add_child(content)
+	content.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	return holder

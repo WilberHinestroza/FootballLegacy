@@ -134,16 +134,10 @@ func _split_columns() -> void:
 	_side = VBoxContainer.new()
 	_side.add_theme_constant_override("separation", 12)
 	_side.custom_minimum_size = Vector2(get_viewport_rect().size.x * 0.42, 0)
-	# Columna izquierda con su propio scroll: con patrocinio, guayos y objetivo
-	# largo la tarjeta crecía y empujaba la barra de navegación fuera de la
-	# pantalla (Wilber, 8-nov: "en algunas si y en otras no se ve").
-	var side_scroll := ScrollContainer.new()
-	side_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	side_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_SHOW_NEVER
-	side_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	UiScroll.make_touch(side_scroll)
-	side_scroll.add_child(_side)
-	cols.add_child(side_scroll)
+	# Columna izquierda FIJA (Wilber, 8-nov: "la de la izquierda no deberia
+	# moverse"): va en un marco que recorta y no transmite su alto, así una
+	# tarjeta larga (patrocinio + guayos) ya no empuja la barra de navegación.
+	cols.add_child(UiKit.fixed_column(_side))
 	scroll.reparent(cols)
 	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -151,6 +145,7 @@ func _split_columns() -> void:
 		margin.add_theme_constant_override("margin_" + k, 0)
 	margin.add_theme_constant_override("margin_right", 8) # aire para la barra de scroll
 	title.reparent(_side)
+	title.visible = false # la pestaña "Carrera" de la barra ya dice dónde estás
 
 
 func _new_grid() -> GridContainer:
@@ -272,8 +267,9 @@ func _build_hero() -> void:
 		return
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 12)
-	var fig: Control = Match3DBridge.portrait(_player, _club, 150, true, Color(0, 0, 0, 0))
-	fig.custom_minimum_size = Vector2(120, 150)
+	# Horizontal: figura más baja para que la columna fija quepa entera
+	var fig: Control = Match3DBridge.portrait(_player, _club, 112, true, Color(0, 0, 0, 0))
+	fig.custom_minimum_size = Vector2(92, 112)
 	row.add_child(fig)
 	var col := VBoxContainer.new()
 	col.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -322,9 +318,9 @@ func _build_summary_card() -> void:
 	for s in ["left", "right"]:
 		margin.add_theme_constant_override("margin_" + s, 16)
 	for s in ["top", "bottom"]:
-		margin.add_theme_constant_override("margin_" + s, 14)
+		margin.add_theme_constant_override("margin_" + s, 8 if _landscape else 14)
 	var v := VBoxContainer.new()
-	v.add_theme_constant_override("separation", 10)
+	v.add_theme_constant_override("separation", 4 if _landscape else 10)
 
 	# --- Encabezado: club + chip de capitán ---
 	var head := HBoxContainer.new()
@@ -361,7 +357,7 @@ func _build_summary_card() -> void:
 		var sp_row := _kv_row("Patrocinio", String(_player.sponsor.get("name", "?")),
 			"%s/sem · %d sem." % [CurrencyFormat.format(int(_player.sponsor.get("weekly_income", 0))),
 			int(_player.sponsor.get("weeks_remaining", 0))], Styles.GOLD)
-		var sp_logo := BrandMark.build(String(_player.sponsor.get("name", "")), 28)
+		var sp_logo := BrandMark.build(String(_player.sponsor.get("name", "")), 22 if _landscape else 28)
 		sp_logo.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		sp_row.add_child(sp_logo)
 		sp_row.move_child(sp_logo, 1)
@@ -373,7 +369,7 @@ func _build_summary_card() -> void:
 			var bt_row := _kv_row("Guayos", String(bb["name"]),
 				"%s/sem · %d sem." % [CurrencyFormat.format(int(_player.boot_deal.get("weekly_income", 0))),
 				int(_player.boot_deal.get("weeks_remaining", 0))], Styles.GOLD)
-			var bt_logo := BootBrands.logo_rect(bb, 28)
+			var bt_logo := BootBrands.logo_rect(bb, 22 if _landscape else 28)
 			bt_logo.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 			bt_row.add_child(bt_logo)
 			bt_row.move_child(bt_logo, 1)

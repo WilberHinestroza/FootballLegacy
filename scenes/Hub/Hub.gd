@@ -561,6 +561,7 @@ func _refresh_planner_button() -> void:
 	var nxt: Dictionary = WorldTickEngine.next_user_fixture(_user_club_id())
 	var free_days: int = (int(nxt.get("epoch_day", day)) - day) if not nxt.is_empty() else 0
 	_planner_button.visible = not has_match_today and free_days >= 2
+	_land_adv_cols()
 
 ## Aviso "se viene una fecha FIFA" — antes solo se veía el día que llegaba
 ## (Calendar.gd resaltándola, Parte 82); acá avisa CON anticipación (≤6
@@ -580,13 +581,30 @@ func _build_fifa_button() -> void:
 	_fifa_button.pressed.connect(func(): get_tree().change_scene_to_file("res://scenes/Calendar/Calendar.tscn"))
 	season_event_button.add_sibling(_fifa_button)
 
+## Horizontal: la fila de Planificar / FIFA / Pasar el día / Avanzar usa
+## tantas columnas como botones visibles (una columna vacía robaba ancho).
+func _land_adv_cols() -> void:
+	if not _is_land() or next_match_button == null:
+		return
+	var adv := next_match_button.get_parent() as GridContainer
+	if adv == null:
+		return
+	var n: int = 0
+	for b in adv.get_children():
+		if b is Control and (b as Control).visible:
+			n += 1
+	adv.columns = maxi(n, 1)
+
 func _refresh_fifa_button() -> void:
 	if _fifa_button == null or _player == null:
 		return
 	var days: int = WorldTickEngine.days_until_next_international_window()
 	_fifa_button.visible = days >= 0
 	if _fifa_button.visible:
-		_fifa_button.text = "📅  Fecha FIFA mañana" if days == 1 else "📅  Fecha FIFA en %d días" % days
+		_fifa_button.text = "FIFA mañana" if days == 1 else "FIFA en %d días" % days
+		if not _is_land():
+			_fifa_button.text = "Fecha " + _fifa_button.text
+	_land_adv_cols()
 
 ## Aviso de convocatoria a la selección (pedido de Wilber: "que salga un
 ## popup con la invitación") — botón que aparece SOLO mientras
@@ -1698,13 +1716,27 @@ func _landscape_fit() -> void:
 	var margin := $Root/Scroll/BodyMargin as MarginContainer
 	margin.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	margin.add_theme_constant_override("margin_bottom", 6)
-	margin.add_theme_constant_override("margin_top", margin.get_theme_constant("margin_top") + 14)
+	margin.add_theme_constant_override("margin_top", margin.get_theme_constant("margin_top") + 4)
 	var box := $Root/Scroll/BodyMargin/BodyVBox as VBoxContainer
 	box.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	var cols := box.get_node("Cols") as HBoxContainer
 	cols.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	var left := cols.get_child(0) as VBoxContainer
 	var right := cols.get_child(1) as VBoxContainer
+	# Izquierda FIJA y derecha con su propio scroll (Wilber, 8-nov: "las
+	# pantallas que tienen 2 columnas y la de la izquierda no deberian
+	# moverse"). Antes se desplazaba toda la pantalla y, si la derecha no
+	# cabía, "Fecha FIFA" y los botones de avanzar quedaban bajo la barra.
+	UiKit.fixed_column(left) # queda en el mismo sitio de `cols`
+	var rsc := ScrollContainer.new()
+	rsc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	rsc.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_SHOW_NEVER
+	rsc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	rsc.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	UiScroll.make_touch(rsc)
+	cols.add_child(rsc)
+	right.reparent(rsc)
+	right.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	# Izquierda: carta + semana (que llega hasta abajo). Derecha: chips,
 	# Pasar/Avanzar y las pestañas.
 	chips_row.reparent(right)
@@ -1759,8 +1791,21 @@ func _landscape_fit() -> void:
 	if _planner_button != null and adv is GridContainer:
 		_planner_button.reparent(adv)
 		adv.move_child(_planner_button, 0)
-		(adv as GridContainer).columns = 3
+		_planner_button.text = "Planificar"
 		_planner_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	# El aviso de Fecha FIFA también va en esa fila (solo ocupaba media fila
+	# y empujaba Pasar el día / Avanzar por debajo de la pantalla). La rejilla
+	# salta los botones ocultos: caben hasta 4 en una fila.
+	if _fifa_button != null and adv is GridContainer:
+		_fifa_button.reparent(adv)
+		adv.move_child(_fifa_button, 1 if _planner_button != null and _planner_button.get_parent() == adv else 0)
+		_fifa_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		_fifa_button.clip_text = true
+	if adv is GridContainer:
+		for b in adv.get_children():
+			if b is Control:
+				(b as Control).custom_minimum_size.y = 42.0
+		_land_adv_cols()
 	_land_match_btn = Button.new()
 	_land_match_btn.focus_mode = Control.FOCUS_NONE
 	_land_match_btn.custom_minimum_size = Vector2(0, 56)
@@ -1902,7 +1947,7 @@ func _build_mosaic(left: VBoxContainer, right: VBoxContainer, tabs_box: Control)
 		_hero_face = Match3DBridge.portrait(_player, _club, 260, true, Color(0, 0, 0, 0))
 		_hero_face.size_flags_vertical = Control.SIZE_EXPAND_FILL
 		_hero_face.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		_hero_face.custom_minimum_size = Vector2(0, 180)
+		_hero_face.custom_minimum_size = Vector2(0, 140) # crece con el sitio libre; la columna es fija
 		hero.add_child(_hero_face)
 		var t := Timer.new()
 		t.wait_time = 7.0

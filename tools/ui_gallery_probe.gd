@@ -54,6 +54,12 @@ func _ready() -> void:
 		if nm == "Hub" and OS.get_environment("HUB_EARLY") != "":
 			# Partido dentro de unos días: Hub con "Planificar" + "Pasar el día / Avanzar"
 			WorldTickEngine.current_epoch_day -= 3
+		if nm == "CareerMenu" and OS.get_environment("CAREER_FULL") != "":
+			# Peor caso de la columna izquierda: patrocinio + guayos
+			var cp := SaveManager.load_player()
+			cp.sponsor = {"name": "Nimbus Gear", "weekly_income": 240000, "weeks_remaining": 8}
+			cp.boot_deal = {"brand": String(BootBrands.BRANDS[0]["id"]), "weekly_income": 111000, "weeks_remaining": 36}
+			SaveManager.save_player(cp)
 		if nm == "Sponsors":
 			var bp := SaveManager.load_player()
 			bp.boot_deal = {"brand": String(BootBrands.BRANDS[0]["id"]), "weekly_income": 111000, "weeks_remaining": 36}
@@ -82,6 +88,13 @@ func _ready() -> void:
 		get_tree().root.add_child(inst)
 		for i in range(25):
 			await get_tree().process_frame
+		if nm == "Shop" and OS.get_environment("SHOP_CONS") != "":
+			inst.set("_section", "consumibles")
+			inst.call("_render")
+			for i in range(15):
+				await get_tree().process_frame
+			var ssc := inst.get_node("Root/Scroll") as ScrollContainer
+			print("SHOP scroll max=", ssc.get_v_scroll_bar().max_value, " page=", ssc.get_v_scroll_bar().page)
 		if nm == "Social":
 			# Mundo vivo: adelanta el reloj (en memoria, DESPUÉS del
 			# load_runtime de la escena) para que haya jornadas jugadas.
