@@ -233,6 +233,10 @@ func _render() -> void:
 		var my_coach: CoachData = WorldFactory.find_coach(world, me.club_id) if not _is_national_fixture(fx) else null
 		_tab_tactics.add_child(_challenge_card(challenge, my_coach))
 
+	# RASGOS EQUIPADOS: con cuáles sales (efecto real en el 3D, TraitEffects).
+	if me != null and not Traits.active(me).is_empty():
+		_tab_tactics.add_child(_traits_card(me))
+
 	# RIVAL PERSONAL (10-oct): si enfrentás a su club, el duelo con historial.
 	if not _is_national_fixture(fx) and me != null:
 		var duel := _nemesis_card(fx, me, world)
@@ -728,6 +732,51 @@ func _starter_status_card(home: MatchTeam, away: MatchTeam) -> Control:
 	lbl.add_theme_color_override("font_color", col)
 	h.add_child(lbl)
 	m.add_child(h)
+	panel.add_child(m)
+	return panel
+
+## Tus rasgos equipados para este partido: icono, nombre y lo que hacen.
+func _traits_card(me: PlayerData) -> Control:
+	var panel := PanelContainer.new()
+	panel.add_theme_stylebox_override("panel", Styles.card_accent(Styles.GOLD))
+	var m := MarginContainer.new()
+	for s in ["left", "right"]: m.add_theme_constant_override("margin_" + s, 14)
+	for s in ["top", "bottom"]: m.add_theme_constant_override("margin_" + s, 12)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 6)
+	var t := Label.new()
+	t.text = "◆ TUS RASGOS PARA ESTE PARTIDO"
+	t.add_theme_font_override("font", Styles.font_black())
+	t.add_theme_font_size_override("font_size", 12)
+	t.add_theme_color_override("font_color", Styles.GOLD)
+	v.add_child(t)
+	for id in Traits.active(me):
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 10)
+		var path := Traits.icon_of(String(id))
+		if path != "" and ResourceLoader.exists(path):
+			var ic := TextureRect.new()
+			ic.texture = load(path)
+			ic.custom_minimum_size = Vector2(36, 36)
+			ic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			ic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+			row.add_child(ic)
+		var col := VBoxContainer.new()
+		col.add_theme_constant_override("separation", 0)
+		col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var n := Label.new()
+		n.text = Traits.name_of(String(id))
+		n.add_theme_font_override("font", Styles.font_semibold())
+		col.add_child(n)
+		var d := Label.new()
+		d.text = Traits.desc_of(String(id))
+		d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		d.add_theme_font_size_override("font_size", 13)
+		d.add_theme_color_override("font_color", Styles.GRAY_TEXT)
+		col.add_child(d)
+		row.add_child(col)
+		v.add_child(row)
+	m.add_child(v)
 	panel.add_child(m)
 	return panel
 

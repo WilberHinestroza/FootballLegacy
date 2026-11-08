@@ -768,6 +768,59 @@ func show_goal_banner(team: int, when: String, who: String, by_star: bool) -> vo
 	_goal_tw.tween_callback(p.queue_free)
 
 const TEAM_LABEL_GOAL := "GOL"
+
+var _trait_badge: PanelContainer
+
+
+## Un rasgo tuyo decidió la jugada (TraitEffects): su icono y nombre abajo a la
+## izquierda un momento, como los PlayStyles.
+func show_trait_proc(trait_name: String, icon_path: String) -> void:
+	if _trait_badge != null and is_instance_valid(_trait_badge):
+		_trait_badge.queue_free()
+	var p := PanelContainer.new()
+	p.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.05, 0.06, 0.1, 0.85)
+	sb.border_color = Color(1.0, 0.82, 0.25)
+	sb.set_border_width_all(2)
+	sb.set_corner_radius_all(22)
+	sb.content_margin_left = 6
+	sb.content_margin_right = 14
+	sb.content_margin_top = 4
+	sb.content_margin_bottom = 4
+	p.add_theme_stylebox_override("panel", sb)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	p.add_child(row)
+	if icon_path != "" and ResourceLoader.exists(icon_path):
+		var ic := TextureRect.new()
+		ic.texture = load(icon_path)
+		ic.custom_minimum_size = Vector2(34, 34)
+		ic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		ic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		ic.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		row.add_child(ic)
+	var l := _label(18, row)
+	l.text = trait_name.to_upper()
+	l.label_settings.font_color = Color(1.0, 0.86, 0.35)
+	l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	add_child(p)
+	_trait_badge = p
+	var vp := get_viewport().get_visible_rect().size
+	var y := vp.y * 0.62
+	p.position = Vector2(16.0, y)
+	var tw := create_tween()
+	if Preferences.reduce_motion:
+		tw.tween_interval(2.0)
+	else:
+		p.modulate.a = 0.0
+		p.position.x = -40.0
+		tw.tween_property(p, "position:x", 16.0, 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		tw.parallel().tween_property(p, "modulate:a", 1.0, 0.2)
+		tw.tween_interval(1.6)
+		tw.tween_property(p, "modulate:a", 0.0, 0.35)
+	tw.tween_callback(p.queue_free)
 const SIM_TOP := 112.0
 
 

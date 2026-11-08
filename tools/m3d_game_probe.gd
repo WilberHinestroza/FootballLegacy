@@ -135,6 +135,27 @@ func _ready() -> void:
 	m._added_elapsed = float(m._added_total)
 	m._sim_step(0.0)
 	_check(m._added_phase == 0, "el descuento del primer tiempo no terminó")
+	# Rasgos equipados (TraitEffects): tu tiro supera más al portero; sin rasgos, igual.
+	var saved_ids: Array = m._trait_ids
+	var saved_mods: Dictionary = m._trait_mods
+	m._trait_ids = ["killer_instinct", "engine"]
+	m._trait_mods = m.TraitEffects.mods(m._trait_ids)
+	var saved_touch = m.ball.last_touch
+	var saved_kind: String = m.ball.last_kick_kind
+	m.ball.last_touch = m.star
+	m.ball.last_kick_kind = "shot"
+	var adj: Array = m._trait_shot_adjust(m.teams[1][0], 0.3)
+	_check(float(adj[0]) > 0.3 and float(adj[1]) == 0.3 and String(adj[2]) == "finish",
+		"el rasgo de definición no ayudó a superar al portero (%s)" % str(adj))
+	_check(m.TraitEffects.fatigue_factor(m._trait_mods) < 1.0, "Motor incansable no reduce el cansancio en 3D")
+	_check(m.TraitEffects.top_trait(m._trait_ids, "finish") == "killer_instinct", "icono del rasgo equivocado")
+	m._trait_ids = []
+	m._trait_mods = m.TraitEffects.mods([])
+	_check(float(m._trait_shot_adjust(m.teams[1][0], 0.3)[0]) == 0.3, "sin rasgos cambió el tiro")
+	m._trait_ids = saved_ids
+	m._trait_mods = saved_mods
+	m.ball.last_touch = saved_touch
+	m.ball.last_kick_kind = saved_kind
 	# Antes del vestuario, los equipos caminan al túnel; tocar la salta.
 	_check(m.state == m.State.OUTRO and m._halftime_walk, "el descanso no arrancó con la caminata al túnel")
 	m._on_tapped(Vector2.ZERO)

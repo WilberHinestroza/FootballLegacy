@@ -272,6 +272,7 @@ static func build_config(on_finish: Callable) -> Dictionary:
 	var prof: PlayerProfile = profile_for(p, wseed, us_col, us_shorts, us_socks)
 	return {
 		"profile": prof,
+		"traits": Traits.active(p), # rasgos equipados: efecto real en tus jugadas (TraitEffects)
 		"user_detailed": us.deployed_code(p), # puesto fino: banda, hueco y jugadas propias
 		"energy_note": String(prof.get_meta("energy_note", "")),
 		"home_name": String(us_c[0]), "away_name": String(them_c[0]),

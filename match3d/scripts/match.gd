@@ -25,6 +25,7 @@ const HeaderTiming = preload("res://engine/match/m3d/HeaderTiming.gd")
 const PlayChain = preload("res://engine/match/m3d/PlayChain.gd")
 const PrePlayChoice = preload("res://engine/match/m3d/PrePlayChoice.gd")
 const StoppageTime = preload("res://engine/match/m3d/StoppageTime.gd")
+const TraitEffects = preload("res://engine/match/m3d/TraitEffects.gd")
 const Momentum = preload("res://engine/match/m3d/Momentum.gd")
 const Offside = preload("res://engine/match/m3d/Offside.gd")
 const MatchFx = preload("res://match3d/scripts/match_fx.gd")
@@ -350,6 +351,8 @@ func _ready() -> void:
 
 	var given: Variant = config.get("profile")
 	profile = given if given is PlayerProfile else PlayerProfile.load_or_default()
+	_trait_ids = (config.get("traits", []) as Array).duplicate()
+	_trait_mods = TraitEffects.mods(_trait_ids)
 	TEAM_NAMES = [String(config.get("home_name", "LOCAL")), String(config.get("away_name", "VISITA"))]
 	formations = [String(config.get("home_formation", ["4-3-3", "4-4-2", "4-2-3-1"].pick_random())),
 			String(config.get("away_formation", FORMATION_BASES.keys().pick_random()))]
@@ -822,7 +825,7 @@ func _simulate_minute(m: int, in_added := false) -> void:
 		pass
 	if _on_pitch_now():
 		# Cansancio por minuto: un 60 de resistencia acaba los 90' con ~45% de energía
-		stamina = maxf(stamina - lerpf(0.0085, 0.0045, star.stat("stamina")), 0.05)
+		stamina = maxf(stamina - lerpf(0.0085, 0.0045, star.stat("stamina")) * TraitEffects.fatigue_factor(_trait_mods), 0.05)
 	if m == 105 and _extra_time_active and not in_added:
 		_extra_time_break_pending = true
 	if not entered and m >= int(_bench_until):
@@ -2262,6 +2265,9 @@ const TACTICS := [
 ]
 var _locker: LockerRoom
 var _halftime_pending := false
+# Rasgos equipados (TraitEffects): efecto real en tus jugadas, como PlayStyles.
+var _trait_ids: Array = []
+var _trait_mods: Dictionary = {}
 # Descuento (StoppageTime): 0 = no, 1 = al 45', 2 = al 90'. El reloj se queda en el
 # minuto base y corre _added_elapsed hasta _added_total.
 var _added_phase := 0
@@ -4117,8 +4123,12 @@ func _rebound() -> void:
 func _key_pass(receiver: SoccerPlayer) -> void:
 	var adv := clampf((receiver.global_position.x - 15.0) / 40.0, 0.0, 1.0)
 	var chance := 0.22 + star.stat("passing") * 0.2 + adv * 0.25
+	var kp_bonus := TraitEffects.key_pass_bonus(_trait_mods)
 	match_stats.me.key_passes += 1
-	if randf() < chance:
+	var kp_roll := randf()
+	if kp_roll < chance + kp_bonus:
+		if kp_roll >= chance:
+			_trait_proc("playmk")
 		_star_passed_to = receiver
 		_scripted_goal_receiver = receiver
 		var goal := opponent_goal_center(0)
@@ -5462,7 +5472,7 @@ func _try_skill_move(points: PackedVector2Array, dir: Vector3, to_goal: Vector3)
 func _execute_skill_move(move: String, dir: Vector3, to_goal: Vector3,
 		points: PackedVector2Array) -> void:
 	_skill_cooldown = 1.1
-	stamina = maxf(stamina - SkillMove.stamina_cost(move), 0.05)
+	stamina = maxf(stamina - SkillMove.stamina_cost(move) * TraitEffects.fatigue_factor(_trait_mods), 0.05)
 	var nearest: SoccerPlayer = null
 	var nearest_d := 999.0
 	for o: SoccerPlayer in teams[1]:
@@ -5531,7 +5541,7 @@ func _do_enganche(dir: Vector3, to_goal: Vector3) -> bool:
 	if rival == null or _skill_cooldown > 0.0:
 		return false
 	_skill_cooldown = 0.9
-	stamina = maxf(stamina - SkillMove.stamina_cost("enganche"), 0.05)
+	stamina = maxf(stamina - SkillMove.stamina_cost("enganche") * TraitEffects.fatigue_factor(_trait_mods), 0.05)
 	var ok := randf() < SkillMove.success_chance("enganche", human.stat("dribbling"),
 			human.stat("control"), human.stat("passing"), rival.duel_skill(true))
 	human.dodge(dir, "dragback")
@@ -5615,7 +5625,7 @@ func _drain_sprint_stamina(delta: float) -> void:
 	var boost := _move_boost if human.move_boost > 0.01 else 0
 	if not human.sprinting and boost <= 0:
 		return
-	stamina = maxf(stamina - Momentum.stamina_cost(delta, human.sprinting, boost), 0.05)
+	stamina = maxf(stamina - Momentum.stamina_cost(delta, human.sprinting, boost) * TraitEffects.fatigue_factor(_trait_mods), 0.05)
 
 
 func _update_human_orders(delta := 0.0) -> void:
@@ -6027,9 +6037,15 @@ func _update_possession(delta: float) -> void:
 			if p.stun_timer > 0.0 or p.tackle_cooldown > 0.0:
 				continue
 			var rate := 1.4 * lerpf(0.6, 1.5, p.duel_skill(true)) * lerpf(1.5, 0.55, holder.duel_skill(false))
+			if holder == star:
+				rate *= TraitEffects.protect_factor(_trait_mods)
+			elif p == star:
+				rate *= TraitEffects.steal_factor(_trait_mods)
 			if flat_dist(p.global_position, bpos) < 0.7 and randf() < rate * delta:
 				holder.stun(0.35)
 				_give_ball(p)
+				if p == star:
+					_trait_proc("defense")
 				break
 
 
@@ -6040,8 +6056,15 @@ func keeper_dive(k: SoccerPlayer, cross: Vector3, outcome := "") -> void:
 	if outcome == "":
 		var spd := ball.linear_velocity.length()
 		var beaten: float = DecisionResolver.m3d_keeper_dive_beaten(spd, lateral, cross.y > 1.9, k.keeper_skill())
+		var tr := _trait_shot_adjust(k, beaten)
+		beaten = float(tr[0])
+		var roll := randf()
 		outcome = "miss"
-		if randf() >= beaten:
+		if roll < beaten and roll >= float(tr[1]):
+			_trait_proc(String(tr[2]))
+		elif k == star and roll >= beaten and roll < float(tr[1]):
+			_trait_proc("concede_factor")
+		if roll >= beaten:
 			outcome = "catch" if DecisionResolver.m3d_keeper_dive_catches(spd, randf()) else "parry"
 	k.set_meta("dive_outcome", outcome)
 	var reach := 1.0
@@ -6308,7 +6331,7 @@ func _try_receive(p: SoccerPlayer, body_control := false) -> void:
 			_count_sot(ball.last_touch.team)
 		# Tiros fuertes y lejos del cuerpo del portero pueden superarle
 		var lateral := absf(ball.global_position.z - p.global_position.z)
-		var beaten: float = DecisionResolver.m3d_keeper_contact_beaten(spd, lateral, p.keeper_skill())
+		var beaten: float = float(_trait_shot_adjust(p, DecisionResolver.m3d_keeper_contact_beaten(spd, lateral, p.keeper_skill()))[0])
 		# Al cuerpo no le supera nunca: el balón le da y lo para o rebota
 		# (antes seguía de largo y se veía atravesándole).
 		if flat_dist(ball.global_position, p.global_position) < 0.6 and ball.global_position.y < 1.85:
@@ -6451,7 +6474,15 @@ func _update_shoulder_contacts(delta: float) -> void:
 		d.set_meta("shoulder_ms", now)
 		var away := rel / dist # del que lleva el balón hacia el defensor
 		var win_p := BallContact.shoulder_win_chance(d.stat("strength"), h.stat("strength"), h.stat("control"))
+		var win_base := win_p
+		if d == star or h == star:
+			win_p = clampf(win_p + TraitEffects.shoulder_bonus(_trait_mods, d == star), 0.02, 0.98)
 		var roll := randf()
+		# El rasgo decidió el duelo: tu robo (defiendes) o tu balón protegido.
+		if d == star and roll < win_p and roll >= win_base:
+			_trait_proc("defense")
+		elif h == star and roll >= win_p and roll < win_base:
+			_trait_proc("playmk")
 		SoundFx.play("touch", -8.0, 0.7)
 		if roll < win_p:
 			var margin := (win_p - roll) / maxf(win_p, 0.01)
@@ -7274,6 +7305,32 @@ func _scorer_name(t: int) -> String:
 		if r <= 0.0:
 			return String(o[0])
 	return ""
+
+
+## Rasgos en el tiro: si el tiro es tuyo, el portero te para menos; si el portero
+## eres tú, te superan menos. Devuelve [prob. ajustada, prob. sin rasgo, clave del
+## rasgo que lo decide ("" si no aplica)].
+func _trait_shot_adjust(keeper: SoccerPlayer, beaten: float) -> Array:
+	if _trait_ids.is_empty():
+		return [beaten, beaten, ""]
+	if keeper == star:
+		return [beaten * TraitEffects.keeper_wall_factor(_trait_mods), beaten, ""]
+	if ball.last_touch != star or ball.last_kick_kind != "shot":
+		return [beaten, beaten, ""]
+	var kind := "open"
+	if state == State.PENALTY_SHOOTOUT or (state == State.MOMENT and moment_type == Moment.PENALTY):
+		kind = "penalty"
+	elif state == State.MOMENT and moment_type == Moment.FREE_KICK:
+		kind = "free_kick"
+	var adj := clampf(beaten + TraitEffects.keeper_beaten_bonus(_trait_mods, kind), 0.0, 0.97)
+	return [adj, beaten, TraitEffects.shot_key(kind)]
+
+
+## Un rasgo tuyo decidió la acción: su icono en el HUD, como los PlayStyles.
+func _trait_proc(key: String) -> void:
+	var id := TraitEffects.top_trait(_trait_ids, key)
+	if id != "" and _hud != null:
+		_hud.show_trait_proc(Traits.name_of(id), Traits.icon_of(id))
 
 
 func _log_goal(t: int, m: int, who: String, assist_star: bool, by_star := false) -> void:
