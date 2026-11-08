@@ -219,6 +219,7 @@ func _render() -> void:
 # --- Mis ofertas ---
 
 func _render_offers() -> void:
+	_render_precontract()
 	var pending: Dictionary = TransferOfferEngine.pending(WorldTickEngine.season)
 	if not pending.is_empty():
 		detail_box.add_child(Styles.section_label("ACORDADO — SE CONCRETA EN LA VENTANA"))
@@ -262,6 +263,93 @@ func _render_offers() -> void:
 		detail_box.add_child(Styles.section_label("OFERTAS RECIBIDAS"))
 		for o in inbox:
 			detail_box.add_child(_offer_card(o, false))
+
+## Precontrato (PreContractEngine): la oferta para irte libre a final de
+## temporada, o el aviso de que ya lo firmaste.
+func _render_precontract() -> void:
+	var season: Dictionary = WorldTickEngine.season
+	var today: int = WorldTickEngine.current_epoch_day
+	var signed_pc: Dictionary = PreContractEngine.signed(season)
+	var o: Dictionary = signed_pc if not signed_pc.is_empty() else PreContractEngine.offer(season)
+	if o.is_empty():
+		return
+	var is_signed: bool = not signed_pc.is_empty()
+	detail_box.add_child(Styles.section_label("PRECONTRATO FIRMADO" if is_signed else "OFERTA DE PRECONTRATO"))
+	var accent: Color = Styles.GREEN if is_signed else Styles.BLUE
+	var panel := PanelContainer.new()
+	panel.add_theme_stylebox_override("panel", Styles.card_accent(accent))
+	var m := MarginContainer.new()
+	for s in ["left", "right"]: m.add_theme_constant_override("margin_" + s, 14)
+	for s in ["top", "bottom"]: m.add_theme_constant_override("margin_" + s, 12)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 4)
+	var head_row := HBoxContainer.new()
+	head_row.add_theme_constant_override("separation", 8)
+	var cid: String = String(o.get("from_club_id", ""))
+	if cid != "":
+		var crest := Styles.club_crest(cid, 24)
+		crest.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		head_row.add_child(crest)
+	var head := Label.new()
+	head.text = "%s  ·  Llegas libre en verano" % String(o.get("from_club_name", "?"))
+	head.add_theme_font_override("font", Styles.font_semibold())
+	head.add_theme_color_override("font_color", accent)
+	head.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head_row.add_child(head)
+	v.add_child(head_row)
+	var g := GridContainer.new()
+	g.columns = 2
+	g.add_theme_constant_override("h_separation", 14)
+	g.add_theme_constant_override("v_separation", 3)
+	_term_kv(g, "Sueldo", "%s / temporada" % CurrencyFormat.format(int(o.get("wage", 0))))
+	_term_kv(g, "Contrato", "%d años" % int(o.get("contract_years", 3)))
+	_term_kv(g, "Rol", String(o.get("role", "-")).capitalize())
+	_term_kv(g, "Traspaso", "Ninguno (libre)")
+	_term_kv(g, "Prima de fichaje", CurrencyFormat.format(int(o.get("signing_bonus", 0))))
+	v.add_child(g)
+	var note := Label.new()
+	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	note.add_theme_font_size_override("font_size", Styles.SIZE_LABEL)
+	if is_signed:
+		note.text = "Al terminar la temporada se acaba tu contrato y te vas a %s. Hasta entonces no llegan más ofertas." % String(o.get("from_club_name", "tu nuevo club"))
+		note.add_theme_color_override("font_color", Styles.GRAY_TEXT)
+		v.add_child(note)
+	else:
+		note.text = "Tu club se enterará: %d de confianza del DT y la afición se enfría (%d). Las demás ofertas se caen." % [PreContractEngine.TRUST_COST, PreContractEngine.FAN_COST]
+		note.add_theme_color_override("font_color", Styles.AMBER)
+		v.add_child(note)
+		var dl: int = PreContractEngine.days_left(o, today)
+		var chips := HFlowContainer.new()
+		chips.add_child(UiKit.chip("Vence en %d día%s" % [maxi(dl, 0), "" if dl == 1 else "s"], Styles.RED if dl <= 3 else Styles.GRAY_TEXT))
+		v.add_child(chips)
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 8)
+		var acc := Button.new()
+		acc.custom_minimum_size = Vector2(0, 44)
+		acc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		acc.text = "Firmar precontrato"
+		Styles.styled_button(acc, Styles.pill_filled(Styles.GREEN), Color.BLACK)
+		acc.pressed.connect(func():
+			PreContractEngine.accept(_player, WorldTickEngine.season)
+			SaveManager.save_player(_player)
+			SaveManager.save_season(WorldTickEngine.season)
+			Nav.toast("Precontrato firmado. En verano te vas libre.")
+			_render())
+		var rej := Button.new()
+		rej.custom_minimum_size = Vector2(0, 44)
+		rej.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		rej.text = "Rechazar"
+		Styles.styled_button(rej, Styles.pill_outlined(Styles.RED), Styles.RED)
+		rej.pressed.connect(func():
+			PreContractEngine.reject(WorldTickEngine.season)
+			SaveManager.save_season(WorldTickEngine.season)
+			_render())
+		row.add_child(acc)
+		row.add_child(rej)
+		v.add_child(row)
+	m.add_child(v)
+	panel.add_child(m)
+	detail_box.add_child(panel)
 
 ## Bloque "¿Querés salir del club?": botón para pedirlo + la respuesta del
 ## presidente y el técnico (si ya se pidió esta sesión de pantalla).

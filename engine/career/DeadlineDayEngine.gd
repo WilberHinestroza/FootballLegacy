@@ -117,7 +117,7 @@ static func gulf_offer(player: PlayerData, world: Dictionary, day: int, next_win
 static func should_gulf(player: PlayerData, world: Dictionary, season: Dictionary, day: int, rng: RandomNumberGenerator) -> bool:
 	if not gulf_eligible(player, world):
 		return false
-	if not season.get("pending_transfer", {}).is_empty():
+	if not season.get("pending_transfer", {}).is_empty() or not PreContractEngine.signed(season).is_empty():
 		return false
 	if TransferOfferEngine.inbox(season).size() >= TransferOfferEngine.MAX_INBOX:
 		return false

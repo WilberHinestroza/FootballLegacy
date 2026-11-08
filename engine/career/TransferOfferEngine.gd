@@ -38,6 +38,8 @@ static func should_offer(player: PlayerData, day: int, season: Dictionary, rng: 
 		return false
 	if not season.get("pending_transfer", {}).is_empty():
 		return false # ya aceptaste una, no llegan más hasta que se ejecute
+	if not PreContractEngine.signed(season).is_empty():
+		return false # ya firmaste un precontrato con otro club
 	# Si PEDISTE salir y el club abrió la veda, las ofertas llegan mucho más
 	# seguido durante unas semanas (TransferRequestEngine).
 	var requested: bool = not TransferRequestEngine.active(season, day).is_empty()
@@ -301,6 +303,9 @@ static func execute_pending(player: PlayerData, season: Dictionary, world: Dicti
 		if not is_loan:
 			ImmersionEngine.note_club_left(player, world, to_id, int(season.get("start_year", 0)))
 		player.club_id = to_id
+		if not is_loan:
+			# Derechos de imagen: se pactan con el club nuevo (los del Golfo dan más).
+			ImageRightsEngine.on_new_club(player, ImageRightsEngine.GULF_SHARE if bool(pt.get("gulf", false)) else -1)
 		player.wage = int(pt.get("wage", player.wage))
 		player.contract_years_remaining = int(pt.get("contract_years", 2))
 		player.club_seniority = 0

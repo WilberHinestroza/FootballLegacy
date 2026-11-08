@@ -501,8 +501,11 @@ func _refresh_offers_button() -> void:
 	if _offers_button == null or _player == null:
 		return
 	var inbox: Array = TransferOfferEngine.inbox(WorldTickEngine.season)
-	_offers_button.visible = not inbox.is_empty()
-	if _offers_button.visible:
+	var pre: bool = not PreContractEngine.offer(WorldTickEngine.season).is_empty()
+	_offers_button.visible = not inbox.is_empty() or pre
+	if pre and inbox.is_empty():
+		_offers_button.text = "🔔  Te ofrecen un precontrato"
+	elif _offers_button.visible:
 		var n: int = inbox.size()
 		_offers_button.text = "🔔  %d oferta%s de otros clubes" % [n, "" if n == 1 else "s"]
 

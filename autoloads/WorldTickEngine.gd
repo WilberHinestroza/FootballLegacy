@@ -212,6 +212,7 @@ func advance_day(day_activity: String = "rest") -> void:
 	_tick_press()
 	_tick_transfer_window_news()
 	_tick_deadline_day()
+	_tick_precontract()
 	_tick_international_window()
 	_tick_national_trophies()
 	_tick_life_events()
@@ -392,6 +393,24 @@ func _begin_season_rollover() -> void:
 
 	SaveManager.save_player(player)
 
+	# Precontrato firmado (PreContractEngine): se acaba tu contrato y te vas
+	# libre al club con el que pactaste, sin pantalla de renovación.
+	var pc: Dictionary = PreContractEngine.take_on_expiry(player, season)
+	if not pc.is_empty():
+		SaveManager.save_player(player)
+		var pc_club: String = String(pc.get("from_club_id", ""))
+		resolve_contract_decision(pc_club, int(pc.get("wage", player.wage)), int(pc.get("contract_years", 3)))
+		pending_presentation = {"club_id": pc_club, "years": int(pc.get("contract_years", 3)), "loan": false}
+		var np := SaveManager.load_player()
+		if np != null:
+			PressGenerator.append_to_feed(np, {
+				"headline": "%s llega libre a %s" % [Nickname.press_name(np, world_seed), String(pc.get("from_club_name", "su nuevo club"))],
+				"body": "Se cumple el precontrato: termina su contrato y firma por %d temporadas, con una prima de fichaje de %s." % [int(pc.get("contract_years", 3)), CurrencyFormat.format(int(pc.get("signing_bonus", 0)))],
+				"source": "MERCADO", "sentiment": "POSITIVE",
+			}, current_epoch_day)
+			SaveManager.save_player(np)
+		return
+
 	if player.contract_years_remaining > 0:
 		_finish_season_rollover(player.club_id)
 		return
@@ -472,6 +491,7 @@ func resolve_contract_decision(club_id: String, wage: int, years: int = 0, extra
 		player.contract_years_remaining = ContractEngine.STARTING_CONTRACT_YEARS if is_transfer else ContractEngine.RENEWAL_YEARS
 	if is_transfer:
 		player.coach_trust = CoachRelations.TRUST_BASELINE # entrenador nuevo, relación desde cero
+		ImageRightsEngine.on_new_club(player) # los derechos de imagen se pactan de nuevo
 	SaveManager.save_player(player)
 
 	season.erase("awaiting_contract_decision")
@@ -2564,6 +2584,8 @@ func _tick_finances() -> void:
 		return
 	# Asesor financiero (StaffEngine): un plus a los ingresos semanales.
 	player.balance += int(round(ContractEngine.weekly_income(player.wage) * StaffEngine.income_factor(player)))
+	# Derechos de imagen (ImageRightsEngine): tu parte de lo que genera tu imagen.
+	player.balance += ImageRightsEngine.weekly_income(player)
 	SaveManager.save_player(player)
 
 ## Resuelve inversiones vencidas (InvestmentEngine) — se acredita el pago
@@ -3236,6 +3258,41 @@ func _rebuild_season_for_new_club(new_club_id: String) -> void:
 ## presentación oficial (PlayerPresentation) y lo vacía. No se persiste.
 var pending_presentation: Dictionary = {}
 
+## Precontrato (PreContractEngine): en tu último año de contrato, desde el
+## mercado de invierno, un club puede ofrecerte irte libre a final de
+## temporada. Cada día caduca la oferta vieja; una vez por semana puede
+## llegar una nueva.
+func _tick_precontract() -> void:
+	if season.is_empty() or user_club_id == "":
+		return
+	var gone: String = PreContractEngine.expire_if_due(season, current_epoch_day)
+	var weekly: bool = current_epoch_day % 7 == 5
+	if gone == "" and not weekly:
+		return
+	var player := SaveManager.load_player()
+	if player == null:
+		return
+	if gone != "":
+		PressGenerator.append_to_feed(player, {
+			"headline": "%s retira su oferta de precontrato" % gone,
+			"body": "No hubo respuesta y el club busca otras opciones.",
+			"source": "MERCADO", "sentiment": "NEUTRAL",
+		}, current_epoch_day)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash("precontract:%d" % current_epoch_day) ^ world_seed
+	if weekly and PreContractEngine.should_offer(player, season, current_epoch_day, rng):
+		var o: Dictionary = PreContractEngine.build_offer(player, world, world_seed, current_epoch_day, rng, season)
+		if not o.is_empty():
+			season["precontract_offer"] = o
+			season["precontract_week"] = CalendarUtils.week_index(current_epoch_day)
+			PressGenerator.append_to_feed(player, {
+				"headline": "%s ofrece un precontrato a %s" % [String(o.get("from_club_name", "Un club")), Nickname.press_name(player, world_seed)],
+				"body": "Le queda medio año de contrato: podría irse libre en verano. Tiene %d días para responder." % PreContractEngine.OFFER_DAYS,
+				"source": "MERCADO", "sentiment": "POSITIVE",
+			}, current_epoch_day)
+	SaveManager.save_season(season)
+	SaveManager.save_player(player)
+
 ## Último día de mercado y ofertas del Golfo (DeadlineDayEngine): el día de
 ## cierre de cada ventana puede llegar una oferta urgente que vence ese día;
 ## una vez por semana, si eres veterano o estrella, puede llegar una oferta
@@ -3254,6 +3311,7 @@ func _tick_deadline_day() -> void:
 	rng.seed = hash("deadline_day:%d" % current_epoch_day) ^ world_seed
 	var pname: String = Nickname.press_name(player, world_seed)
 	var free_slot: bool = TransferOfferEngine.pending(season).is_empty() and TransferOfferEngine.inbox(season).size() < TransferOfferEngine.MAX_INBOX
+	free_slot = free_slot and PreContractEngine.signed(season).is_empty()
 	if is_deadline:
 		PressGenerator.append_to_feed(player, {
 			"headline": "Deadline day: hoy cierra el mercado",

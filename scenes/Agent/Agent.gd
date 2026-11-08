@@ -126,6 +126,28 @@ func _render() -> void:
 			Transfers.open_tab = "market"
 			get_tree().change_scene_to_file("res://scenes/Transfers/Transfers.tscn")))
 
+	# --- Derechos de imagen (ImageRightsEngine) ---
+	body.add_child(Styles.section_label("Derechos de imagen"))
+	var ir_share: int = ImageRightsEngine.share(_player)
+	var ir := Label.new()
+	ir.text = "Te quedas el %d%% de lo que genera tu imagen (vale %s al año): %s por semana." % [
+		ir_share, CurrencyFormat.format(ImageRightsEngine.annual_value(_player)), CurrencyFormat.format(ImageRightsEngine.weekly_income(_player))]
+	ir.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	ir.add_theme_font_size_override("font_size", Styles.SIZE_LABEL)
+	body.add_child(ir)
+	var ir_block: String = ImageRightsEngine.blocker(_player, WorldTickEngine.season, today)
+	var club_bo: int = int(_world.get("club_meta_by_id", {}).get(_player.club_id, {}).get("base_overall", 60))
+	var ask_ok: bool = ir_block == "" and ir_share < ImageRightsEngine.MAX_SHARE
+	var ask_sub: String = ir_block if ir_block != "" else "Ya tienes el máximo (%d%%)." % ImageRightsEngine.MAX_SHARE
+	if ask_ok:
+		ask_sub = "Tu agente pide pasar al %d%% · probabilidad %d%%" % [mini(ir_share + ImageRightsEngine.ASK_STEP, ImageRightsEngine.MAX_SHARE), int(round(ImageRightsEngine.ask_chance(_player, club_bo) * 100.0))]
+	body.add_child(_action_card("Pedir más derechos de imagen", ask_sub, ask_ok, Styles.PURPLE, _on_image_rights_ask.bind(club_bo)))
+	var sell_ok: bool = ir_block == "" and ir_share > 0
+	var sell_sub: String = ir_block if ir_block != "" else "No te queda parte que vender."
+	if sell_ok:
+		sell_sub = "Cobras %s ya y dejas de cobrar cada semana" % CurrencyFormat.format(ImageRightsEngine.sell_price(_player))
+	body.add_child(_action_card("Vender tus derechos al club", sell_sub, sell_ok, Styles.AMBER, _on_image_rights_sell))
+
 	var contract := Label.new()
 	var extras: Dictionary = WorldTickEngine.season.get("contract_extras", {})
 	var extra_txt := ""
@@ -159,6 +181,22 @@ func _on_request_raise() -> void:
 		# frame — el mensaje nunca se veía. _render() va PRIMERO ahora.
 		_render()
 		_toast(String(res.get("reason", "No se pudo.")))
+
+func _on_image_rights_ask(club_bo: int) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash("image_rights:%d" % WorldTickEngine.current_epoch_day) ^ WorldTickEngine.world_seed
+	var res: Dictionary = ImageRightsEngine.ask_more(_player, WorldTickEngine.season, WorldTickEngine.current_epoch_day, club_bo, rng)
+	SaveManager.save_player(_player)
+	SaveManager.save_season(WorldTickEngine.season)
+	_render()
+	_toast(String(res.get("message", "")))
+
+func _on_image_rights_sell() -> void:
+	var res: Dictionary = ImageRightsEngine.sell(_player, WorldTickEngine.season, WorldTickEngine.current_epoch_day)
+	SaveManager.save_player(_player)
+	SaveManager.save_season(WorldTickEngine.season)
+	_render()
+	_toast(String(res.get("message", "")))
 
 func _on_request_starting() -> void:
 	var res: Dictionary = AgentEngine.request_starting(
