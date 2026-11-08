@@ -26,7 +26,12 @@ func _ready() -> void:
 	# Zona segura del móvil (barra de gestos, esquinas redondeadas): sin esto la
 	# parte baja de los botones quedaba tapada. Más un colchón fijo de 4 px.
 	var inset := _safe_insets()
-	style.content_margin_bottom = 4.0 + inset.y
+	# En el móvil, mínimo 16 px aunque Android no informe de nada: en horizontal
+	# la barra de gestos y las esquinas redondeadas no cuentan como zona insegura
+	# y los botones quedaban pegados al borde (Wilber, 8-nov: "les falta subir un
+	# poco mas").
+	var min_bottom: float = 16.0 if OS.has_feature("mobile") else 0.0
+	style.content_margin_bottom = 4.0 + maxf(inset.y, min_bottom)
 	style.content_margin_left = inset.x
 	style.content_margin_right = inset.x
 	add_theme_stylebox_override("panel", style)
