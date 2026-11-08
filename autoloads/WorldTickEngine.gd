@@ -211,6 +211,7 @@ func advance_day(day_activity: String = "rest") -> void:
 	_tick_fixtures()
 	_tick_press()
 	_tick_transfer_window_news()
+	_tick_deadline_day()
 	_tick_international_window()
 	_tick_national_trophies()
 	_tick_life_events()
@@ -3235,13 +3236,68 @@ func _rebuild_season_for_new_club(new_club_id: String) -> void:
 ## presentación oficial (PlayerPresentation) y lo vacía. No se persiste.
 var pending_presentation: Dictionary = {}
 
+## Último día de mercado y ofertas del Golfo (DeadlineDayEngine): el día de
+## cierre de cada ventana puede llegar una oferta urgente que vence ese día;
+## una vez por semana, si eres veterano o estrella, puede llegar una oferta
+## millonaria de una liga del Golfo.
+func _tick_deadline_day() -> void:
+	if season.is_empty() or user_club_id == "":
+		return
+	var is_deadline: bool = DeadlineDayEngine.is_deadline_day(current_epoch_day, season)
+	var weekly: bool = current_epoch_day % 7 == 3
+	if not is_deadline and not weekly:
+		return
+	var player := SaveManager.load_player()
+	if player == null:
+		return
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash("deadline_day:%d" % current_epoch_day) ^ world_seed
+	var pname: String = Nickname.press_name(player, world_seed)
+	var free_slot: bool = TransferOfferEngine.pending(season).is_empty() and TransferOfferEngine.inbox(season).size() < TransferOfferEngine.MAX_INBOX
+	if is_deadline:
+		PressGenerator.append_to_feed(player, {
+			"headline": "Deadline day: hoy cierra el mercado",
+			"body": "Último día de la ventana. Las operaciones que se cierren hoy se firman sobre la bocina.",
+			"source": "MERCADO", "sentiment": "NEUTRAL",
+		}, current_epoch_day)
+		var requested: bool = not TransferRequestEngine.active(season, current_epoch_day).is_empty()
+		if free_slot and rng.randf() < DeadlineDayEngine.deadline_chance(player, requested):
+			var gulf: bool = DeadlineDayEngine.gulf_eligible(player, world) and rng.randf() < 0.3
+			var o: Dictionary = {}
+			if gulf:
+				o = DeadlineDayEngine.gulf_offer(player, world, current_epoch_day, current_epoch_day, rng, true)
+			else:
+				o = DeadlineDayEngine.deadline_offer(player, world, world_seed, current_epoch_day, rng, season)
+			if not o.is_empty():
+				if gulf:
+					DeadlineDayEngine.note_gulf(season, current_epoch_day)
+				TransferOfferEngine.add_to_inbox(season, o, current_epoch_day)
+				PressGenerator.append_to_feed(player, {
+					"headline": "Bombazo de última hora: %s va a por %s" % [String(o.get("from_club_name", "Un club")), pname],
+					"body": "Oferta urgente en el último día de mercado. Hay que responder hoy.",
+					"source": "MERCADO", "sentiment": "POSITIVE",
+				}, current_epoch_day)
+	elif free_slot and DeadlineDayEngine.should_gulf(player, world, season, current_epoch_day, rng):
+		var g: Dictionary = DeadlineDayEngine.gulf_offer(player, world, current_epoch_day, next_transfer_window_day(), rng, false)
+		if not g.is_empty():
+			DeadlineDayEngine.note_gulf(season, current_epoch_day)
+			TransferOfferEngine.add_to_inbox(season, g, current_epoch_day)
+			PressGenerator.append_to_feed(player, {
+				"headline": "Oferta millonaria desde el Golfo para %s" % pname,
+				"body": "%s pone sobre la mesa un sueldo de %s por temporada. ¿Dinero o ambición deportiva?" % [String(g.get("from_club_name", "Un club")), CurrencyFormat.format(int(g.get("wage", 0)))],
+				"source": "MERCADO", "sentiment": "NEUTRAL",
+			}, current_epoch_day)
+	SaveManager.save_season(season)
+	SaveManager.save_player(player)
+
 ## Ejecuta una oferta de traspaso/cesión aceptada, si estamos en ventana.
 func _tick_pending_transfer() -> void:
 	if season.is_empty() or user_club_id == "":
 		return
 	if TransferOfferEngine.pending(season).is_empty():
 		return
-	if not is_transfer_window_open():
+	var bell: bool = DeadlineDayEngine.closes_after_bell(TransferOfferEngine.pending(season), current_epoch_day)
+	if not is_transfer_window_open() and not bell:
 		return
 	var player := SaveManager.load_player()
 	if player == null:
@@ -3257,7 +3313,7 @@ func _tick_pending_transfer() -> void:
 		SaveManager.save_player(player)
 		SaveManager.save_season(season)
 		PressGenerator.append_to_feed(player, {
-			"headline": res["message"], "body": "Movimiento cerrado en la ventana de fichajes.",
+			"headline": res["message"], "body": String(res.get("extra", "")) if String(res.get("extra", "")) != "" else ("Cerrado sobre la bocina, en el último día de mercado." if bell else "Movimiento cerrado en la ventana de fichajes."),
 			"source": "MERCADO", "sentiment": "NEUTRAL",
 		}, current_epoch_day)
 		SaveManager.save_player(player)

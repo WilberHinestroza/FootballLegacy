@@ -115,6 +115,8 @@ func _build_hero(open: bool) -> void:
 	var emblem := Icons.make_rect("res://assets/ui/transfer_market.png", 64)
 	emblem.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	var chips: Array = [["VENTANA ABIERTA", Styles.GREEN] if open else ["VENTANA CERRADA", Styles.GRAY_TEXT]]
+	if DeadlineDayEngine.is_deadline_day(WorldTickEngine.current_epoch_day, WorldTickEngine.season):
+		chips.append(["DEADLINE DAY", Styles.RED])
 	if not _player.boot_deal.is_empty() or not _player.sponsor.is_empty():
 		chips.append(["CON PATROCINIO", Styles.GOLD])
 	var hero := UiKit.hero(Styles.GOLD, emblem, "Mercado de fichajes", window_label.text, chips)
@@ -581,6 +583,8 @@ func _reject_offer(o: Dictionary) -> void:
 
 func _offer_card(o: Dictionary, is_pending: bool) -> PanelContainer:
 	var accent: Color = Styles.GREEN if is_pending else (Styles.PURPLE if String(o.get("kind", "")) == "cesión" else Styles.GOLD)
+	var is_gulf: bool = bool(o.get("gulf", false))
+	var is_deadline: bool = bool(o.get("deadline", false))
 	var panel := PanelContainer.new()
 	panel.add_theme_stylebox_override("panel", Styles.card_accent(accent))
 	var m := MarginContainer.new()
@@ -640,11 +644,28 @@ func _offer_card(o: Dictionary, is_pending: bool) -> PanelContainer:
 			_term_kv(g, "Cláusula de rescisión", CurrencyFormat.format(int(o.get("release_clause", 0))))
 	else:
 		_term_kv(g, "Tipo", "Cesión (sin traspaso)")
+	if is_gulf and int(o.get("signing_bonus", 0)) > 0:
+		_term_kv(g, "Prima de fichaje", CurrencyFormat.format(int(o.get("signing_bonus", 0))))
 	v.add_child(g)
+	if is_gulf or is_deadline:
+		var tags := HFlowContainer.new()
+		tags.add_theme_constant_override("h_separation", 6)
+		if is_deadline:
+			tags.add_child(UiKit.chip("ÚLTIMO DÍA DE MERCADO", Styles.RED))
+		if is_gulf:
+			tags.add_child(UiKit.chip("OFERTA MILLONARIA", Styles.GOLD))
+		v.add_child(tags)
+	if is_gulf:
+		var warn := Label.new()
+		warn.text = "Cobras como nunca, pero la prensa deportiva lo verá como elegir el dinero: -%d de reputación al firmar. No se negocia: lo tomas o lo dejas." % DeadlineDayEngine.GULF_REP_COST
+		warn.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		warn.add_theme_color_override("font_color", Styles.AMBER)
+		warn.add_theme_font_size_override("font_size", Styles.SIZE_LABEL)
+		v.add_child(warn)
 
 	if is_pending:
 		var note := Label.new()
-		note.text = "Se hará efectivo el día %d (próxima ventana)." % int(o.get("window_day", 0))
+		note.text = "Se firma al cerrar el día, sobre la bocina." if is_deadline else "Se hará efectivo el día %d (próxima ventana)." % int(o.get("window_day", 0))
 		note.add_theme_color_override("font_color", Styles.GRAY_TEXT)
 		note.add_theme_font_size_override("font_size", Styles.SIZE_LABEL)
 		v.add_child(note)
@@ -659,7 +680,7 @@ func _offer_card(o: Dictionary, is_pending: bool) -> PanelContainer:
 		v.add_child(cancel)
 	else:
 		var win_note := Label.new()
-		win_note.text = "Si aceptás, se concreta el día %d (próxima ventana)." % int(o.get("window_day", 0))
+		win_note.text = "Hay que responder HOY: si aceptas, se firma esta misma noche." if is_deadline else "Si aceptás, se concreta el día %d (próxima ventana)." % int(o.get("window_day", 0))
 		win_note.add_theme_color_override("font_color", Styles.GRAY_TEXT)
 		win_note.add_theme_font_size_override("font_size", Styles.SIZE_LABEL)
 		v.add_child(win_note)
@@ -670,6 +691,8 @@ func _offer_card(o: Dictionary, is_pending: bool) -> PanelContainer:
 		if o.has("counter"):
 			var rd: int = int(o["counter"].get("respond_day", today)) - today
 			chips.add_child(UiKit.chip("Contraoferta enviada (%s) · responden en %d día%s" % [CurrencyFormat.format(int(o["counter"]["wage"])), maxi(rd, 0), "" if rd == 1 else "s"], Styles.BLUE))
+		elif is_deadline:
+			chips.add_child(UiKit.chip("Vence hoy", Styles.RED))
 		else:
 			var dl: int = TransferOfferEngine.days_left(o, today)
 			chips.add_child(UiKit.chip("Vence en %d día%s" % [maxi(dl, 0), "" if dl == 1 else "s"], Styles.RED if dl <= 3 else Styles.GRAY_TEXT))
@@ -713,7 +736,7 @@ func _offer_card(o: Dictionary, is_pending: bool) -> PanelContainer:
 		row.add_child(acc)
 		row.add_child(rej)
 		v.add_child(row)
-		if not String(o.get("kind", "")) == "cesión":
+		if not String(o.get("kind", "")) == "cesión" and not is_gulf and not is_deadline:
 			var neg := Button.new()
 			neg.custom_minimum_size = Vector2(0, 44)
 			neg.text = "Rechazar y negociar los términos"

@@ -199,6 +199,9 @@ static func daily_tick(season: Dictionary, player: PlayerData, day: int, rng: Ra
 			keep.append(o)
 			continue
 		if days_left(o, day) <= 0:
+			if bool(o.get("deadline", false)):
+				news.append({"headline": "Cierra el mercado: %s se queda con las ganas" % name, "body": "La oferta de última hora caducó sin respuesta.", "sentiment": "NEUTRAL"})
+				continue
 			news.append({"headline": "Vence la oferta de %s" % name, "body": "No respondiste a tiempo y la propuesta caducó.", "sentiment": "NEUTRAL"})
 			continue
 		keep.append(o)
@@ -275,8 +278,11 @@ static func execute_pending(player: PlayerData, season: Dictionary, world: Dicti
 	var to_id: String = String(pt.get("from_club_id", ""))
 	var to_name: String = String(pt.get("from_club_name", to_id))
 	var is_loan: bool = String(pt.get("kind", "")) == "cesión"
+	var extra: String = ""
 
 	if to_id != "" and to_id != player.club_id:
+		# Oferta del Golfo: prima de fichaje y su precio deportivo (DeadlineDayEngine).
+		extra = DeadlineDayEngine.apply_on_execute(player, pt)
 		if int(pt.get("fee", 0)) > 0:
 			# El fee lo cobra el club vendedor, no el jugador — pero al
 			# jugador le entra una prima de fichaje modesta.
@@ -319,7 +325,7 @@ static func execute_pending(player: PlayerData, season: Dictionary, world: Dicti
 	season.erase("pending_transfer")
 	season["transfer_inbox"] = []
 	var verb: String = "Cedido a" if is_loan else "Fichaste por"
-	return {"ok": true, "message": "%s %s. Nueva etapa." % [verb, to_name]}
+	return {"ok": true, "message": "%s %s. Nueva etapa." % [verb, to_name], "extra": extra}
 
 ## Aplica (y consume 1 de) el empujón de "te fiché para ser titular" sobre
 ## la chance base de CoachRelations.start_chance, mientras dure la promesa
