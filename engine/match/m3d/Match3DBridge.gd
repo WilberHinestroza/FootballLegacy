@@ -270,6 +270,13 @@ static func build_config(on_finish: Callable) -> Dictionary:
 	if fixture.get("tie_agg") is Dictionary:
 		tie = fixture["tie_agg"]
 	var prof: PlayerProfile = profile_for(p, wseed, us_col, us_shorts, us_socks)
+	# Puesto sin adaptar (cambio de posición o el DT te pone fuera de sitio).
+	var slot: String = us.deployed_code(p)
+	var pos_fx: Dictionary = DecisionResolver.m3d_position_stats(prof.stats, PositionChangeEngine.familiarity(p, slot), Positions.label_of(slot))
+	prof.stats = pos_fx.stats
+	if String(pos_fx.note) != "":
+		var prev: String = String(prof.get_meta("energy_note", ""))
+		prof.set_meta("energy_note", String(pos_fx.note) if prev == "" else prev + " · " + String(pos_fx.note))
 	return {
 		"profile": prof,
 		"traits": Traits.active(p), # rasgos equipados: efecto real en tus jugadas (TraitEffects)

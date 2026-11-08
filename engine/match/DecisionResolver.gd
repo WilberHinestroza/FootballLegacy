@@ -1058,6 +1058,23 @@ static func m3d_energy_stats(stats: Dictionary, energy: float) -> Dictionary:
 	var note: String = "Llegas fundido (energía %d%%): corres y aguantas menos" % int(energy) if energy < 35.0 		else "Llegas cansado (energía %d%%)" % int(energy)
 	return {"stats": out, "note": note}
 
+## Jugar en un puesto al que no estás adaptado (PositionChangeEngine.familiarity):
+## lo técnico y lo mental bajan hasta un 10% con familiaridad 0; lo físico no.
+const M3D_POS_TECH_MAX := 0.10
+const M3D_POS_NOTE_BELOW := 80
+static func m3d_position_stats(stats: Dictionary, familiarity: int, label: String) -> Dictionary:
+	var off: float = clampf(float(100 - familiarity) / 100.0, 0.0, 1.0) * M3D_POS_TECH_MAX
+	if off <= 0.0:
+		return {"stats": stats.duplicate(), "note": ""}
+	var out := {}
+	for k in stats:
+		var physical: bool = k in ["speed", "stamina", "strength"]
+		out[k] = stats[k] if physical else int(round(float(stats[k]) * (1.0 - off)))
+	var note: String = ""
+	if familiarity < M3D_POS_NOTE_BELOW:
+		note = "Juegas de %s sin estar adaptado (familiaridad %d%%)" % [label.to_lower(), familiarity]
+	return {"stats": out, "note": note}
+
 static func m3d_goal_rates(xg_us: float, xg_them: float, user_gk: bool) -> Array:
 	var us: float = clampf(xg_us, 0.2, 3.5) * M3D_SIM_SHARE_US / 90.0
 	var them: float = clampf(xg_them, 0.2, 3.5) * (M3D_GK_SIM_SHARE_THEM if user_gk else M3D_SIM_SHARE_THEM) / 90.0

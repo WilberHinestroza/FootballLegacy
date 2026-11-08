@@ -216,6 +216,7 @@ func advance_day(day_activity: String = "rest") -> void:
 	_tick_transfer_window_news()
 	_tick_deadline_day()
 	_tick_precontract()
+	_tick_position_proposal()
 	_tick_potm()
 	_tick_international_window()
 	_tick_national_trophies()
@@ -3383,6 +3384,34 @@ func _tick_potm() -> void:
 ## mercado de invierno, un club puede ofrecerte irte libre a final de
 ## temporada. Cada día caduca la oferta vieja; una vez por semana puede
 ## llegar una nueva.
+## Propuesta del DT de cambiarte de puesto (PositionChangeEngine): una vez por
+## temporada como mucho, revisada cada semana, si tus atributos encajan
+## claramente mejor en otro sitio. Se responde desde Plantilla.
+func _tick_position_proposal() -> void:
+	if season.is_empty() or user_club_id == "" or current_epoch_day % 7 != 2:
+		return
+	if current_epoch_day < int(season.get("season_start_epoch_day", 0)) + 30:
+		return
+	var player := SaveManager.load_player()
+	if player == null:
+		return
+	var offer: Dictionary = PositionChangeEngine.coach_proposal(player, season, current_epoch_day)
+	if offer.is_empty():
+		return
+	season["pos_change_offer"] = offer
+	season["pos_change_offered"] = true
+	var coach := WorldFactory.find_coach(world, user_club_id)
+	var code: String = String(offer.code)
+	PressGenerator.append_to_feed(player, {
+		"headline": "El DT te ve de %s" % Positions.label_of(code).to_lower(),
+		"body": "%s cree que tus condiciones encajan mejor de %s (encaje %d%% frente a %d%% en tu puesto). Respóndele desde Plantilla antes de dos semanas." % [
+			coach.coach_name if coach != null else "El entrenador", Positions.label_of(code).to_lower(),
+			PositionChangeEngine.fit(player, code), PositionChangeEngine.fit(player, player.detailed_position)],
+		"source": "CLUB", "sentiment": "NEUTRAL",
+	}, current_epoch_day)
+	SaveManager.save_season(season)
+	SaveManager.save_player(player)
+
 func _tick_precontract() -> void:
 	if season.is_empty() or user_club_id == "":
 		return

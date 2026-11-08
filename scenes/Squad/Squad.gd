@@ -168,6 +168,9 @@ func _render_coach_card(coach: CoachData, club: ClubData) -> void:
 	if club != null:
 		chips.add_child(_chip("Club: " + Formations.club_style(club, WorldTickEngine.world_seed), Styles.GOLD))
 	v.add_child(chips)
+	var me: PlayerData = SaveManager.load_player()
+	if me != null:
+		v.add_child(_position_button(me))
 	m.add_child(v)
 	card.add_child(m)
 	box.add_child(card)
@@ -655,7 +658,22 @@ func _land_coach_strip(player: PlayerData) -> Control:
 	tv.add_theme_font_size_override("font_size", 13)
 	tv.add_theme_color_override("font_color", bcol)
 	tr.add_child(tv)
+	v.add_child(_position_button(player))
 	return card
+
+## Hablar con el DT de tu posición (PositionChangePicker / PositionChangeEngine).
+func _position_button(player: PlayerData) -> Button:
+	var b := Button.new()
+	var offer: Dictionary = PositionChangeEngine.pending_offer(WorldTickEngine.season, WorldTickEngine.current_epoch_day)
+	b.text = "🔔  El DT te propone cambiar de puesto" if not offer.is_empty() else "Hablar de mi posición"
+	b.custom_minimum_size = Vector2(0, 38)
+	b.focus_mode = Control.FOCUS_NONE
+	var col: Color = Styles.GOLD if not offer.is_empty() else Styles.BLUE
+	Styles.styled_button(b, Styles.pill_outlined(col), col)
+	b.pressed.connect(func():
+		var picker := PositionChangePicker.open(self, player)
+		picker.changed.connect(func(): get_tree().reload_current_scene()))
+	return b
 
 func _landscape_squad(player: PlayerData) -> void:
 	var vp: Vector2 = get_viewport_rect().size

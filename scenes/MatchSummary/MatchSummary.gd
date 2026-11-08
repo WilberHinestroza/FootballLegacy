@@ -567,6 +567,15 @@ func _apply_match_consequences() -> CoachData:
 		if _match_result_sign() > 0:
 			_derby_bonus = PrizeMoneyEngine.derby_win_bonus(_player.wage)
 			_player.balance += _derby_bonus
+	# Familiaridad con el puesto donde jugaste (PositionChangeEngine).
+	if played_now:
+		var learned: String = PositionChangeEngine.on_match_played(_player, String(_result.get("user_detailed", "")))
+		if learned != "":
+			PressGenerator.append_to_feed(_player, {
+				"headline": "%s ya domina el puesto de %s" % [Nickname.press_name(_player, SaveManager.load_world_seed()), Positions.label_of(learned).to_lower()],
+				"body": "Partido a partido se ha hecho a la posición. Queda como su segunda posición.",
+				"source": "CLUB", "sentiment": "POSITIVE",
+			}, WorldTickEngine.current_epoch_day)
 	if played_now and not is_friendly:
 		ProgressionEngine.push_rating(_player, rating)
 		# Objetivos semanales (P5).
