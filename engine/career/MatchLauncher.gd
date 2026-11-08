@@ -40,8 +40,11 @@ static func prepare(world: Dictionary, player: PlayerData, fixture: Dictionary, 
 	# tribuna — el equipo juega sin vos y no cuenta para tus estadísticas.
 	var comp: String = String(fixture.get("competition", ""))
 	var suspended: bool = comp != "friendly" and int(WorldTickEngine.season.get("suspended_matches", 0)) > 0
-	MatchState.user_suspended = suspended
-	var user_for_match: PlayerData = null if suspended else player
+	# CANTERA (AcademyEngine): si no te convocaron, el primer equipo juega sin
+	# ti; mismo camino que la sanción (lo ves desde fuera, sin estadísticas).
+	var academy_out: bool = AcademyEngine.sits_out(player, fixture, WorldTickEngine.world_seed)
+	MatchState.user_suspended = suspended or academy_out
+	var user_for_match: PlayerData = null if (suspended or academy_out) else player
 
 	var user_start_chance: float = CoachRelations.start_chance(player.coach_trust)
 	if not suspended:

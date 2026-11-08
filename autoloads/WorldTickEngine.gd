@@ -217,6 +217,7 @@ func advance_day(day_activity: String = "rest") -> void:
 	_tick_deadline_day()
 	_tick_precontract()
 	_tick_position_proposal()
+	_tick_academy()
 	_tick_potm()
 	_tick_international_window()
 	_tick_national_trophies()
@@ -372,6 +373,14 @@ func _begin_season_rollover() -> void:
 	if player.birth_epoch_day != 0:
 		player.birth_epoch_day -= 365  # mantener coherente si algo lo deriva
 
+	# Cantera (AcademyEngine): a fin de temporada te suben, sigues o, a los
+	# 18 sin nivel, te dejan libre (sin oferta de renovación del club).
+	var acad: Dictionary = AcademyEngine.season_review(player, current_epoch_day)
+	if acad.has("news"):
+		PressGenerator.append_to_feed(player, acad["news"], current_epoch_day)
+	if String(acad.get("result", "")) == "released":
+		season["academy_released"] = true
+
 	# --- Reputación: sube/baja hacia un objetivo derivado de tu nivel +
 	#     palmarés + la nota media de la temporada que termina. Gradual
 	#     (máx +6 / -3 por año) para que un crack tarde ~4-5 temporadas en
@@ -459,6 +468,8 @@ func _begin_season_rollover() -> void:
 		external = external.slice(0, keep)
 		renewal_offer["wage"] = int(round(renewal_wage * (0.85 if player.age <= 35 else 0.7)))
 
+	if bool(season.get("academy_released", false)):
+		renewal_offer = {}   # la cantera no te ofrece contrato profesional
 	season["awaiting_contract_decision"] = true
 	season["renewal_offer"] = renewal_offer
 	season["transfer_offers"] = external.slice(0, 3)
@@ -3403,6 +3414,26 @@ func _tick_potm() -> void:
 ## Propuesta del DT de cambiarte de puesto (PositionChangeEngine): una vez por
 ## temporada como mucho, revisada cada semana, si tus atributos encajan
 ## claramente mejor en otro sitio. Se responde desde Plantilla.
+## Cantera (AcademyEngine): partido juvenil semanal y, si destacas, ascenso
+## al primer equipo a mitad de temporada.
+func _tick_academy() -> void:
+	if season.is_empty() or user_club_id == "" or current_epoch_day % 7 != AcademyEngine.YOUTH_WEEKDAY:
+		return
+	if current_epoch_day < int(season.get("season_start_epoch_day", 0)) + 7 or next_user_fixture(user_club_id).is_empty():
+		return
+	var player := SaveManager.load_player()
+	if player == null or not AcademyEngine.in_academy(player):
+		return
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash("youth:%d" % current_epoch_day) ^ world_seed
+	var r: Dictionary = AcademyEngine.play_youth_match(player, current_epoch_day, rng)
+	var news: Dictionary = AcademyEngine.youth_press(player, r)
+	if not news.is_empty():
+		PressGenerator.append_to_feed(player, news, current_epoch_day)
+	if AcademyEngine.promotion_ready(player):
+		PressGenerator.append_to_feed(player, AcademyEngine.promote(player, current_epoch_day), current_epoch_day)
+	SaveManager.save_player(player)
+
 func _tick_position_proposal() -> void:
 	if season.is_empty() or user_club_id == "" or current_epoch_day % 7 != 2:
 		return

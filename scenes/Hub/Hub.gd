@@ -166,6 +166,7 @@ func _ready() -> void:
 	season_event_button.pressed.connect(_on_season_event_pressed)
 	_build_dm_button()
 	_build_planner_button()
+	_build_academy_button()
 	_build_offers_button()
 	_build_fifa_button()
 	_build_callup_button()
@@ -509,6 +510,33 @@ func _refresh_offers_button() -> void:
 		var n: int = inbox.size()
 		_offers_button.text = "🔔  %d oferta%s de otros clubes" % [n, "" if n == 1 else "s"]
 
+## CANTERA (AcademyEngine): botón con tu juvenil (abre AcademyPanel) mientras
+## sigas en la cantera.
+var _academy_button: Button = null
+
+func _build_academy_button() -> void:
+	_academy_button = Button.new()
+	_academy_button.custom_minimum_size = Vector2(0, 52)
+	_academy_button.visible = false
+	_academy_button.icon = Icons.load_icon(Icons.CLUB)
+	_academy_button.add_theme_constant_override("icon_max_width", 22)
+	Styles.styled_button(_academy_button, Styles.pill_outlined(Styles.GREEN), Styles.GREEN)
+	_academy_button.pressed.connect(func(): AcademyPanel.open(self, _player))
+	season_event_button.add_sibling(_academy_button)
+
+func _refresh_academy_button() -> void:
+	if _academy_button == null or _player == null:
+		return
+	_academy_button.visible = AcademyEngine.in_academy(_player)
+	if _academy_button.visible:
+		var d: Dictionary = AcademyEngine.data(_player)
+		_academy_button.text = "Cantera · nota %.1f" % AcademyEngine.avg_rating(_player) if int(d.get("matches", 0)) > 0 else "Tu cantera"
+
+## ¿Hoy juega el primer equipo sin ti porque estás en la cantera y no te convocaron?
+func _academy_out_today() -> bool:
+	return _player != null and not _pending_fixture.is_empty() \
+		and AcademyEngine.sits_out(_player, _pending_fixture, WorldTickEngine.world_seed)
+
 ## Botón "Planificar la semana" (PlannerEngine) — solo aparece si hoy NO
 ## hay partido del usuario y todavía no planificó esta semana.
 var _planner_button: Button = null
@@ -622,6 +650,7 @@ func _refresh_status() -> void:
 	_refresh_dm_button()
 	_refresh_offers_button()
 	_refresh_planner_button()
+	_refresh_academy_button()
 	_refresh_fifa_button()
 	_refresh_callup_button()
 	_refresh_week_strip()
@@ -1078,13 +1107,18 @@ func _refresh_next_match() -> void:
 		play_match_button.text = "Cumplís sanción"
 		sim_match_button.disabled = false
 		sim_match_button.text = "Ver el partido (jugás desde afuera)"
+	elif _academy_out_today():
+		play_match_button.disabled = true
+		play_match_button.text = "En la cantera: no convocado"
+		sim_match_button.disabled = false
+		sim_match_button.text = "Ver el partido del primer equipo"
 	else:
 		play_match_button.disabled = false
 		sim_match_button.disabled = false
 		sim_match_button.text = "Simular"
 
 	if not _pending_fixture.is_empty():
-		if susp_today:
+		if susp_today or _academy_out_today():
 			pass
 		elif _player == null or _player.injury_days_remaining <= 0:
 			play_match_button.text = "Jugar partido de HOY"
@@ -1629,6 +1663,8 @@ func _land_match_cell(panel: PanelContainer, vb: VBoxContainer, fx: Dictionary, 
 func _go_to_match_day(day: int) -> void:
 	if _player != null and _player.injury_days_remaining > 0:
 		return
+	if day <= WorldTickEngine.current_epoch_day and _academy_out_today():
+		return   # cantera sin convocatoria: el botón ya simula el partido
 	if day <= WorldTickEngine.current_epoch_day:
 		_try_launch(false)
 		return
@@ -1753,10 +1789,14 @@ func _land_refresh_match_day() -> void:
 	if _player != null and _player.injury_days_remaining > 0:
 		_land_match_btn.text = "Lesionado (%d días): simular el partido" % _player.injury_days_remaining
 		_land_match_btn.pressed.connect(_on_sim_match_pressed, CONNECT_ONE_SHOT)
+	elif _academy_out_today():
+		_land_match_btn.text = "Cantera: ver el partido del primer equipo  ·  %s" % _rival_line(_pending_fixture)
+		_land_match_btn.pressed.connect(_on_sim_match_pressed, CONNECT_ONE_SHOT)
 	else:
 		# 7-nov: con "Local vs Visitante (Competición)" el nombre del rival se cortaba;
 		# solo el rival, que es lo que importa ("Ir al partido · vs X").
-		_land_match_btn.text = "⚽  Ir al partido  ·  %s" % _rival_line(_pending_fixture)
+		var star: String = "⭐  Convocado con el primer equipo  ·  " if AcademyEngine.in_academy(_player) else "⚽  Ir al partido  ·  "
+		_land_match_btn.text = star + _rival_line(_pending_fixture)
 	if not _land_match_btn.has_meta("pulsing") and not Preferences.reduce_motion:
 		_land_match_btn.set_meta("pulsing", true)
 		_land_match_btn.ready.connect(func(): Juice.pulse(_land_match_btn, 1.03, 1.2))

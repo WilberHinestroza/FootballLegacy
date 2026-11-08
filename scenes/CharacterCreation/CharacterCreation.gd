@@ -50,6 +50,8 @@ var _country_overlay: Control
 var _foot_option: OptionButton
 var _origin_option: OptionButton
 var _difficulty_option: OptionButton
+var _start_option: OptionButton
+var _start_hint: Label
 var _difficulty_hint: Label
 var _year_slider: HSlider
 var _year_value_label: Label
@@ -200,6 +202,22 @@ func _build_identity_form() -> void:
 	identity_box.add_child(_field("Año de nacimiento", yr_wrap))
 	_refresh_year_label()
 
+	# Inicio de carrera (AcademyEngine): directo al primer equipo o en la cantera.
+	var st_wrap := VBoxContainer.new()
+	st_wrap.add_theme_constant_override("separation", 4)
+	_start_option = OptionButton.new()
+	_start_option.custom_minimum_size = Vector2(0, 46)
+	_start_option.add_item("Primer equipo")
+	_start_option.add_item("Cantera (hasta %d años)" % AcademyEngine.MAX_START_AGE)
+	_start_option.item_selected.connect(func(_i): _refresh_start_hint())
+	st_wrap.add_child(_start_option)
+	_start_hint = Label.new()
+	_start_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_start_hint.add_theme_font_size_override("font_size", 12)
+	st_wrap.add_child(_start_hint)
+	identity_box.add_child(_field("Inicio de carrera", st_wrap))
+	_refresh_start_hint()
+
 ## Deshabilita en el desplegable de posición SECUNDARIA la opción que está
 ## elegida como principal (item 0 = "Ninguna"; item i+1 = Positions.DETAILED[i]).
 ## BUG REAL encontrado (Wilber: "cambié la posición principal por la que
@@ -268,6 +286,9 @@ func _restore_identity_form(d: Dictionary) -> void:
 	var age: int = int(d.get("age", 16))
 	_year_slider.value = base_year - age
 	_refresh_year_label()
+	if _start_option != null:
+		_start_option.select(1 if bool(d.get("academy", false)) else 0)
+		_refresh_start_hint()
 	_sync_pos2_disabled()
 
 func _refresh_country_btn() -> void:
@@ -399,6 +420,15 @@ func _refresh_year_label() -> void:
 	_year_value_label.text = str(year)
 	_year_age_label.text = "%d años al inicio" % age
 
+func _refresh_start_hint() -> void:
+	if _start_hint == null or _start_option == null:
+		return
+	_start_hint.add_theme_color_override("font_color", Styles.GRAY_TEXT)
+	if _start_option.selected == 1:
+		_start_hint.text = "Empiezas en el juvenil de un club más grande, con beca. Juegas partidos juveniles cada semana; si destacas, te suben al primer equipo. A los 18, o subes o te dejan libre."
+	else:
+		_start_hint.text = "Firmas directamente con un primer equipo tras la prueba."
+
 func _refresh_difficulty_hint() -> void:
 	if _difficulty_hint == null or _difficulty_option == null:
 		return
@@ -420,6 +450,12 @@ func _on_to_quiz_pressed() -> void:
 		if pos2_code == pos_code:
 			pos2_code = "" # secundaria == principal no tiene sentido
 
+	var academy: bool = _start_option != null and _start_option.selected == 1
+	var start_age: int = int(CalendarUtils.EPOCH_START_DATE["year"]) - int(_year_slider.value)
+	if academy and start_age > AcademyEngine.MAX_START_AGE:
+		_start_hint.text = "La cantera es hasta los %d años: cambia el año de nacimiento." % AcademyEngine.MAX_START_AGE
+		_start_hint.add_theme_color_override("font_color", Styles.AMBER)
+		return
 	CharacterDraft.identity = {
 		"name": (first + " " + last).strip_edges(),
 		"country": _country_name,
@@ -428,7 +464,8 @@ func _on_to_quiz_pressed() -> void:
 		"foot": FEET[_foot_option.selected],
 		"origin": ORIGINS[_origin_option.selected],
 		"difficulty": String(DIFFICULTIES[_difficulty_option.selected][0]),
-		"age": int(CalendarUtils.EPOCH_START_DATE["year"]) - int(_year_slider.value),
+		"age": start_age,
+		"academy": academy,
 	}
 	# El avatar se hace en su propia pantalla; al volver, _ready() retoma
 	# directo en el test de personalidad.
@@ -487,6 +524,8 @@ func _finish() -> void:
 	p.origin = _identity["origin"]
 	p.growth_difficulty = String(_identity.get("difficulty", "normal"))
 	p.age = _identity["age"]
+	if bool(_identity.get("academy", false)):
+		AcademyEngine.mark_pending(p)   # las ofertas tras la prueba serán de cantera
 	p.avatar = _avatar_cfg.duplicate(true)
 
 	# Atributos base provisionales: un perfil plano decente. El generador

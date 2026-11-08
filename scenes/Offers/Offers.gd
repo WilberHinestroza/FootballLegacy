@@ -29,9 +29,10 @@ func _ready() -> void:
 	# corregido, ver el comentario de MatchState.last_user_rating.
 	var rating: float = MatchState.last_user_rating
 	_world = WorldFactory.build(SaveManager.load_world_seed())
-	_offers = CareerSetup.generate_offers(_player, rating, _world)
+	var academy: bool = AcademyEngine.is_pending(_player)
+	_offers = AcademyEngine.offers(_player, rating, _world) if academy else CareerSetup.generate_offers(_player, rating, _world)
 
-	subtitle_label.text = "Tu prueba: %.1f / 10 — elige tu primer club" % rating
+	subtitle_label.text = ("Tu prueba: %.1f / 10 — elige tu cantera" if academy else "Tu prueba: %.1f / 10 — elige tu primer club") % rating
 	_render_offers()
 
 ## País de una liga por id (para mostrar de dónde es cada oferta).
@@ -57,7 +58,7 @@ func _render_offers() -> void:
 func _render_draft() -> void:
 	var tl := get_node_or_null("Scroll/Margin/VBox/TitleLabel") as Label
 	if tl != null:
-		tl.text = "ELEGÍ TU PRIMER CLUB"
+		tl.text = "ELIGE TU CANTERA" if AcademyEngine.is_pending(_player) else "ELEGÍ TU PRIMER CLUB"
 		tl.add_theme_font_override("font", Styles.font_black())
 		tl.add_theme_font_size_override("font_size", 28)
 		tl.add_theme_color_override("font_color", Styles.GOLD)
@@ -239,7 +240,7 @@ func _on_offer_chosen(index: int) -> void:
 	var sc := SigningCeremony.new()
 	sc.setup({
 		"club_id": o["club_id"], "club_name": o["club_name"], "league_name": o["league_name"],
-		"stars": stars, "wage": int(o.get("wage", 0)), "years": ContractEngine.STARTING_CONTRACT_YEARS,
+		"stars": stars, "wage": int(o.get("wage", 0)), "years": AcademyEngine.CONTRACT_YEARS if bool(o.get("academy", false)) else ContractEngine.STARTING_CONTRACT_YEARS,
 		"role": String(o.get("role", "Rotación")), "number": 0, "is_renewal": false, "player": _player,
 	})
 	sc.confirmed.connect(_finalize_choice.bind(o))
@@ -265,6 +266,8 @@ func _finalize_choice(o: Dictionary) -> void:
 		_: _player.coach_trust = 42
 	if role == "titular":
 		_player.active_effects["role_titular_matches"] = TransferOfferEngine.TITULAR_PROMISE_MATCHES
+	if bool(o.get("academy", false)):
+		AcademyEngine.enroll(_player, o, 0)   # beca, contrato juvenil y confianza de canterano
 	SaveManager.save_player(_player)
 
 	# Generar y persistir el calendario de la liga de ese club. Carrera
