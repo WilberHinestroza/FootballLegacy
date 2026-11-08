@@ -22,7 +22,7 @@ class_name Trophy
 
 ## Ids de premio/torneo con arte propio (antes eran las "recetas" de capas).
 const HONOR_IDS := ["ballon_dor", "bota_oro", "max_goleador", "mvp_match", "mvp_liga", "mvp_temporada",
-	"once_ideal", "continental_cup", "supercopa", "mundial_clubes", "mundial_seleccion", "copa_continental_seleccion"]
+	"once_ideal", "guante_oro", "continental_cup", "supercopa", "mundial_clubes", "mundial_seleccion", "copa_continental_seleccion"]
 
 static var _cache: Dictionary = {}
 
@@ -59,7 +59,7 @@ const V3_ART := {
 	"league_70": "league_70", "league_71": "league_71", "league_8": "league_8", "league_9": "league_9",
 	"max_goleador": "max_goleador", "mundial_clubes": "mundial_clubes", "mundial_seleccion": "mundial_seleccion", "mvp_liga": "mvp_liga",
 	"mvp_temporada": "mvp_temporada", "natcup_AFC": "natcup_AFC", "natcup_CAF": "natcup_CAF", "natcup_CONCACAF": "natcup_CONCACAF",
-	"natcup_CONMEBOL": "natcup_CONMEBOL", "natcup_UEFA": "natcup_UEFA", "once_ideal": "once_ideal", "supercopa": "supercopa",
+	"natcup_CONMEBOL": "natcup_CONMEBOL", "natcup_UEFA": "natcup_UEFA", "once_ideal": "once_ideal", "guante_oro": "guante_oro", "supercopa": "supercopa",
 	"supercopa_cont": "supercopa_cont", "mvp_match": "mvp_liga",
 }
 

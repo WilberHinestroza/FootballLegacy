@@ -35,7 +35,10 @@ static func for_honors(honors: Array, league_rep: int, rng: RandomNumberGenerato
 				# individual (Balón de Oro, Bota de Oro…): imagen/derechos.
 				if id == "ballon_dor":
 					amount = 1500
-				elif id.begins_with("botaoro_") or id.begins_with("mvp_"):
+				elif id == "bota_oro_mundial" or id == "guante_oro" or id == "once_mundial":
+					amount = 900
+				elif id.begins_with("botaoro_") or id.begins_with("mvp_") or id.begins_with("goleador_liga_") \
+						or id.begins_with("asist") or id == "guante_oro_podio":
 					amount = 500
 				elif id == "golden_boy":
 					amount = 600

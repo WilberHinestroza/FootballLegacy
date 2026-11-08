@@ -89,6 +89,8 @@ func load_runtime() -> void:
 	_perf_cache.clear()
 	_ballon_dor_cache = []
 	_ballon_dor_cache_day = -1
+	_year_awards_cache = {}
+	_year_awards_day = -1
 	_user_cont_cache = {}
 	_user_cont_cache_day = -1
 	_user_cont_cache_res = -1
@@ -619,6 +621,7 @@ func _finish_season_rollover(club_id: String) -> void:
 			"club_summary": SeasonReportEngine.club_summary_text(ending_club, ending_table, ending_cup),
 			"club_name": ending_club.club_name if ending_club != null else "",
 			"ballon_dor": ballon_dor_ranking().slice(0, 5),
+			"year_awards": year_awards().duplicate(true),
 			# Para el resumen tipo "Wrapped" (P5, 10-oct).
 			"wrapped": {
 				"matches": ending_player.season_matches_played if ending_player != null else 0,
@@ -1335,6 +1338,121 @@ func ballon_dor_ranking() -> Array:
 	_ballon_dor_cache = BallonDorEngine.rank(candidates.values())
 	_ballon_dor_cache_day = current_epoch_day
 	return _ballon_dor_cache
+
+## Premios mundiales del año (YearAwardsEngine): Bota de Oro, asistidor,
+## Guante de Oro y once ideal. Junta los onces de los 4 primeros de cada liga de
+## élite (las del Balón de Oro) y de los finalistas de las copas continentales
+## grandes, con los números de su club, y te suma a ti con los tuyos reales.
+## {shoe, assists, keepers, xi}; cacheado por día como el Balón de Oro.
+var _year_awards_cache: Dictionary = {}
+var _year_awards_day: int = -1
+const YEAR_AWARDS_CLUBS_PER_LEAGUE := 4
+
+func year_awards() -> Dictionary:
+	if world.is_empty():
+		return {}
+	if _year_awards_day == current_epoch_day:
+		return _year_awards_cache
+	var bd: Array = ballon_dor_ranking()
+	var player := SaveManager.load_player()
+	var bd_by_key: Dictionary = {}
+	for r: Dictionary in bd:
+		bd_by_key["%s:%s" % [String(r.get("club_id", "")), String(r.get("name", ""))]] = r
+	# Clubes que pelean arriba + sus números de liga y sus títulos
+	var info: Dictionary = {} # club_id -> {rep, pj, gc, pts, trophies}
+	for lg in world.get("leagues", []):
+		if lg.tier != 1 or lg.reputation < BALLON_DOR_MIN_LEAGUE_REPUTATION:
+			continue
+		var table := table_for_league(lg.league_id)
+		for i in mini(YEAR_AWARDS_CLUBS_PER_LEAGUE, table.size()):
+			_year_club_info(info, String(table[i]["club_id"]))
+	for confederation in Confederations.ALL:
+		var cup := continental_cup_for(confederation, 1)
+		if cup.is_empty():
+			continue
+		for cid: String in [_final_winner(cup), _final_runner_up(cup)]:
+			if cid != "":
+				_year_club_info(info, cid)
+	# Y los clubes de las figuras del año (un goleador de mitad de tabla también cuenta)
+	for r: Dictionary in bd.slice(0, 20):
+		if String(r.get("club_id", "")) != "":
+			_year_club_info(info, String(r.club_id))
+	var user_cid: String = player.club_id if player != null else ""
+	if user_cid != "":
+		_year_club_info(info, user_cid)
+	var clubs_by_id: Dictionary = {}
+	for cid in info:
+		var c := WorldFactory.find_club(world, cid)
+		if c != null:
+			clubs_by_id[cid] = c
+	var xi_cache: Dictionary = {}
+	var start: int = int(season.get("season_start_epoch_day", 0))
+	var rows: Array = []
+	for cid: String in clubs_by_id:
+		var ci: Dictionary = info[cid]
+		var club: ClubData = clubs_by_id[cid]
+		for p: PlayerData in TopPerformersEngine._starting_xi_for(cid, world, clubs_by_id, world_seed, start, xi_cache):
+			if player != null and cid == user_cid and p.player_name == player.player_name:
+				continue
+			var b: Dictionary = bd_by_key.get("%s:%s" % [cid, p.player_name], {})
+			rows.append({"name": p.player_name, "club_name": club.club_name, "club_id": cid,
+				"pos": p.position, "overall": p.overall, "league_reputation": int(ci.rep),
+				"pj": int(ci.pj), "gc": int(ci.gc), "pts": int(ci.pts), "trophies": ci.trophies,
+				"goals": int(b.get("goals", 0)), "assists": int(b.get("assists", 0))})
+	# Tú, con tus números reales
+	var pool: Array = bd.duplicate(true)
+	if player != null and user_cid != "" and info.has(user_cid):
+		var ci: Dictionary = info[user_cid]
+		var cname: String = (clubs_by_id[user_cid] as ClubData).club_name if clubs_by_id.has(user_cid) else ""
+		rows.append({"name": player.player_name, "club_name": cname, "club_id": user_cid, "you": true,
+			"pos": player.position, "overall": player.overall, "league_reputation": int(ci.rep),
+			"pj": int(ci.pj), "gc": int(ci.gc), "pts": int(ci.pts), "trophies": ci.trophies,
+			"goals": player.season_goals, "assists": player.season_key_passes})
+		var found := false
+		for r: Dictionary in pool:
+			if String(r.get("club_id", "")) == user_cid and String(r.get("name", "")) == player.player_name:
+				r["you"] = true
+				found = true
+		if not found:
+			pool.append({"name": player.player_name, "club_name": cname, "club_id": user_cid, "you": true,
+				"league_reputation": int(ci.rep), "goals": player.season_goals, "assists": player.season_key_passes})
+	var scored: Array = YearAwardsEngine.score_all(rows)
+	_year_awards_cache = {
+		"shoe": YearAwardsEngine.golden_shoe(pool).slice(0, 10),
+		"assists": YearAwardsEngine.assist_kings(pool).slice(0, 10),
+		"keepers": YearAwardsEngine.keepers(scored).slice(0, 10),
+		"xi": YearAwardsEngine.team_of_year(scored),
+	}
+	_year_awards_day = current_epoch_day
+	return _year_awards_cache
+
+## Números de liga y títulos de un club para year_awards().
+func _year_club_info(info: Dictionary, club_id: String) -> void:
+	if info.has(club_id):
+		return
+	var club := WorldFactory.find_club(world, club_id)
+	if club == null:
+		return
+	var lg := _find_league(club.league_id)
+	if lg == null:
+		return
+	var table := table_for_league(lg.league_id)
+	var row: Dictionary = LeagueTable.row_for(table, club_id)
+	var trophies: Array = []
+	if not row.is_empty() and int(row.get("pos", 99)) == 1:
+		trophies.append("league_champion")
+	if lg.has_domestic_cup and _final_winner(cup_for_league(lg.league_id)) == club_id:
+		trophies.append("domestic_cup_champion")
+	var conf: String = Confederations.confederation_of(lg.country)
+	if conf != "":
+		var cc := continental_cup_for(conf, 1)
+		if not cc.is_empty():
+			if _final_winner(cc) == club_id:
+				trophies.append("continental_top_champion")
+			elif _final_runner_up(cc) == club_id:
+				trophies.append("continental_top_runner_up")
+	info[club_id] = {"rep": lg.reputation, "pj": int(row.get("pj", 0)), "gc": int(row.get("gc", 0)),
+		"pts": int(row.get("pts", 0)), "trophies": trophies}
 
 func _candidate_row(candidates: Dictionary, perf_row: Dictionary, league_reputation: int) -> Dictionary:
 	# Por id de club cuando lo hay: dos clubes pueden llamarse igual.
@@ -3709,3 +3827,4 @@ func set_training_focus(focus: String) -> void:
 ## temporada) muestra los ganadores reales y no la temporada nueva vacía.
 var final_awards: Array = []
 var final_awards_year: int = 0
+var final_year_awards: Dictionary = {} # YearAwardsEngine de la temporada que terminó

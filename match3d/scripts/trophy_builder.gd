@@ -8,7 +8,7 @@ extends RefCounted
 ## Lo usan TrophyCeremony (la copa en la mano) y TrophyViewer (giratorio en menús).
 
 const KINDS := ["league", "cup", "continental", "national", "world", "club_world", "supercup",
-	"ballon", "boot", "mvp", "team"]
+	"ballon", "boot", "mvp", "team", "glove"]
 
 
 ## Tipo de trofeo para un id del RPG (Trophy.gd / HonorsEngine) o un nombre de título.
@@ -36,6 +36,8 @@ static func kind_for(id: String) -> String:
 		return "mvp"
 	if s.begins_with("once_ideal"):
 		return "team"
+	if s.begins_with("guante"):
+		return "glove"
 	return "cup"
 
 
@@ -67,6 +69,7 @@ static func build(id: String, accent := Color(0, 0, 0, 0)) -> Node3D:
 		"boot": t._boot(id.to_lower() != "max_goleador")
 		"mvp": t._mvp()
 		"team": t._team()
+		"glove": t._glove()
 	t._decorate()
 	return t.root
 
@@ -474,6 +477,46 @@ func _mvp() -> void:
 	var sy := y + 0.16 + 0.12
 	_star(0.13, 0.04, Vector3(0, sy, 0), m)
 	_ring(0.15, 0.006, Vector3(0, sy, 0), Vector3(PI * 0.5, 0, 0), _band_mat())
+
+
+## Guante de Oro: guante de portero dorado, de pie y abierto, sobre peana.
+func _glove() -> void:
+	var g := metal("gold")
+	var y := _plinth(0.08, 2)
+	_cyl(0.03, 0.045, 0.06, y, g)
+	y += 0.06
+	var glove := Node3D.new()
+	glove.position = Vector3(0, y, 0)
+	glove.rotation = Vector3(0.0, 0.3, 0.0)
+	root.add_child(glove)
+	var prev := root
+	root = glove
+	# Puño ancho, palma y cuatro dedos con su pulgar abierto
+	_box(Vector3(0.12, 0.05, 0.06), Vector3(0, 0.025, 0), metal("base"))
+	_box(Vector3(0.14, 0.13, 0.05), Vector3(0, 0.115, 0), g)
+	for i in 4:
+		var fx := -0.051 + i * 0.034
+		var h := 0.09 if i in [1, 2] else 0.075
+		var f := CapsuleMesh.new()
+		f.radius = 0.016
+		f.height = h
+		var fm := MeshInstance3D.new()
+		fm.mesh = f
+		fm.material_override = g
+		fm.position = Vector3(fx, 0.18 + h * 0.5 - 0.012, 0)
+		root.add_child(fm)
+	var th := CapsuleMesh.new()
+	th.radius = 0.018
+	th.height = 0.08
+	var tm := MeshInstance3D.new()
+	tm.mesh = th
+	tm.material_override = g
+	tm.position = Vector3(-0.088, 0.12, 0.004)
+	tm.rotation.z = 0.7
+	root.add_child(tm)
+	# Banda del puño con el color del premio
+	_box(Vector3(0.124, 0.014, 0.064), Vector3(0, 0.05, 0), _band_mat())
+	root = prev
 
 
 ## Once ideal: placa de cristal con once estrellitas doradas.

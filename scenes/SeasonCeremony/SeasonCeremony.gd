@@ -228,6 +228,7 @@ func _on_continue_pressed() -> void:
 	var rep: Dictionary = WorldTickEngine.last_season_report
 	WorldTickEngine.final_awards = (rep.get("ballon_dor", []) as Array).duplicate(true)
 	WorldTickEngine.final_awards_year = int(rep.get("start_year", 0))
+	WorldTickEngine.final_year_awards = (rep.get("year_awards", {}) as Dictionary).duplicate(true)
 	WorldTickEngine.last_season_report = {}
 	if WorldTickEngine.season.get("awaiting_contract_decision", false):
 		get_tree().change_scene_to_file("res://scenes/ContractDecision/ContractDecision.tscn")

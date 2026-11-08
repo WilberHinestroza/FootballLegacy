@@ -83,7 +83,24 @@ static func collect_season(wte, player: PlayerData, season_year: int) -> Array:
 	var perf: Dictionary = wte.top_performers_for_league(league_id)
 	var scorers: Array = perf.get("scorers", [])
 	if not scorers.is_empty() and String(scorers[0].get("name", "")) == player.player_name:
-		out.append(_entry("botaoro_%d" % league_id, "Bota de Oro · %s" % league_name, "individual", season_year, 1))
+		out.append(_entry("goleador_liga_%d" % league_id, "Máximo goleador · %s" % league_name, "individual", season_year, 1))
+	var assisters: Array = perf.get("assists", [])
+	if not assisters.is_empty() and String(assisters[0].get("name", "")) == player.player_name:
+		out.append(_entry("asist_liga_%d" % league_id, "Máximo asistidor · %s" % league_name, "individual", season_year, 1))
+
+	# --- Premios mundiales del año (YearAwardsEngine) ---
+	var ya: Dictionary = wte.year_awards()
+	if YearAwardsEngine.user_rank(ya.get("shoe", [])) == 1:
+		out.append(_entry("bota_oro_mundial", "Bota de Oro", "individual", season_year, 1))
+	if YearAwardsEngine.user_rank(ya.get("assists", [])) == 1:
+		out.append(_entry("asistidor_mundial", "Rey de las asistencias", "individual", season_year, 1))
+	var gk_rank: int = YearAwardsEngine.user_rank(ya.get("keepers", []))
+	if gk_rank == 1:
+		out.append(_entry("guante_oro", "Guante de Oro", "individual", season_year, 1))
+	elif gk_rank in [2, 3]:
+		out.append(_entry("guante_oro_podio", "Podio del Guante de Oro", "individual", season_year, gk_rank))
+	if YearAwardsEngine.user_rank(ya.get("xi", [])) > 0:
+		out.append(_entry("once_mundial", "Once ideal del año", "individual", season_year, 1))
 
 	# --- Balón de Oro / MVP / 11 ideal (ranking mundial de jugadores) ---
 	var bd: Array = wte.ballon_dor_ranking()
@@ -166,8 +183,16 @@ static func trophy_key_for(entry: Dictionary) -> String:
 	var id: String = String(entry.get("id", ""))
 	if id == "ballon_dor" or id == "ballon_dor_podio":
 		return "ballon_dor"
-	if id.begins_with("botaoro"):
+	if id.begins_with("botaoro") or id == "bota_oro_mundial":
 		return "bota_oro"
+	if id.begins_with("goleador_liga"):
+		return "max_goleador"
+	if id.begins_with("asist"):
+		return "mvp_liga"
+	if id.begins_with("guante_oro"):
+		return "guante_oro"
+	if id == "once_mundial":
+		return "once_ideal"
 	if id.begins_with("mvp_liga"):
 		return "mvp_liga"
 	if id.begins_with("once_ideal"):

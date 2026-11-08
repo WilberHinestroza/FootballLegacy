@@ -135,6 +135,7 @@ const SPECS := {
 	"natcup_CONCACAF": {"metal": "gold", "ribbons": [Color8(216, 24, 24), Color8(24, 72, 216), Color8(72, 120, 168)], "base": Color8(46, 66, 122), "handles": 1.27, "top": "", "wings": false, "laurel": false},
 	"natcup_CONMEBOL": {"metal": "silver", "ribbons": [Color8(72, 120, 216), Color8(24, 120, 72)], "base": Color8(93, 92, 98), "handles": 1.1, "top": "", "wings": false, "laurel": false},
 	"natcup_UEFA": {"metal": "silver", "ribbons": [Color8(24, 168, 72)], "base": Color8(114, 114, 118), "handles": 1.46, "top": "", "wings": false, "laurel": false},
+	"guante_oro": {"metal": "gold", "ribbons": [Color8(24, 168, 96)], "base": Color8(36, 52, 44), "handles": 1.0, "top": "", "wings": false, "laurel": false},
 	"once_ideal": {"metal": "gold", "ribbons": [], "base": Color8(135, 91, 21), "handles": 1.51, "top": "", "wings": false, "laurel": false},
 	"supercopa": {"metal": "silver", "ribbons": [Color8(216, 24, 72), Color8(72, 24, 168)], "base": Color8(117, 98, 116), "handles": 1.85, "top": "", "wings": false, "laurel": false},
 	"supercopa_cont": {"metal": "gold", "ribbons": [Color8(120, 24, 24), Color8(24, 120, 216), Color8(216, 72, 24)], "base": Color8(96, 67, 52), "handles": 1.68, "top": "", "wings": false, "laurel": false},

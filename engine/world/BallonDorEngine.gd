@@ -38,14 +38,18 @@ const TROPHY_BASE := {
 ## `candidates`: Array de Dictionary {name, club_name, league_reputation,
 ## goals, assists, trophies: Array[String] (claves de TROPHY_BASE)}.
 ## Devuelve la misma lista con "score" agregado, ordenada de mayor a menor.
+## Cuánto vale lo hecho en una liga frente a la más fuerte del mundo (0..1).
+static func rep_factor(league_reputation: int) -> float:
+	var rep_ratio: float = float(league_reputation) / REPUTATION_BASELINE
+	return pow(clampf(rep_ratio, 0.0, 1.0), REPUTATION_EXPONENT)
+
 static func rank(candidates: Array) -> Array:
 	var rows: Array = candidates.duplicate(true)
 	for row in rows:
-		var rep_ratio: float = float(row.get("league_reputation", REPUTATION_BASELINE)) / REPUTATION_BASELINE
-		var rep_factor: float = pow(clampf(rep_ratio, 0.0, 1.0), REPUTATION_EXPONENT)
-		var score: float = (float(row.get("goals", 0)) * GOAL_WEIGHT + float(row.get("assists", 0)) * ASSIST_WEIGHT) * rep_factor
+		var rf: float = rep_factor(int(row.get("league_reputation", REPUTATION_BASELINE)))
+		var score: float = (float(row.get("goals", 0)) * GOAL_WEIGHT + float(row.get("assists", 0)) * ASSIST_WEIGHT) * rf
 		for t in (row.get("trophies", []) as Array):
-			score += float(TROPHY_BASE.get(t, 0.0)) * rep_factor
+			score += float(TROPHY_BASE.get(t, 0.0)) * rf
 		row["score"] = score
 	rows.sort_custom(func(a, b): return float(a["score"]) > float(b["score"]))
 	return rows
