@@ -46,6 +46,7 @@ static func build(root: Node3D) -> Array[Area3D]:
 		weather = Weather.pick(time_of_day, randf())
 	_apply_stars()
 	_environment(root)
+	StadiumGrounds.build(root, banner_seed_name)   # explanada, calles y ciudad
 	_pitch(root)
 	_lines(root)
 	_ad_list = []
@@ -179,6 +180,8 @@ static func _environment(root: Node3D) -> void:
 	env.fog_sky_affect = 0.0
 
 	var we := WorldEnvironment.new()
+	we.name = "Env"
+	we.set_meta("fog", env.fog_density)
 	we.environment = env
 	root.add_child(we)
 
@@ -1341,6 +1344,14 @@ static func _scoreboard(root: Node3D) -> void:
 
 
 ## Escribe en el videomarcador (solo si cambia).
+## Bruma a escala (1 = la del partido). La toma de llegada desde fuera la baja
+## para que la ciudad y el estadio no se vean lavados de lejos.
+static func set_fog_scale(root: Node, f: float) -> void:
+	var we := root.get_node_or_null("Env") as WorldEnvironment
+	if we and we.environment:
+		we.environment.fog_density = float(we.get_meta("fog", 0.0035)) * f
+
+
 static func set_scoreboard(root: Node, text: String) -> void:
 	var label := root.get_node_or_null("Scoreboard/Text") as Label3D
 	if label and label.text != text:

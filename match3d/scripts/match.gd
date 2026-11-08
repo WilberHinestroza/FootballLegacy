@@ -1189,6 +1189,8 @@ func _ambient_kickoff() -> void:
 ## alinean en la mitad del campo mirando a la cámara de TV. Luego, saque de centro.
 var _tifo_v := 0.0
 var _tifo_shot := 0.0 # segundos de plano del tifo al empezar la salida
+var _arrival := 0.0   # segundos de toma de llegada (desde fuera, entrando al estadio)
+const ARRIVAL_SHOT := 6.0
 
 
 func _start_walkout() -> void:
@@ -1196,7 +1198,10 @@ func _start_walkout() -> void:
 	_walk_t = 0.0
 	# Si el fondo local tiene tifo, la realización abre con él mientras se despliega
 	var tifo := get_node_or_null("Tifo") as Node3D
-	_tifo_shot = 3.6 if tifo else 0.0
+	# Abre la toma de llegada: la cámara viene desde la ciudad y entra al estadio.
+	# Todo lo demás de la salida (tifo, túnel) va detrás, desplazado.
+	_arrival = ARRIVAL_SHOT if bool(config.get("arrival", true)) else 0.0
+	_tifo_shot = _arrival + (3.6 if tifo else 0.0)
 	_walk_done_t = 0.0
 	_walk_delay.clear()
 	_walk_via.clear()
@@ -1252,7 +1257,10 @@ func _start_walkout() -> void:
 	SoundFx.play("cheer", -4.0)
 	SoundFx.set_crowd(-6.0)
 	# Bengalas en los dos fondos mientras salen los equipos
-	FieldBuilder.flares(self, 1.0, _kit_shirt1, 9.0)
+	if _arrival <= 0.0: # con toma de llegada, el humo sale al entrar la cámara
+		FieldBuilder.flares(self, 1.0, _kit_shirt1, 9.0)
+	if _arrival > 0.0:
+		FieldBuilder.set_fog_scale(self, 0.25)
 	if _tifo_shot <= 0.0: # con tifo, el humo del fondo local sale después del plano
 		FieldBuilder.flares(self, -1.0, profile.shirt, 9.0)
 
@@ -1305,7 +1313,11 @@ func _walk_slot(p: SoccerPlayer) -> Vector3:
 
 
 func _update_walkout(delta: float) -> void:
-	_tifo_v = minf(_tifo_v + delta * 0.4, 1.0) # el fondo local despliega el tifo
+	if _arrival > 0.0 and _walk_t < _arrival and _walk_t + delta >= _arrival:
+		FieldBuilder.set_fog_scale(self, 1.0)
+		FieldBuilder.flares(self, 1.0, _kit_shirt1, 9.0)
+	if _walk_t >= _arrival:
+		_tifo_v = minf(_tifo_v + delta * 0.4, 1.0) # el fondo local despliega el tifo
 	if _tifo_shot > 0.0 and _walk_t < _tifo_shot and _walk_t + delta >= _tifo_shot:
 		FieldBuilder.flares(self, -1.0, profile.shirt, 7.0)
 	FieldBuilder.set_tifo(self, smoothstep(0.0, 1.0, _tifo_v))
@@ -1489,6 +1501,7 @@ func _walk_release(p: SoccerPlayer) -> void:
 
 
 func _end_walkout() -> void:
+	FieldBuilder.set_fog_scale(self, 1.0)   # por si se salta la toma de llegada
 	if state != State.WALKOUT:
 		return
 	_hud.hide_walkout_intro()
@@ -6807,11 +6820,26 @@ func _update_camera(delta: float) -> void:
 				c += p.global_position
 				n += 1
 		c = c / float(n) if n > 0 else Vector3(0.0, 0.0, -FIELD_WIDTH * 0.5)
+		if _walk_t < _arrival:
+			# Toma de llegada: desde la ciudad, en curva y bajando, pasa sobre el techo
+			# y entra mirando a la boca del túnel.
+			var e := smoothstep(0.0, 1.0, _walk_t / _arrival)
+			var a := lerpf(-2.3, -0.25, e)
+			var r := lerpf(260.0, 32.0, e)
+			var h := lerpf(95.0, 30.0, e)
+			_camera.global_position = Vector3(sin(a) * r, h, cos(a) * r)
+			_camera.fov = 50.0
+			var mouth := Vector3(FieldBuilder.TUNNEL_X, 1.0, -FIELD_WIDTH * 0.5 - FieldBuilder.SIDE_STANDS)
+			_camera.look_at(Vector3(0.0, 6.0, 0.0).lerp(mouth, e * e), Vector3.UP)
+			FieldBuilder.set_fog_scale(self, lerpf(0.25, 1.0, e * e))
+			_cam_pos = _camera.global_position
+			_cam_look = mouth
+			return
 		var tifo := get_node_or_null("Tifo") as Node3D
 		if tifo and _walk_t < _tifo_shot:
 			# Plano general del fondo: el tifo se despliega de abajo arriba
 			var tp := tifo.global_position
-			var k := _walk_t / _tifo_shot
+			var k := (_walk_t - _arrival) / maxf(_tifo_shot - _arrival, 0.01)
 			_camera.global_position = Vector3(tp.x + lerpf(30.0, 26.0, k), lerpf(9.0, 10.5, k), lerpf(6.0, 2.0, k))
 			_camera.fov = 52.0
 			_camera.look_at(tp + Vector3(0.0, -0.5, 0.0), Vector3.UP)

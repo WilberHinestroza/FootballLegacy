@@ -284,12 +284,13 @@ func _process(delta: float) -> void:
 
 
 func _build_field() -> void:
-	# El estadio de tu club, vacío y de día (es un entrenamiento, no un partido)
+	# La ciudad deportiva: campo de nivel 1 con los colores del club, vacío y de
+	# día (es un entrenamiento, no un partido; el estadio es para jugar)
 	FieldBuilder.time_of_day = 0
 	FieldBuilder.weather = Weather.CLEAR
 	FieldBuilder.crowd_fill = 0.0
 	FieldBuilder.crowd = {}
-	FieldBuilder.stars = Venue.stars(_club) if _club != null else 3
+	FieldBuilder.stars = 1
 	FieldBuilder.design = ""   # la ciudad deportiva no es el gran estadio
 	if _club != null:
 		FieldBuilder.home_color = Color(_club.primary_color_hex)

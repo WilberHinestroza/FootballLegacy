@@ -128,8 +128,67 @@ static func build(root: Node3D, xforms: Array[Transform3D], colors: Array[Color]
 	for s: float in [-1.0, 1.0]:
 		FieldBuilder.add_mesh(root, FieldBuilder.box(Vector3(2.0 * bx + 1.0, ry + 1.0, 0.6)), Vector3(0.0, (ry + 1.0) * 0.5, s * (bz + 0.3)), wall)
 		FieldBuilder.add_mesh(root, FieldBuilder.box(Vector3(0.6, ry + 1.0, 2.0 * bz + 1.0)), Vector3(s * (bx + 0.3), (ry + 1.0) * 0.5, 0.0), wall)
+	_facade(root, design, bx, bz, ry)
 
 	_roof(root, design)
+
+
+## Fachada exterior (se ve en la toma de llegada): pilares, franja del color del
+## club a media altura y portones de acceso a ras de suelo.
+static func _facade(root: Node3D, design: String, bx: float, bz: float, ry: float) -> void:
+	var rib_col := Color(0.72, 0.73, 0.75)
+	match design:
+		"catedral": rib_col = Color(0.78, 0.72, 0.62)   # piedra clara sobre el ladrillo
+		"anillo": rib_col = Color(0.95, 0.96, 0.97)
+	var h := ry + 1.0
+	var xf: Array[Transform3D] = []
+	var cols: Array[Color] = []
+	var gate_xf: Array[Transform3D] = []
+	var gate_cols: Array[Color] = []
+	var step := 7.0
+	for s: float in [-1.0, 1.0]:
+		# Laterales (a lo largo de x) y fondos (a lo largo de z)
+		for side in 2:
+			var half: float = bx if side == 0 else bz
+			var out: float = (bz if side == 0 else bx) + 0.75
+			var n := int(floor(half * 2.0 / step))
+			for i in n + 1:
+				var a := -half + i * (half * 2.0 / float(n))
+				var pos := Vector3(a, h * 0.5, s * out) if side == 0 else Vector3(s * out, h * 0.5, a)
+				xf.append(Transform3D(Basis().scaled(Vector3(1.0, h, 1.0)), pos))
+				cols.append(rib_col)
+				if i % 3 == 1:
+					var g := Vector3(a + step * 0.5, 2.2, s * (out - 0.6)) if side == 0 else Vector3(s * (out - 0.6), 2.2, a + step * 0.5)
+					var gs := Vector3(4.2, 4.4, 0.4) if side == 0 else Vector3(0.4, 4.4, 4.2)
+					gate_xf.append(Transform3D(Basis().scaled(gs), g))
+					gate_cols.append(Color(0.08, 0.09, 0.1))
+	_multi(root, FieldBuilder.box(Vector3(0.9, 1.0, 0.9)), xf, cols)
+	_multi(root, FieldBuilder.box(Vector3.ONE), gate_xf, gate_cols)
+	# Franja del club a media altura, por fuera de los pilares (de noche, luminosa)
+	var band := _emissive(FieldBuilder.home_color, 1.6 if FieldBuilder.time_of_day == 2 else 0.25)
+	var by := h * 0.62
+	for s: float in [-1.0, 1.0]:
+		_glow_box(root, Vector3(2.0 * bx + 3.0, 1.6, 0.3), Vector3(0.0, by, s * (bz + 1.35)), band)
+		_glow_box(root, Vector3(0.3, 1.6, 2.0 * bz + 3.0), Vector3(s * (bx + 1.35), by, 0.0), band)
+
+
+static func _multi(root: Node3D, mesh: Mesh, xf: Array[Transform3D], cols: Array[Color]) -> void:
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.use_colors = true
+	mm.mesh = mesh
+	mm.instance_count = xf.size()
+	for i in xf.size():
+		mm.set_instance_transform(i, xf[i])
+		mm.set_instance_color(i, cols[i])
+	var mmi := MultiMeshInstance3D.new()
+	mmi.multimesh = mm
+	var m := StandardMaterial3D.new()
+	m.vertex_color_use_as_albedo = true
+	mmi.material_override = m
+	mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mmi.name = "FacadeFar"   # no cuenta como público en los probes
+	root.add_child(mmi)
 
 
 ## Frente entre pisos: panel oscuro + franja LED de anuncios (AdBoards) a lo largo.
