@@ -102,6 +102,18 @@ func _ready() -> void:
 	drawer_sb.shadow_size = 14
 	_drawer.add_theme_stylebox_override("panel", drawer_sb)
 
+	# El cajón se desplaza: en horizontal no caben todas las entradas y
+	# "Guardar y salir" quedaba fuera de la pantalla (Wilber, 8-nov).
+	var dscroll := ScrollContainer.new()
+	dscroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	dscroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_SHOW_NEVER
+	dscroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	var dmargin: Control = _drawer_vbox.get_parent()
+	dmargin.add_child(dscroll)
+	_drawer_vbox.reparent(dscroll)
+	_drawer_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_drawer_vbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	UiScroll.make_touch(dscroll)
 	for pair in NAV:
 		_drawer_vbox.add_child(_drawer_button(String(pair[0]), String(pair[1]), Color.WHITE, pair[2]))
 	var spacer := Control.new()

@@ -134,7 +134,16 @@ func _split_columns() -> void:
 	_side = VBoxContainer.new()
 	_side.add_theme_constant_override("separation", 12)
 	_side.custom_minimum_size = Vector2(get_viewport_rect().size.x * 0.42, 0)
-	cols.add_child(_side)
+	# Columna izquierda con su propio scroll: con patrocinio, guayos y objetivo
+	# largo la tarjeta crecía y empujaba la barra de navegación fuera de la
+	# pantalla (Wilber, 8-nov: "en algunas si y en otras no se ve").
+	var side_scroll := ScrollContainer.new()
+	side_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	side_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_SHOW_NEVER
+	side_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	UiScroll.make_touch(side_scroll)
+	side_scroll.add_child(_side)
+	cols.add_child(side_scroll)
 	scroll.reparent(cols)
 	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
