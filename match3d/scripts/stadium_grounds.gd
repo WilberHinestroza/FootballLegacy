@@ -28,9 +28,9 @@ static func build(root: Node3D, seed_name: String) -> void:
 	# Suelo general (hierba seca de descampado) y explanada de cemento
 	_flat(holder, Vector2(1800.0, 1800.0), Vector3(0.0, -0.08, 0.0), Color(0.33, 0.42, 0.27) * dim)
 	var plaza := Vector2(fp.x * 2.0 + 50.0, fp.y * 2.0 + 50.0)
-	_flat(holder, plaza, Vector3(0.0, -0.05, 0.0), Color(0.62, 0.62, 0.6) * dim)
+	_flat(holder, plaza, Vector3(0.0, -0.05, 0.0), Color(0.7, 0.64, 0.55) * dim)
 	# Avenidas: una en cruz por cada eje y un anillo que rodea la explanada
-	var road := Color(0.2, 0.21, 0.23) * dim
+	var road := Color(0.24, 0.22, 0.2) * dim
 	var ring_x := plaza.x * 0.5 + 9.0
 	var ring_z := plaza.y * 0.5 + 9.0
 	for s: float in [-1.0, 1.0]:
@@ -40,7 +40,7 @@ static func build(root: Node3D, seed_name: String) -> void:
 		_flat(holder, Vector2(14.0, 800.0), Vector3(0.0, -0.045, s * (ring_z + 400.0)), road)
 
 	# Aparcamientos en las cuatro esquinas de fuera del anillo, llenos de coches
-	var lot := Color(0.28, 0.29, 0.31) * dim
+	var lot := Color(0.31, 0.29, 0.27) * dim
 	var cars: Array[Transform3D] = []
 	var car_cols: Array[Color] = []
 	var palette := [Color(0.85, 0.85, 0.86), Color(0.1, 0.1, 0.12), Color(0.55, 0.57, 0.6),
@@ -65,6 +65,9 @@ static func build(root: Node3D, seed_name: String) -> void:
 	for s: float in [-1.0, 1.0]:
 		var x := -ring_x
 		while x <= ring_x:
+			if absf(x) < 14.0:
+				x += 9.0
+				continue   # la avenida del autobús, despejada
 			for side: float in [-1.0, 1.0]:
 				trees.append(_tree_xf(rng, Vector3(x, 0.0, s * ring_z + side * 9.0)))
 				tree_cols.append(_leaf(rng, dim))
@@ -121,6 +124,11 @@ static func _flat(parent: Node3D, size: Vector2, pos: Vector3, c: Color) -> void
 	pm.size = size
 	var mi := FieldBuilder.add_mesh(parent, pm, pos, c)
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	# Mate: sin brillo especular (antes reflejaba el cielo y el suelo salía azul)
+	var m := mi.material_override as StandardMaterial3D
+	if m != null:
+		m.roughness = 1.0
+		m.metallic_specular = 0.0
 
 
 ## Punto al azar dentro de un radio, fuera del rectángulo (hx, hz) del estadio y sus calles.

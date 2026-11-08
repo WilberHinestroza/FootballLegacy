@@ -625,7 +625,8 @@ func _land_coach_strip(player: PlayerData) -> Control:
 	var role_chip := UiKit.chip(role, role_col)
 	role_chip.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	head.add_child(role_chip)
-	# Confianza del DT
+	# Confianza del DT y, al lado, el botón de hablar de tu posición (una fila:
+	# en horizontal el alto es para los suplentes)
 	var trust: int = clampi(player.coach_trust, 0, 100)
 	var tr := HBoxContainer.new()
 	tr.add_theme_constant_override("separation", 8)
@@ -658,7 +659,12 @@ func _land_coach_strip(player: PlayerData) -> Control:
 	tv.add_theme_font_size_override("font_size", 13)
 	tv.add_theme_color_override("font_color", bcol)
 	tr.add_child(tv)
-	v.add_child(_position_button(player))
+	var pb := _position_button(player)
+	pb.custom_minimum_size = Vector2(0, 30)
+	pb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	pb.size_flags_stretch_ratio = 1.3
+	pb.add_theme_font_size_override("font_size", 13)
+	tr.add_child(pb)
 	return card
 
 ## Hablar con el DT de tu posición (PositionChangePicker / PositionChangeEngine).
@@ -674,6 +680,55 @@ func _position_button(player: PlayerData) -> Button:
 		var picker := PositionChangePicker.open(self, player)
 		picker.changed.connect(func(): get_tree().reload_current_scene()))
 	return b
+
+## Suplente en horizontal: fila baja [sprite · nombre / puesto · media].
+func _land_bench_token(p: PlayerData, is_user: bool) -> Control:
+	var card := PanelContainer.new()
+	var sb := Styles.card_flat(Color(0.3, 0.24, 0.05) if is_user else Styles.CARD_DARK_2, 8)
+	sb.border_width_left = 3
+	sb.border_color = PlayerCard.tier_color(p.overall)
+	sb.content_margin_left = 4
+	sb.content_margin_right = 4
+	sb.content_margin_top = 2
+	sb.content_margin_bottom = 2
+	card.add_theme_stylebox_override("panel", sb)
+	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 4)
+	h.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# Medio cuerpo: el sprite (68 px, dibujado a su tamaño) recortado en una caja
+	var slot := Control.new()
+	slot.custom_minimum_size = Vector2(36, 42)
+	slot.clip_contents = true
+	slot.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var spr := _sprite(p)
+	spr.position = Vector2(-16, -4)
+	slot.add_child(spr)
+	h.add_child(slot)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", -2)
+	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	v.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	v.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var nm := _name_label(p, is_user, 11)
+	nm.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	nm.clip_text = true
+	nm.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	v.add_child(nm)
+	var pos := Label.new()
+	pos.text = p.detailed_position
+	pos.add_theme_font_size_override("font_size", 10)
+	pos.add_theme_color_override("font_color", Styles.GRAY_TEXT)
+	pos.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	v.add_child(pos)
+	h.add_child(v)
+	var chip := _ovr_chip(p.overall, 11)
+	chip.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	h.add_child(chip)
+	card.add_child(h)
+	PlayerCard.make_clickable(card, p, _open_player_card)
+	return card
+
 
 func _landscape_squad(player: PlayerData) -> void:
 	var vp: Vector2 = get_viewport_rect().size
@@ -730,9 +785,13 @@ func _landscape_squad(player: PlayerData) -> void:
 	grid.add_theme_constant_override("v_separation", 6)
 	bsc.add_child(grid)
 	right.add_child(bsc)
+	# Fichas compactas en horizontal (sprite + nombre + media): las de la fila
+	# normal miden ~100 px y aquí solo quedaba sitio para ver las cabezas.
 	for t in bench_row.get_children():
-		(t as Control).size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		t.reparent(grid)
+		t.queue_free()
+	if _team != null:
+		for p in _team.bench:
+			grid.add_child(_land_bench_token(p, p == player))
 	bench_scroll.visible = false
 	bench_scroll.set_meta("land_hidden", true)
 	# La tarjeta del DT, compacta, al pie de la columna derecha.
@@ -750,7 +809,7 @@ func _land_show(p: PlayerData) -> void:
 	h.add_theme_constant_override("separation", 10)
 	var spr := _sprite(p)
 	# Proporción fija: sin esto el HBox lo estiraba al alto de la tarjeta.
-	spr.custom_minimum_size = Vector2(96, 96)
+	spr.custom_minimum_size = Vector2(64, 64)
 	spr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	spr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	spr.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -779,8 +838,8 @@ func _land_show(p: PlayerData) -> void:
 	sub.add_child(info)
 	v.add_child(sub)
 	var g := GridContainer.new()
-	g.columns = 3
-	g.add_theme_constant_override("h_separation", 14)
+	g.columns = 6   # una sola fila: en horizontal el alto es para los suplentes
+	g.add_theme_constant_override("h_separation", 10)
 	g.add_theme_constant_override("v_separation", 2)
 	for pair in [["VEL", p.speed], ["TIR", p.shooting], ["PAS", p.passing], ["REG", p.dribbling], ["FÍS", p.strength], ["RES", p.stamina]]:
 		var l := Label.new()
@@ -790,13 +849,14 @@ func _land_show(p: PlayerData) -> void:
 		g.add_child(l)
 	v.add_child(g)
 	var more := Button.new()
-	more.text = "Ver ficha completa"
+	more.text = "Ver ficha"
 	more.focus_mode = Control.FOCUS_NONE
-	more.custom_minimum_size = Vector2(0, 30)
+	more.custom_minimum_size = Vector2(96, 24)
 	more.add_theme_font_size_override("font_size", 12)
 	Styles.styled_button(more, Styles.pill_outlined(Styles.GRAY_TEXT), Color.WHITE)
 	more.pressed.connect(_open_full_card.bind(p))
-	v.add_child(more)
+	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sub.add_child(more)
 	h.add_child(v)
 	m.add_child(h)
 	_land_detail.add_child(m)

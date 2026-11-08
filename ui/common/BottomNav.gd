@@ -23,6 +23,12 @@ func _ready() -> void:
 	style.bg_color = Color(0.08, 0.08, 0.08)
 	style.border_width_top = 2
 	style.border_color = Color(0.2, 0.2, 0.2)
+	# Zona segura del móvil (barra de gestos, esquinas redondeadas): sin esto la
+	# parte baja de los botones quedaba tapada. Más un colchón fijo de 4 px.
+	var inset := _safe_insets()
+	style.content_margin_bottom = 4.0 + inset.y
+	style.content_margin_left = inset.x
+	style.content_margin_right = inset.x
 	add_theme_stylebox_override("panel", style)
 
 	# La pantalla que CONTIENE la barra (dueño en el árbol), no
@@ -38,6 +44,19 @@ func _ready() -> void:
 
 	for tab in TABS:
 		row.add_child(_build_tab(tab, tab["scene"] == current_path))
+
+## Lo que tapa el sistema abajo (y) y a los lados (x), en píxeles del viewport.
+func _safe_insets() -> Vector2:
+	var win := DisplayServer.window_get_size()
+	var safe := DisplayServer.get_display_safe_area()
+	if win.x <= 0 or win.y <= 0 or safe.size.x <= 0 or safe.size.y <= 0:
+		return Vector2.ZERO
+	var vp := get_viewport().get_visible_rect().size
+	var k: float = vp.y / float(win.y)
+	var bottom: float = maxf(0.0, float(win.y - (safe.position.y + safe.size.y))) * k
+	var side: float = maxf(float(safe.position.x), float(win.x - (safe.position.x + safe.size.x))) * k
+	return Vector2(clampf(side, 0.0, 60.0), clampf(bottom, 0.0, 40.0))
+
 
 ## Cada pestaña es un botón envuelto en un margen — el margen es lo que
 ## deja que la píldora de fondo (corner_radius=999 sobre un botón corto)
@@ -65,7 +84,7 @@ func _build_tab(tab: Dictionary, is_active: bool) -> Control:
 	# HORIZONTAL: barra baja, icono al lado del texto.
 	var vp_w: Vector2 = get_viewport().get_visible_rect().size
 	if vp_w.x > vp_w.y:
-		btn.custom_minimum_size = Vector2(0, 54)
+		btn.custom_minimum_size = Vector2(0, 50)
 		btn.vertical_icon_alignment = VERTICAL_ALIGNMENT_CENTER
 		btn.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
 		btn.add_theme_constant_override("icon_max_width", 30)

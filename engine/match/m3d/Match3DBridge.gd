@@ -303,6 +303,8 @@ static func build_config(on_finish: Callable) -> Dictionary:
 		"stadium": Venue.stadium_name(home_club) if home_club != null else ("Estadio Nacional · %s" % String(fixture.get("home_country", "")) if national else ""),
 		# Estadio del LOCAL (puede ser el rival): estrellas, colores y lleno
 		"stadium_stars": Venue.stars(home_club) if home_club != null else 3,
+		# Popularidad de TU club (cuánta prensa te espera al llegar en autobús)
+		"us_stars": 5 if national else (Venue.stars(us_club) if us_club != null else 3),
 		"stadium_design": Venue.design(home_club) if home_club != null else "",
 		"stadium_home_color": "#" + (us_col if user_home else them_col).to_html(false) if home_club == null else home_club.primary_color_hex.trim_prefix("#").insert(0, "#"),
 		"stadium_home_color2": "#" + (us_sec if user_home else them_sec).to_html(false) if home_club == null else home_club.secondary_color_hex.trim_prefix("#").insert(0, "#"),
@@ -331,6 +333,7 @@ static func build_config(on_finish: Callable) -> Dictionary:
 		"final_trophy": _final_trophy(fixture), # final: si la ganas, ceremonia con la copa
 		"competition": _comp_label(fixture), # cinta del cartel de la salida
 		"final_trophy_id": _final_trophy_id(fixture, home_club), # qué trofeo 3D se levanta
+		"cup_ceremony": _cup_ceremony(fixture, national), # arco de la salida en copas internacionales
 		# --- para to_match_result (el 3D no los lee)
 		"user_home": user_home, "us_team": us, "them_team": them,
 		"xg_us": xg_us, "xg_them": xg_them, "knockout": eng.is_knockout,
@@ -467,6 +470,31 @@ static func _final_trophy_id(fixture: Dictionary, home_club: ClubData) -> String
 		"cup", "national_cup":
 			return "dcup_%d" % home_club.league_id if home_club != null else "cup"
 	return comp
+
+
+## Copas internacionales (continentales de club, Mundial de Clubes, Mundial y copas
+## de naciones): {kind, name} para el arco ceremonial de la salida (CupArch).
+## {} en liga, copa nacional, amistosos y eliminatorias.
+static func _cup_ceremony(fixture: Dictionary, national: bool) -> Dictionary:
+	var comp: String = String(fixture.get("competition", ""))
+	match comp:
+		"continental":
+			var conf: String = String(fixture.get("cont_conf", ""))
+			var tier: int = int(fixture.get("cont_tier", 1))
+			return {"kind": "cont%d" % clampi(tier, 1, 3), "conf": conf,
+				"name": String(fixture.get("cont_name", CompetitionNames.continental(conf, tier)))}
+		"cwc":
+			return {"kind": "cwc", "name": "Mundial de Clubes"}
+		"world_cup":
+			return {"kind": "world", "name": "Copa del Mundo"}
+		"national_cup":
+			if national:
+				var nconf: String = Confederations.confederation_of(String(fixture.get("home_country", "")))
+				return {"kind": "natcup", "conf": nconf, "name": CompetitionNames.national_continental(nconf)}
+		"supercup":
+			if String(fixture.get("supercup_kind", "domestic")) == "continental":
+				return {"kind": "cont1", "name": "Supercopa Continental"}
+	return {}
 
 
 ## "LIGA · JORNADA 12", "COPA · FINAL"... para el cartel de la tele en la salida.

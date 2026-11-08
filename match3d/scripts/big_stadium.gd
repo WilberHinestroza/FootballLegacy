@@ -37,6 +37,8 @@ static func roof_y() -> float:
 	return upper_base() + (UPPER_ROWS - 1) * UPPER_RISE + ROOF_GAP
 
 ## Fondo del estadio (muro trasero) en z (laterales) y en x (fondos).
+const FACADE_STEP := 7.0   # separación de los pilares de la fachada
+
 static func back_z() -> float:
 	return _W() * 0.5 + FieldBuilder.SIDE_STANDS + (FieldBuilder.SIDE_ROWS - OVERHANG_ROWS + UPPER_ROWS) * FieldBuilder.ROW_DEPTH
 
@@ -145,7 +147,7 @@ static func _facade(root: Node3D, design: String, bx: float, bz: float, ry: floa
 	var cols: Array[Color] = []
 	var gate_xf: Array[Transform3D] = []
 	var gate_cols: Array[Color] = []
-	var step := 7.0
+	var step := FACADE_STEP
 	for s: float in [-1.0, 1.0]:
 		# Laterales (a lo largo de x) y fondos (a lo largo de z)
 		for side in 2:
@@ -157,11 +159,11 @@ static func _facade(root: Node3D, design: String, bx: float, bz: float, ry: floa
 				var pos := Vector3(a, h * 0.5, s * out) if side == 0 else Vector3(s * out, h * 0.5, a)
 				xf.append(Transform3D(Basis().scaled(Vector3(1.0, h, 1.0)), pos))
 				cols.append(rib_col)
-				if i % 3 == 1:
-					var g := Vector3(a + step * 0.5, 2.2, s * (out - 0.6)) if side == 0 else Vector3(s * (out - 0.6), 2.2, a + step * 0.5)
-					var gs := Vector3(4.2, 4.4, 0.4) if side == 0 else Vector3(0.4, 4.4, 4.2)
-					gate_xf.append(Transform3D(Basis().scaled(gs), g))
-					gate_cols.append(Color(0.08, 0.09, 0.1))
+			for a: float in gate_offsets(half):
+				var g := Vector3(a, 2.2, s * (out - 0.6)) if side == 0 else Vector3(s * (out - 0.6), 2.2, a)
+				var gs := Vector3(4.2, 4.4, 0.4) if side == 0 else Vector3(0.4, 4.4, 4.2)
+				gate_xf.append(Transform3D(Basis().scaled(gs), g))
+				gate_cols.append(Color(0.08, 0.09, 0.1))
 	_multi(root, FieldBuilder.box(Vector3(0.9, 1.0, 0.9)), xf, cols)
 	_multi(root, FieldBuilder.box(Vector3.ONE), gate_xf, gate_cols)
 	# Franja del club a media altura, por fuera de los pilares (de noche, luminosa)
@@ -170,6 +172,19 @@ static func _facade(root: Node3D, design: String, bx: float, bz: float, ry: floa
 	for s: float in [-1.0, 1.0]:
 		_glow_box(root, Vector3(2.0 * bx + 3.0, 1.6, 0.3), Vector3(0.0, by, s * (bz + 1.35)), band)
 		_glow_box(root, Vector3(0.3, 1.6, 2.0 * bz + 3.0), Vector3(s * (bx + 1.35), by, 0.0), band)
+
+
+## Centros de los portones de un lado de la fachada (entre dos pilares, uno de
+## cada tres huecos), a lo largo de un lado de media longitud `half`. Lo usa
+## también ArrivalScene para que el jugador entre por un portón, no por un pilar.
+static func gate_offsets(half: float) -> Array[float]:
+	var out: Array[float] = []
+	var n := int(floor(half * 2.0 / FACADE_STEP))
+	var gap: float = half * 2.0 / float(n)
+	for i in n + 1:
+		if i % 3 == 1:
+			out.append(-half + i * gap + gap * 0.5)
+	return out
 
 
 static func _multi(root: Node3D, mesh: Mesh, xf: Array[Transform3D], cols: Array[Color]) -> void:

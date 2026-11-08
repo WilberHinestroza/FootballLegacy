@@ -1191,6 +1191,9 @@ var _tifo_v := 0.0
 var _tifo_shot := 0.0 # segundos de plano del tifo al empezar la salida
 var _arrival := 0.0   # segundos de toma de llegada (desde fuera, entrando al estadio)
 const ARRIVAL_SHOT := 6.0
+var _bus_shot := 0.0   # segundos de la llegada del autobús (ArrivalScene), antes de la toma aérea
+var _arrival_set: Node3D = null
+var _cup_arch: Node3D = null   # arco de las copas internacionales (CupArch), solo en la salida
 
 
 func _start_walkout() -> void:
@@ -1200,7 +1203,14 @@ func _start_walkout() -> void:
 	var tifo := get_node_or_null("Tifo") as Node3D
 	# Abre la toma de llegada: la cámara viene desde la ciudad y entra al estadio.
 	# Todo lo demás de la salida (tifo, túnel) va detrás, desplazado.
-	_arrival = ARRIVAL_SHOT if bool(config.get("arrival", true)) else 0.0
+	var arrive: bool = bool(config.get("arrival", true))
+	_bus_shot = ArrivalScene.SHOT if arrive else 0.0
+	_arrival = (_bus_shot + ARRIVAL_SHOT) if arrive else 0.0
+	_cup_arch = CupArch.build(self, config.get("cup_ceremony", {}))
+	if _bus_shot > 0.0:
+		# El autobús del club llega entre la afición; tú bajas camino de la puerta
+		_arrival_set = ArrivalScene.build(self, String(TEAM_NAMES[0]), profile.shirt,
+				Color(String(config.get("home_color2", "#ffffff"))), int(config.get("us_stars", 3)))
 	_tifo_shot = _arrival + (3.6 if tifo else 0.0)
 	_walk_done_t = 0.0
 	_walk_delay.clear()
@@ -1265,6 +1275,42 @@ func _start_walkout() -> void:
 		FieldBuilder.flares(self, -1.0, profile.shirt, 9.0)
 
 
+## Toma del autobús: lo mueve y, al abrir la puerta, tú bajas y vas hacia la
+## puerta del estadio (sin choques: es decorado). Luego vuelves al vestuario
+## para la salida normal.
+func _bus_star() -> void:
+	if _arrival_set == null:
+		return
+	ArrivalScene.update(_arrival_set, _walk_t)
+	if star == null or not _walk_delay.has(star) or _walk_t < ArrivalScene.STEP_OFF:
+		return
+	if _arrival_set.has_meta("entered"):
+		return   # ya cruzó la puerta del vestuario
+	if star.visible and star.global_position.z > ArrivalScene.gate().z + ArrivalScene.INSIDE:
+		# Cruza el umbral y se pierde en la luz del vestuario
+		star.visible = false
+		star.move_input = Vector3.ZERO
+		_arrival_set.set_meta("entered", true)
+		return
+	if not star.visible:
+		star.reset_to(ArrivalScene.door(), Vector3.BACK)
+		star.collision_layer = 0
+		star.collision_mask = 0
+		star.visible = true
+		SoundFx.play("cheer", -3.0)
+	AiBrain.move_to(star, ArrivalScene.gate() + Vector3(0.0, 0.0, 1.5), 0.25)
+	star.move_input *= _walk_pace(star)
+	star.sprinting = false
+
+func _close_bus_shot() -> void:
+	if is_instance_valid(_arrival_set):
+		_arrival_set.queue_free()
+	_arrival_set = null
+	if star != null and _walk_delay.has(star):
+		star.reset_to(_door_spot(star.team), Vector3.BACK)
+		star.visible = false
+
+
 ## Punto de salida de cada equipo: justo tras la puerta del vestuario, al fondo del pasillo.
 func _door_spot(team: int) -> Vector3:
 	var mouth_z := -FIELD_WIDTH * 0.5 - FieldBuilder.SIDE_STANDS
@@ -1313,6 +1359,10 @@ func _walk_slot(p: SoccerPlayer) -> Vector3:
 
 
 func _update_walkout(delta: float) -> void:
+	if _walk_t < _bus_shot:
+		_bus_star()
+	elif _arrival_set != null:
+		_close_bus_shot()
 	if _arrival > 0.0 and _walk_t < _arrival and _walk_t + delta >= _arrival:
 		FieldBuilder.set_fog_scale(self, 1.0)
 		FieldBuilder.flares(self, 1.0, _kit_shirt1, 9.0)
@@ -1501,6 +1551,12 @@ func _walk_release(p: SoccerPlayer) -> void:
 
 
 func _end_walkout() -> void:
+	if is_instance_valid(_cup_arch):
+		_cup_arch.queue_free()
+	_cup_arch = null
+	if is_instance_valid(_arrival_set):
+		_arrival_set.queue_free()
+	_arrival_set = null
 	FieldBuilder.set_fog_scale(self, 1.0)   # por si se salta la toma de llegada
 	if state != State.WALKOUT:
 		return
@@ -6820,10 +6876,33 @@ func _update_camera(delta: float) -> void:
 				c += p.global_position
 				n += 1
 		c = c / float(n) if n > 0 else Vector3(0.0, 0.0, -FIELD_WIDTH * 0.5)
+		if _walk_t < _bus_shot:
+			# Llegada del autobús: desde dentro de la entrada de los vestuarios se ve
+			# llegar el autobús entre la prensa; al bajar, la cámara va detrás de ti
+			# mientras caminas hacia la puerta del vestuario.
+			var g := ArrivalScene.gate()
+			if _walk_t < ArrivalScene.STEP_OFF - 0.2:
+				var kb := clampf(_walk_t / ArrivalScene.DRIVE, 0.0, 1.0)
+				var front := ArrivalScene.bus_center(_walk_t) + Vector3(0.0, 1.7, ArrivalScene.BUS_LEN * 0.5)
+				_camera.global_position = ArrivalScene.mouth() + Vector3(1.7, 1.5, 3.0 - kb * 2.0)
+				_camera.fov = lerpf(24.0, 50.0, smoothstep(0.0, 1.0, kb))
+				_camera.look_at(front, Vector3.UP)
+			else:
+				var in_shot: bool = star != null and (star.visible or (_arrival_set != null and _arrival_set.has_meta("entered")))
+				var sp: Vector3 = star.global_position if in_shot else ArrivalScene.door()
+				# Te sigue por detrás, pero se queda en la boca: entras tú solo hacia la luz
+				var cp := sp + Vector3(1.7, 1.75, -3.8)
+				cp.z = minf(cp.z, g.z - 5.0)
+				_camera.global_position = cp
+				_camera.fov = 46.0
+				_camera.look_at(sp + Vector3(-0.2, 1.3, 2.6), Vector3.UP)
+			_cam_pos = _camera.global_position
+			_cam_look = g
+			return
 		if _walk_t < _arrival:
 			# Toma de llegada: desde la ciudad, en curva y bajando, pasa sobre el techo
 			# y entra mirando a la boca del túnel.
-			var e := smoothstep(0.0, 1.0, _walk_t / _arrival)
+			var e := smoothstep(0.0, 1.0, (_walk_t - _bus_shot) / maxf(_arrival - _bus_shot, 0.01))
 			var a := lerpf(-2.3, -0.25, e)
 			var r := lerpf(260.0, 32.0, e)
 			var h := lerpf(95.0, 30.0, e)
