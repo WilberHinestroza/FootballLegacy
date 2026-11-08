@@ -172,6 +172,14 @@ func _ready() -> void:
 	_check(m._halftime_speech().contains(String(m._ht_order.text)), "el míster no dijo la orden en el vestuario")
 	_check(m.result().get("halftime_order", {}).has("met"), "la orden no viaja en el resultado")
 	m._ht_order = {}
+	# Lesiones en el 3D (InjuryRisk): raras sanas, frecuentes si apuraste la vuelta.
+	var IR = m.InjuryRisk
+	var per_match: float = 1.0 - pow(1.0 - IR.minute_chance(0.7, false, false), 90.0)
+	var rushed: float = 1.0 - pow(1.0 - IR.minute_chance(0.7, true, false), 90.0)
+	_check(per_match < 0.03 and rushed > 0.15 and rushed < 0.35, "riesgo de lesión 3D fuera de rango (%.3f / %.3f)" % [per_match, rushed])
+	_check(IR.foul_chance(true, 0.2, false, false) > IR.foul_chance(false, 1.0, false, false), "plancha + cansancio no sube el riesgo")
+	_check(IR.foul_chance(false, 1.0, false, true) < IR.foul_chance(false, 1.0, false, false), "el vendaje no protege")
+	_check(m.result().has("injured") and not bool(m.result().injured), "el resultado no trae la lesión")
 	m._trait_ids = saved_ids
 	m._trait_mods = saved_mods
 	m.ball.last_touch = saved_touch

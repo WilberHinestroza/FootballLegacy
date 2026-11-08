@@ -273,6 +273,9 @@ static func build_config(on_finish: Callable) -> Dictionary:
 	return {
 		"profile": prof,
 		"traits": Traits.active(p), # rasgos equipados: efecto real en tus jugadas (TraitEffects)
+		# Lesiones en el 3D (InjuryRisk): recaída si apuraste la vuelta, vendaje de la Tienda.
+		"reinjury_risk": PlayerDevelopment.reinjury_active(p),
+		"injury_shield": int(p.active_effects.get("injury_shield_matches", 0)) > 0,
 		"user_detailed": us.deployed_code(p), # puesto fino: banda, hueco y jugadas propias
 		"energy_note": String(prof.get_meta("energy_note", "")),
 		"home_name": String(us_c[0]), "away_name": String(them_c[0]),
@@ -531,7 +534,7 @@ static func to_match_result(res: Dictionary, cfg: Dictionary) -> Dictionary:
 		"user_player": p,
 		"user_rating": rating,
 		"rating_events": ev,
-		"user_injured": false,
+		"user_injured": bool(res.get("injured", false)),
 		"user_red_carded": red,
 		"user_double_yellow": red,
 		"shootout_winner": shootout_winner,

@@ -27,6 +27,7 @@ const PrePlayChoice = preload("res://engine/match/m3d/PrePlayChoice.gd")
 const StoppageTime = preload("res://engine/match/m3d/StoppageTime.gd")
 const TraitEffects = preload("res://engine/match/m3d/TraitEffects.gd")
 const HalftimeOrders = preload("res://engine/match/m3d/HalftimeOrders.gd")
+const InjuryRisk = preload("res://engine/match/m3d/InjuryRisk.gd")
 const Momentum = preload("res://engine/match/m3d/Momentum.gd")
 const Offside = preload("res://engine/match/m3d/Offside.gd")
 const MatchFx = preload("res://match3d/scripts/match_fx.gd")
@@ -827,6 +828,11 @@ func _simulate_minute(m: int, in_added := false) -> void:
 	if _on_pitch_now():
 		# Cansancio por minuto: un 60 de resistencia acaba los 90' con ~45% de energía
 		stamina = maxf(stamina - lerpf(0.0085, 0.0045, star.stat("stamina")) * TraitEffects.fatigue_factor(_trait_mods), 0.05)
+		if not is_practice() and randf() < InjuryRisk.minute_chance(stamina,
+				bool(config.get("reinjury_risk", false)), bool(config.get("injury_shield", false))):
+			_star_injured = true
+			_injure_exit()
+			return
 	if m == 105 and _extra_time_active and not in_added:
 		_extra_time_break_pending = true
 	if not entered and m >= int(_bench_until):
@@ -1588,6 +1594,13 @@ func end_replay() -> void:
 
 func _back_to_simulation() -> void:
 	_hud.show_replay_button(false)
+	if _injury_pending:
+		_injury_pending = false
+		state = State.SIMULATING
+		_hud.set_sim_visible(true)
+		_ambient_kickoff()
+		_injure_exit()
+		return
 	state = State.SIMULATING
 	var match_end := 120.0 if _extra_time_active else MATCH_MINUTES
 	minute = minf(minute + 1.0, match_end)
@@ -2274,6 +2287,9 @@ var _ht_order: Dictionary = {}
 var _ht_base: Dictionary = {}
 var _ht_done := false
 var _ht_progress := ""
+# Lesión tuya en el 3D (InjuryRisk): sales del campo y la carrera aplica la baja.
+var _star_injured := false
+var _injury_pending := false
 # Descuento (StoppageTime): 0 = no, 1 = al 45', 2 = al 90'. El reloj se queda en el
 # minuto base y corre _added_elapsed hasta _added_total.
 var _added_phase := 0
@@ -2440,9 +2456,7 @@ func _halftime_speech() -> String:
 	var you := String(profile.player_name).get_slice(" ", 0)
 	if not _ht_order.is_empty():
 		# La orden personal manda sobre el comentario general.
-		return line + "
-%s, %s
-¿Cómo salimos?" % [you, String(_ht_order.text)]
+		return line + "\n%s, %s\n¿Cómo salimos?" % [you, String(_ht_order.text)]
 	if r >= 7.0:
 		line += "\n%s, estás siendo el mejor. Sigue pidiéndola." % you
 	elif r < 6.0:
@@ -2526,6 +2540,17 @@ func _update_locker(delta: float) -> void:
 	_ambient_kickoff()
 
 
+## Te lesionas: aviso y sales del campo (la carrera pone la baja y la decisión de
+## apurar o no la vuelta, InjuryDecision).
+func _injure_exit() -> void:
+	if not _on_pitch_now():
+		return
+	Haptics.hit("fail")
+	_hud.show_message("¡TE LESIONAS!\nNo puedes seguir", 2.4)
+	_hud.add_feed("%d'  %s se retira lesionado" % [int(minute), _name_of(star)])
+	_sub_off_star(int(minute))
+
+
 ## La orden del descanso en el HUD; avisa al cumplirla.
 func _update_ht_order() -> void:
 	if _ht_order.is_empty() or state == State.LOCKER:
@@ -2560,7 +2585,7 @@ func result() -> Dictionary:
 		"shootout_score": _shootout_scores.duplicate(), "shootout_winner_team": _shootout_winner_team,
 		"tie_winner_team": winner, "subbed_off": subbed_off, "exit_minute": _exit_minute,
 		"end_stamina": stamina, "best_moment": replay.best_info.duplicate(),
-		"halftime_order": _ht_order_result()}
+		"halftime_order": _ht_order_result(), "injured": _star_injured}
 
 
 ## El míster te mete al campo: el compañero de tu hueco sale y entras tú (con el cartel
@@ -6592,6 +6617,14 @@ Tarjeta amarilla" % who
 			_pending_free_kick = true
 			_pending_fk_spot = victim.global_position
 			text += "\nTiro libre a favor"
+		# La entrada puede lesionarte (no en un penalti: ese lo tiras tú).
+		if victim == star and kind != "penalty" and not is_practice() and randf() < InjuryRisk.foul_chance(slide, stamina,
+				bool(config.get("reinjury_risk", false)), bool(config.get("injury_shield", false))):
+			_star_injured = true
+			_injury_pending = true
+			_pending_free_kick = false
+			_pending_fk_spot = Vector3.ZERO
+			text += "\nTe duele... no puedes seguir"
 		# Una falta a favor nunca debe cerrar la jugada como fallo tuyo.
 		_foul_for_us = true
 		_foul_grade = "bueno" if victim == star else "regular"
