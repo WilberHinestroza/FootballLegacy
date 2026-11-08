@@ -770,6 +770,37 @@ func show_goal_banner(team: int, when: String, who: String, by_star: bool) -> vo
 const TEAM_LABEL_GOAL := "GOL"
 
 var _trait_badge: PanelContainer
+var _order_lbl: Label
+
+
+## Orden del míster para la segunda parte, junto al teletipo: "Remata 2 veces · 1/2"
+## (dorado al cumplirla).
+func set_order(text: String, done: bool) -> void:
+	if _order_lbl == null or not is_instance_valid(_order_lbl):
+		var p := PanelContainer.new()
+		p.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = Color(0.0, 0.0, 0.0, 0.5)
+		sb.set_corner_radius_all(8)
+		sb.border_width_left = 3
+		sb.border_color = Color(0.4, 0.8, 1.0)
+		sb.content_margin_left = 10
+		sb.content_margin_right = 10
+		sb.content_margin_top = 3
+		sb.content_margin_bottom = 3
+		p.add_theme_stylebox_override("panel", sb)
+		var v := VBoxContainer.new()
+		v.add_theme_constant_override("separation", 0)
+		v.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		p.add_child(v)
+		var t := _label(11, v)
+		t.text = "ORDEN DEL MÍSTER"
+		t.label_settings.font_color = Color(0.55, 0.85, 1.0)
+		_order_lbl = _label(15, v)
+		add_child(p)
+		p.position = Vector2(370.0, SIM_TOP)
+	_order_lbl.text = text
+	_order_lbl.label_settings.font_color = Color(1.0, 0.84, 0.25) if done else Color.WHITE
 
 
 ## Un rasgo tuyo decidió la jugada (TraitEffects): su icono y nombre abajo a la

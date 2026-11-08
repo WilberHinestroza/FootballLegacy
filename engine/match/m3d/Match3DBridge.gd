@@ -557,6 +557,7 @@ static func to_match_result(res: Dictionary, cfg: Dictionary) -> Dictionary:
 		"user_detailed": String(cfg.get("user_detailed", "")),
 		"user_goal_plays": _goal_plays(st.get("moment_log", [])),
 		"user_best_moment": String((res.get("best_moment", {}) as Dictionary).get("label", "")),
+		"halftime_order": res.get("halftime_order", {}),
 		"m3d": true,
 	}
 

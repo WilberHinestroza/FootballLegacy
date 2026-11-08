@@ -41,6 +41,9 @@ var _mastery_ups: Array = []
 var _gesture_xp: int = 0
 var _challenge: Dictionary = {}
 var _challenge_met: bool = false
+## Orden del míster en el descanso (HalftimeOrders, partido 3D): {id, label, text, met}.
+var _ht_order: Dictionary = {}
+const _HalftimeOrders = preload("res://engine/match/m3d/HalftimeOrders.gd")
 var _new_achievements: Array = []
 var _new_injury: bool = false
 var _user_is_home: bool = false
@@ -716,6 +719,14 @@ func _apply_match_consequences() -> CoachData:
 	if _challenge_met:
 		_player.coach_trust = clampi(_player.coach_trust + CoachChallengeEngine.REWARD_TRUST, 0, 100)
 		ProgressionEngine.add_xp(_player, CoachChallengeEngine.REWARD_XP)
+	# ORDEN DEL DESCANSO: cumplirla sube la confianza del míster; fallarla la baja un poco.
+	_ht_order = _result.get("halftime_order", {})
+	if not _ht_order.is_empty():
+		if bool(_ht_order.get("met", false)):
+			_player.coach_trust = clampi(_player.coach_trust + _HalftimeOrders.TRUST_MET, 0, 100)
+			ProgressionEngine.add_xp(_player, _HalftimeOrders.XP_MET)
+		else:
+			_player.coach_trust = clampi(_player.coach_trust + _HalftimeOrders.TRUST_FAIL, 0, 100)
 	# MAESTRÍAS (RPG, 10-oct): lo que hiciste en el partido suma a su rama.
 	if not is_friendly:
 		_mastery_ups = CareerRpgEngine.add_match_actions(_player, _result.get("rating_events", []))
@@ -884,7 +895,7 @@ func _render_stats_tab() -> void:
 func _render_rpg_gains() -> void:
 	var gs: Dictionary = MatchState.gesture_stats
 	var gestures: int = int(gs.get("perfecto", 0)) + int(gs.get("bueno", 0)) + int(gs.get("regular", 0)) + int(gs.get("flojo", 0))
-	if _mastery_ups.is_empty() and _new_achievements.is_empty() and gestures == 0 and _challenge.is_empty():
+	if _mastery_ups.is_empty() and _new_achievements.is_empty() and gestures == 0 and _challenge.is_empty() and _ht_order.is_empty():
 		return
 	detail_box.add_child(Styles.section_label("PROGRESO DE CARRERA"))
 	var panel := PanelContainer.new()
@@ -902,6 +913,15 @@ func _render_rpg_gains() -> void:
 		if _challenge_met:
 			cl.add_theme_font_override("font", Styles.font_semibold())
 		v.add_child(cl)
+	if not _ht_order.is_empty():
+		var hl := Label.new()
+		var ok: bool = bool(_ht_order.get("met", false))
+		hl.text = ("🗣 Orden del descanso CUMPLIDA (%s): +%d confianza · +%d XP" % [String(_ht_order.get("label", "")), _HalftimeOrders.TRUST_MET, _HalftimeOrders.XP_MET]) if ok 			else "🗣 No cumpliste la orden del descanso (%s): %d confianza" % [String(_ht_order.get("label", "")), _HalftimeOrders.TRUST_FAIL]
+		hl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		hl.add_theme_color_override("font_color", Styles.GOLD if ok else Styles.RED.lightened(0.2))
+		if ok:
+			hl.add_theme_font_override("font", Styles.font_semibold())
+		v.add_child(hl)
 	if gestures > 0:
 		var gl := Label.new()
 		gl.text = "Tus toques: %d perfectos · %d buenos · %d regulares · %d flojos" % [int(gs.get("perfecto", 0)), int(gs.get("bueno", 0)), int(gs.get("regular", 0)), int(gs.get("flojo", 0))]

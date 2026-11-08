@@ -26,6 +26,7 @@ const PlayChain = preload("res://engine/match/m3d/PlayChain.gd")
 const PrePlayChoice = preload("res://engine/match/m3d/PrePlayChoice.gd")
 const StoppageTime = preload("res://engine/match/m3d/StoppageTime.gd")
 const TraitEffects = preload("res://engine/match/m3d/TraitEffects.gd")
+const HalftimeOrders = preload("res://engine/match/m3d/HalftimeOrders.gd")
 const Momentum = preload("res://engine/match/m3d/Momentum.gd")
 const Offside = preload("res://engine/match/m3d/Offside.gd")
 const MatchFx = preload("res://match3d/scripts/match_fx.gd")
@@ -2268,6 +2269,11 @@ var _halftime_pending := false
 # Rasgos equipados (TraitEffects): efecto real en tus jugadas, como PlayStyles.
 var _trait_ids: Array = []
 var _trait_mods: Dictionary = {}
+# Orden personal del míster para la segunda parte (HalftimeOrders).
+var _ht_order: Dictionary = {}
+var _ht_base: Dictionary = {}
+var _ht_done := false
+var _ht_progress := ""
 # Descuento (StoppageTime): 0 = no, 1 = al 45', 2 = al 90'. El reloj se queda en el
 # minuto base y corre _added_elapsed hasta _added_total.
 var _added_phase := 0
@@ -2361,6 +2367,9 @@ func _start_locker() -> void:
 	_hud.set_hint("")
 	SoundFx.set_crowd(-30.0)
 	_show_halftime_card()
+	if _ht_order.is_empty() and not is_practice() and _on_pitch_now():
+		_ht_order = HalftimeOrders.pick(star.role, int(score[0]) - int(score[1]), randf())
+		_ht_base = (match_stats.me as Dictionary).duplicate()
 	get_tree().create_timer(2.4).timeout.connect(func() -> void:
 		if state != State.LOCKER:
 			return
@@ -2429,6 +2438,11 @@ func _halftime_speech() -> String:
 		line = "¡Así no! Vamos %d abajo y quedan 45 minutos. Quiero ver otra cara." % -d
 	var r := live_rating()
 	var you := String(profile.player_name).get_slice(" ", 0)
+	if not _ht_order.is_empty():
+		# La orden personal manda sobre el comentario general.
+		return line + "
+%s, %s
+¿Cómo salimos?" % [you, String(_ht_order.text)]
 	if r >= 7.0:
 		line += "\n%s, estás siendo el mejor. Sigue pidiéndola." % you
 	elif r < 6.0:
@@ -2451,6 +2465,8 @@ func _on_choice(i: int) -> void:
 	_locker.cheer()
 	_hud.show_message("¡VAMOS!", 1.4)
 	_hud.add_feed("%d'  %s" % [106 if _extra_time_active and minute >= 105.0 else 46, String(t.feed)])
+	if not _ht_order.is_empty() and not _extra_time_active:
+		_hud.add_feed("46'  El míster te pide: %s" % String(_ht_order.label))
 	SoundFx.set_crowd(-18.0)
 	_locker_wait = 2.2 # un momento para ver la reacción y salimos
 
@@ -2510,6 +2526,29 @@ func _update_locker(delta: float) -> void:
 	_ambient_kickoff()
 
 
+## La orden del descanso en el HUD; avisa al cumplirla.
+func _update_ht_order() -> void:
+	if _ht_order.is_empty() or state == State.LOCKER:
+		return
+	var me: Dictionary = match_stats.me
+	if not _ht_done and HalftimeOrders.met_early(_ht_order, _ht_base, me):
+		_ht_done = true
+		_hud.show_message("✓ ORDEN DEL MÍSTER CUMPLIDA", 1.6)
+		_hud.add_feed("%d'  Cumples lo que pidió el míster" % int(minute))
+	var txt := ("✓ " + String(_ht_order.label)) if _ht_done else "%s · %s" % [String(_ht_order.label), HalftimeOrders.progress_text(_ht_order, _ht_base, me)]
+	if txt != _ht_progress:
+		_ht_progress = txt
+		_hud.set_order(txt, _ht_done)
+
+
+## Veredicto de la orden del descanso para la carrera ({} si no hubo).
+func _ht_order_result() -> Dictionary:
+	if _ht_order.is_empty():
+		return {}
+	var met := HalftimeOrders.met_final(_ht_order, _ht_base, match_stats.me, sent_off)
+	return {"id": String(_ht_order.id), "label": String(_ht_order.label), "text": String(_ht_order.text), "met": met}
+
+
 ## Resultado para FootballCareer: marcador (0 = tu equipo) y lo que pasó.
 func result() -> Dictionary:
 	var aggregate := _aggregate_score()
@@ -2520,7 +2559,8 @@ func result() -> Dictionary:
 		"extra_time_played": _extra_time_active, "aggregate": aggregate,
 		"shootout_score": _shootout_scores.duplicate(), "shootout_winner_team": _shootout_winner_team,
 		"tie_winner_team": winner, "subbed_off": subbed_off, "exit_minute": _exit_minute,
-		"end_stamina": stamina, "best_moment": replay.best_info.duplicate()}
+		"end_stamina": stamina, "best_moment": replay.best_info.duplicate(),
+		"halftime_order": _ht_order_result()}
 
 
 ## El míster te mete al campo: el compañero de tu hueco sale y entras tú (con el cartel
@@ -2531,6 +2571,7 @@ var _entry_request_min := -100.0
 func _update_hud_extras() -> void:
 	if _hud == null or star == null:
 		return
+	_update_ht_order()
 	var on_pitch := _on_pitch_now() and state in [State.SIMULATING, State.MOMENT]
 	# El sprint no puede pasar de lo que te queda; la barra baja un poco al esprintar
 	if star.energy > maxf(stamina, 0.3):

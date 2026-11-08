@@ -152,6 +152,26 @@ func _ready() -> void:
 	m._trait_ids = []
 	m._trait_mods = m.TraitEffects.mods([])
 	_check(float(m._trait_shot_adjust(m.teams[1][0], 0.3)[0]) == 0.3, "sin rasgos cambió el tiro")
+	# Orden del descanso (HalftimeOrders): se mide solo la segunda parte.
+	var HO = m.HalftimeOrders
+	var ord: Dictionary = HO.pick("ST", -1, 0.0)
+	_check(String(ord.get("id", "")) == "shoot", "orden de delantero perdiendo inesperada: %s" % str(ord))
+	var base := {"shots": 3, "goals": 0}
+	_check(not HO.met_early(ord, base, {"shots": 4}), "orden cumplida con un solo remate en la 2ª parte")
+	_check(HO.met_early(ord, base, {"shots": 5}), "dos remates en la 2ª parte no cumplieron la orden")
+	_check(not HO.met_final(ord, base, {"shots": 5}, true), "expulsado y cumplió la orden")
+	var wall: Dictionary = HO.pick("GK", 1, 0.0)
+	_check(String(wall.get("id", "")) == "wall" and HO.met_final(wall, {"conceded": 1}, {"conceded": 1}, false)
+		and not HO.met_final(wall, {"conceded": 1}, {"conceded": 2}, false), "portería a cero mal juzgada")
+	var focus: Dictionary = {}
+	for o in HO.POOL:
+		if o.id == "focus": focus = o
+	_check(not HO.met_final(focus, {}, {"moments_ok": 0, "moments_fail": 0}, false), "sin jugar cumplió 'sin errores'")
+	m._ht_order = HO.pick("MF", 0, 0.0)
+	m._ht_base = (m.match_stats.me as Dictionary).duplicate()
+	_check(m._halftime_speech().contains(String(m._ht_order.text)), "el míster no dijo la orden en el vestuario")
+	_check(m.result().get("halftime_order", {}).has("met"), "la orden no viaja en el resultado")
+	m._ht_order = {}
 	m._trait_ids = saved_ids
 	m._trait_mods = saved_mods
 	m.ball.last_touch = saved_touch
