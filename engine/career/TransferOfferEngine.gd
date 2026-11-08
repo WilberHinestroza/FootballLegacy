@@ -300,9 +300,14 @@ static func execute_pending(player: PlayerData, season: Dictionary, world: Dicti
 				"parent_contract_years": int(pt.get("parent_contract_years", player.contract_years_remaining)),
 			}
 		# Memoria de carrera (v34): solo traspasos, no cesiones.
+		var from_id: String = player.club_id
 		if not is_loan:
-			ImmersionEngine.note_club_left(player, world, to_id, int(season.get("start_year", 0)))
+			ImmersionEngine.note_club_left(player, world, to_id, int(season.get("start_year", 0)), "sold")
 		player.club_id = to_id
+		# Afición del club nuevo: arranca con su propio humor, no con el del viejo.
+		var fan_news: Dictionary = FanBondEngine.on_joined(player, world, WorldTickEngine.world_seed, season, from_id)
+		if not fan_news.is_empty():
+			PressGenerator.append_to_feed(player, fan_news, WorldTickEngine.current_epoch_day)
 		if not is_loan:
 			# Derechos de imagen: se pactan con el club nuevo (los del Golfo dan más).
 			ImageRightsEngine.on_new_club(player, ImageRightsEngine.GULF_SHARE if bool(pt.get("gulf", false)) else -1)

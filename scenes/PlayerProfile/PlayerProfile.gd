@@ -1006,6 +1006,10 @@ func _render_relations() -> void:
 		cc.add_child(crow)
 		cbox.add_child(cpanel)
 		return cbox]
+	# AFICIÓN POR CLUB (FanBondEngine): el cariño de cada hinchada de tu carrera.
+	FanBondEngine.bootstrap(_player, _world, WorldTickEngine.world_seed)
+	if not FanBondEngine.all(_player).is_empty():
+		builders.append(_fans_card)
 	if rival_club == null and position_rival.is_empty() and nemesis.is_empty():
 		_paginate(builders, 2)
 		return
@@ -1045,6 +1049,68 @@ func _render_relations() -> void:
 		box.add_child(panel)
 		return box)
 	_paginate(builders, 2)
+
+## Tarjeta "TUS AFICIONES": cada club de tu carrera con su cariño (0-100).
+func _fans_card() -> Control:
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 6)
+	box.add_child(Styles.section_label("TUS AFICIONES"))
+	var panel := _card(Styles.GOLD)
+	var content: VBoxContainer = panel.get_child(0).get_child(0)
+	for row in FanBondEngine.ranked(_player).slice(0, 5):
+		var lv: int = int(round(float(row.get("love", 0))))
+		var left: String = String(row.get("left", ""))
+		var tier: String = FanBondEngine.tier_name(lv, left)
+		var col: Color = Styles.GREEN if lv >= 65 else (Styles.AMBER if lv >= 30 else Styles.RED)
+		if left == "rival":
+			col = Styles.RED
+		var line := HBoxContainer.new()
+		line.add_theme_constant_override("separation", 10)
+		var nm := Label.new()
+		nm.text = "%s%s" % [String(row.get("name", "")), "  · tu club" if bool(row.get("current", false)) else ""]
+		nm.custom_minimum_size = Vector2(230, 0)
+		nm.clip_text = true
+		nm.add_theme_font_override("font", Styles.font_semibold())
+		nm.add_theme_color_override("font_color", Styles.GOLD if bool(row.get("current", false)) else Color.WHITE)
+		line.add_child(nm)
+		var bar := ProgressBar.new()
+		bar.show_percentage = false
+		bar.max_value = 100
+		bar.value = lv
+		bar.custom_minimum_size = Vector2(0, 10)
+		bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		var fg := StyleBoxFlat.new()
+		fg.bg_color = col
+		fg.set_corner_radius_all(5)
+		var bgs := StyleBoxFlat.new()
+		bgs.bg_color = Color(1, 1, 1, 0.08)
+		bgs.set_corner_radius_all(5)
+		bar.add_theme_stylebox_override("fill", fg)
+		bar.add_theme_stylebox_override("background", bgs)
+		line.add_child(bar)
+		var tl := Label.new()
+		tl.text = "%s · %d" % [tier, lv]
+		tl.custom_minimum_size = Vector2(130, 0)
+		tl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		tl.add_theme_font_size_override("font_size", Styles.SIZE_CAPTION)
+		tl.add_theme_color_override("font_color", col)
+		line.add_child(tl)
+		content.add_child(line)
+		var st := Label.new()
+		var nt: int = int(row.get("titles", 0))
+		st.text = "%d partidos · %d goles · %d asistencias · %d %s" % [int(row.get("matches", 0)), int(row.get("goals", 0)), int(row.get("assists", 0)), nt, "título" if nt == 1 else "títulos"]
+		st.add_theme_font_size_override("font_size", Styles.SIZE_CAPTION)
+		st.add_theme_color_override("font_color", Styles.GRAY_TEXT)
+		content.add_child(st)
+	var hint := Label.new()
+	hint.text = "Lo suben los partidos, los goles y los títulos con su camiseta. Cómo te vas también cuenta: al clásico rival, nunca te lo perdonan."
+	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	hint.add_theme_font_size_override("font_size", Styles.SIZE_CAPTION)
+	hint.add_theme_color_override("font_color", Styles.GRAY_TEXT)
+	content.add_child(hint)
+	box.add_child(panel)
+	return box
 
 # --- Helpers de tarjeta, mismo criterio visual que ClubInfo.gd ---
 

@@ -16,6 +16,7 @@ static func tier(p: PlayerData) -> int:
 	pts += _count(p, "ballon_dor") * 3 + _count(p, "world_cup") * 3
 	pts += mini(p.club_seniority / 3, 3)
 	pts += FoundationEngine.legacy_points(p)   # lo que dejaste fuera del campo
+	pts += FanBondEngine.legacy_points(p)      # una afición que te tiene de ídolo
 	if pts >= 14:
 		return 3
 	if pts >= 9:

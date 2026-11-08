@@ -716,6 +716,9 @@ func _apply_match_consequences() -> CoachData:
 			if goals_this_match > 0: fan_delta += 2 * goals_this_match
 			var fs: int = int(WorldTickEngine.season.get("fan_sentiment", InterviewEngine.FAN_DEFAULT))
 			WorldTickEngine.season["fan_sentiment"] = clampi(fs + fan_delta, 0, 100)
+			# Cariño duradero de la afición de tu club (FanBondEngine).
+			if played_now and (String(_fixture.get("home_club_id", "")) == _player.club_id or String(_fixture.get("away_club_id", "")) == _player.club_id):
+				FanBondEngine.on_match(_player, pworld, wseed, WorldTickEngine.season, goals_this_match, assists_this_match, fan_delta)
 			# RIVAL PERSONAL (10-oct): historial de la temporada contra su club.
 			if opp_id != "" and opp_id == ImmersionEngine.nemesis_club_id(pworld, _player.club_id, wseed):
 				ImmersionEngine.log_nemesis_match(_player, WorldTickEngine.current_epoch_day,

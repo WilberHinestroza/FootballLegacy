@@ -236,8 +236,10 @@ func _tick_sentiment() -> void:
 	var changed := false
 	if season.has("fan_sentiment"):
 		var fs: int = int(season["fan_sentiment"])
-		if fs != InterviewEngine.FAN_DEFAULT and current_epoch_day % 2 == 0:
-			season["fan_sentiment"] = fs + (1 if fs < InterviewEngine.FAN_DEFAULT else -1)
+		# Decae hacia el humor de base de TU afición (FanBondEngine.baseline).
+		var base: int = int(season.get("fan_baseline", InterviewEngine.FAN_DEFAULT))
+		if fs != base and current_epoch_day % 2 == 0:
+			season["fan_sentiment"] = fs + (1 if fs < base else -1)
 			changed = true
 	if season.has("dressing_room"):
 		var dr: int = int(season["dressing_room"])
@@ -404,6 +406,7 @@ func _begin_season_rollover() -> void:
 	if not pc.is_empty():
 		SaveManager.save_player(player)
 		var pc_club: String = String(pc.get("from_club_id", ""))
+		season["_leave_how"] = "precontract"   # FanBondEngine: la afición lo nota
 		resolve_contract_decision(pc_club, int(pc.get("wage", player.wage)), int(pc.get("contract_years", 3)))
 		pending_presentation = {"club_id": pc_club, "years": int(pc.get("contract_years", 3)), "loan": false}
 		var np := SaveManager.load_player()
@@ -486,9 +489,14 @@ func resolve_contract_decision(club_id: String, wage: int, years: int = 0, extra
 	if player == null:
 		return
 	var is_transfer: bool = club_id != player.club_id
+	var from_club: String = player.club_id
 	if is_transfer:
-		ImmersionEngine.note_club_left(player, world, club_id, get_season_start_year())   # v34
+		ImmersionEngine.note_club_left(player, world, club_id, get_season_start_year(), String(season.get("_leave_how", "free")))   # v34
 	player.club_id = club_id
+	if is_transfer:
+		var fan_news: Dictionary = FanBondEngine.on_joined(player, world, world_seed, {}, from_club)
+		if not fan_news.is_empty():
+			PressGenerator.append_to_feed(player, fan_news, current_epoch_day)
 	player.wage = wage
 	if years > 0:
 		player.contract_years_remaining = years
@@ -879,6 +887,10 @@ func _reset_season_stats_and_objective(trophies_gained: int = 0) -> void:
 	# TITULARIDADES) undercontaba el total histórico igual que pasaba a
 	# nivel temporada. Ahora se acumula desde season_matches_played (v28).
 	player.career_matches += player.season_matches_played  # career_matches nunca se acumulaba: 0 fijo hasta ahora
+	# Afición por club: la temporada cumplida y sus títulos suman al club con
+	# el que la jugaste; la nueva arranca en el humor de base de tu afición.
+	FanBondEngine.on_season_closed(player, int(season.get("start_year", get_season_start_year())) - 1, player.season_matches_played)
+	FanBondEngine.on_new_season(player, world, world_seed, season)
 	player.trophies_won += trophies_gained
 	player.season_appearances = 0
 	player.season_matches_played = 0

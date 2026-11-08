@@ -175,9 +175,13 @@ static func log_nemesis_match(player: PlayerData, day: int, sign: int, goals: in
 
 ## Te fuiste de un club (traspaso o fin de contrato; NO cesión): queda en
 ## tu historial. Llamar ANTES de cambiar player.club_id.
-static func note_club_left(player: PlayerData, world: Dictionary, to_club_id: String, season_year: int) -> void:
+static func note_club_left(player: PlayerData, world: Dictionary, to_club_id: String, season_year: int, how: String = "free") -> void:
 	if player == null or player.club_id == "" or player.club_id == to_club_id:
 		return
+	# Afición por club: cómo te vas marca su cariño contigo (FanBondEngine).
+	var news: Dictionary = FanBondEngine.on_left(player, world, WorldTickEngine.world_seed, to_club_id, how, season_year)
+	if not news.is_empty():
+		PressGenerator.append_to_feed(player, news, WorldTickEngine.current_epoch_day)
 	var old: ClubData = WorldFactory.find_club(world, player.club_id)
 	player.former_clubs.append({
 		"club_id": player.club_id, "name": old.club_name if old != null else player.club_id,
@@ -197,6 +201,10 @@ static func former_club_entry(player: PlayerData, club_id: String) -> Dictionary
 ##  "ex"       recibimiento frío (algún silbido)
 ##  ""         no es un ex club
 static func ex_club_reception(player: PlayerData, world: Dictionary, host_club_id: String, world_seed: int) -> String:
+	# El cariño de esa afición (FanBondEngine) manda; sin datos, la regla vieja.
+	var fan_rec: String = FanBondEngine.reception(player, host_club_id)
+	if fan_rec != "":
+		return fan_rec
 	var e: Dictionary = former_club_entry(player, host_club_id)
 	if e.is_empty():
 		return ""
