@@ -28,6 +28,7 @@ const StoppageTime = preload("res://engine/match/m3d/StoppageTime.gd")
 const TraitEffects = preload("res://engine/match/m3d/TraitEffects.gd")
 const HalftimeOrders = preload("res://engine/match/m3d/HalftimeOrders.gd")
 const InjuryRisk = preload("res://engine/match/m3d/InjuryRisk.gd")
+const MatchData = preload("res://engine/match/m3d/MatchData.gd")
 const Momentum = preload("res://engine/match/m3d/Momentum.gd")
 const Offside = preload("res://engine/match/m3d/Offside.gd")
 const MatchFx = preload("res://match3d/scripts/match_fx.gd")
@@ -523,6 +524,7 @@ func _physics_process(delta: float) -> void:
 	_pf_t = Time.get_ticks_usec()
 	_hud.show_minimap(state == State.MOMENT_INTRO or state == State.MOMENT)
 	_update_name_tags()
+	_sample_data(delta)
 	_pf("name_tags")
 	match state:
 		State.SIMULATING:
@@ -2290,6 +2292,14 @@ var _ht_progress := ""
 # Lesión tuya en el 3D (InjuryRisk): sales del campo y la carrera aplica la baja.
 var _star_injured := false
 var _injury_pending := false
+# Datos de tu partido (MatchData): mapa de calor, sprints y xG de tus remates.
+var _heat: Array = MatchData.empty_heat()
+var _heat_t := 0.0
+var _sprint_t := 0.0
+var _move_t := 0.0
+var _sprints := 0
+var _was_sprinting := false
+var _star_xg := 0.0
 # Descuento (StoppageTime): 0 = no, 1 = al 45', 2 = al 90'. El reloj se queda en el
 # minuto base y corre _added_elapsed hasta _added_total.
 var _added_phase := 0
@@ -2540,6 +2550,39 @@ func _update_locker(delta: float) -> void:
 	_ambient_kickoff()
 
 
+## Muestras para los datos del partido: dónde estás (mapa de calor) y, en tus
+## jugadas, cuánto esprintas.
+func _sample_data(delta: float) -> void:
+	if star == null or not _on_pitch_now() or not (state in [State.SIMULATING, State.MOMENT]):
+		return
+	_heat_t += delta
+	if _heat_t >= 0.3:
+		_heat_t = 0.0
+		var p := star.global_position
+		var s := attack_dir(star.team)
+		var cell := MatchData.heat_cell(p.x * s, p.z * s, FIELD_LENGTH, FIELD_WIDTH)
+		_heat[cell] = int(_heat[cell]) + 1
+	if state == State.MOMENT:
+		_move_t += delta
+		if star.sprinting:
+			_sprint_t += delta
+			if not _was_sprinting:
+				_sprints += 1
+		_was_sprinting = star.sprinting
+
+
+## Datos finales: km (estimados), sprints, xG y mapa de calor.
+func _match_data() -> Dictionary:
+	if not entered:
+		return {}
+	var end_m := float(_exit_minute) if (subbed_off or sent_off) and _exit_minute > 0 else minute
+	var played := maxf(end_m - float(_entry_minute), 1.0)
+	var ratio := _sprint_t / _move_t if _move_t > 0.5 else 0.3
+	return {"km": MatchData.km(star.role, played, star.stat("stamina"), ratio), "sprints": _sprints,
+		"xg": snappedf(_star_xg, 0.01), "shots": int(match_stats.me.shots), "goals": int(match_stats.me.goals),
+		"heat": _heat.duplicate(), "minutes": int(played)}
+
+
 ## Te lesionas: aviso y sales del campo (la carrera pone la baja y la decisión de
 ## apurar o no la vuelta, InjuryDecision).
 func _injure_exit() -> void:
@@ -2585,7 +2628,7 @@ func result() -> Dictionary:
 		"shootout_score": _shootout_scores.duplicate(), "shootout_winner_team": _shootout_winner_team,
 		"tie_winner_team": winner, "subbed_off": subbed_off, "exit_minute": _exit_minute,
 		"end_stamina": stamina, "best_moment": replay.best_info.duplicate(),
-		"halftime_order": _ht_order_result(), "injured": _star_injured}
+		"halftime_order": _ht_order_result(), "injured": _star_injured, "data": _match_data()}
 
 
 ## El míster te mete al campo: el compañero de tu hueco sale y entras tú (con el cartel
@@ -4634,6 +4677,11 @@ func on_shot(_shooter: SoccerPlayer) -> void:
 		return
 	if _shooter == star:
 		match_stats.me.shots += 1
+		var sp := _shooter.global_position
+		var gx := opponent_goal_center(0).x
+		var xkind := "penalty" if moment_type == Moment.PENALTY else ("free_kick" if moment_type == Moment.FREE_KICK else "open")
+		_star_xg += MatchData.shot_xg(Vector2(sp.x, sp.z).distance_to(Vector2(gx, 0.0)),
+				MatchData.goal_angle(Vector2(sp.x, sp.z), gx), xkind)
 	_shot_pending = true
 	_shot_timer = 3.0
 	_saved = false

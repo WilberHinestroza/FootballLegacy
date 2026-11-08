@@ -858,6 +858,7 @@ func _render_stats_tab() -> void:
 	mm.add_child(mcol)
 	mine.add_child(mm)
 	detail_box.add_child(mine)
+	_render_match_data()
 
 	# Tus jugadas en la cancha (Paquete 2 del ROADMAP): dónde tuviste cada
 	# momento clave y cómo salió (MatchState.moment_map, lo llena Match.gd
@@ -892,6 +893,70 @@ func _render_stats_tab() -> void:
 
 ## Lo que ganaste en el RPG con este partido: maestrías que subieron y
 ## logros cobrados. No se dibuja si no hubo nada.
+## TUS DATOS (partido 3D, MatchData): km, sprints, xG frente a tus goles y el
+## mapa de calor. No se dibuja en partidos simulados.
+func _render_match_data() -> void:
+	var d: Dictionary = _result.get("user_data", {})
+	if d.is_empty():
+		return
+	detail_box.add_child(Styles.section_label("TUS DATOS"))
+	var panel := PanelContainer.new()
+	panel.add_theme_stylebox_override("panel", Styles.card_accent(Styles.BLUE))
+	var m := MarginContainer.new()
+	for s in ["left", "right"]: m.add_theme_constant_override("margin_" + s, 14)
+	for s in ["top", "bottom"]: m.add_theme_constant_override("margin_" + s, 10)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 8)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	var xg: float = float(d.get("xg", 0.0))
+	var goals: int = int(d.get("goals", 0))
+	for kv in [["KM", "%.1f" % float(d.get("km", 0.0))], ["SPRINTS", str(int(d.get("sprints", 0)))],
+			["REMATES", str(int(d.get("shots", 0)))], ["xG", "%.2f" % xg], ["GOLES", str(goals)]]:
+		var cell := VBoxContainer.new()
+		cell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		cell.add_theme_constant_override("separation", 0)
+		var val := Label.new()
+		val.text = String(kv[1])
+		val.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		val.add_theme_font_override("font", Styles.font_black())
+		val.add_theme_font_size_override("font_size", 22)
+		cell.add_child(val)
+		var cap := Label.new()
+		cap.text = String(kv[0])
+		cap.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		cap.add_theme_font_size_override("font_size", Styles.SIZE_CAPTION)
+		cap.add_theme_color_override("font_color", Styles.GRAY_TEXT)
+		cell.add_child(cap)
+		row.add_child(cell)
+	v.add_child(row)
+	# Lectura del xG: definiste por encima o por debajo de lo esperado.
+	if int(d.get("shots", 0)) > 0:
+		var note := Label.new()
+		var diff := float(goals) - xg
+		note.text = "Definición por encima de lo esperado (+%.2f)" % diff if diff >= 0.3 \
+			else ("Te faltó puntería: marcaste %.2f menos de lo esperado" % -diff if diff <= -0.3 else "Marcaste lo esperado por tus ocasiones")
+		note.add_theme_font_size_override("font_size", Styles.SIZE_CAPTION)
+		note.add_theme_color_override("font_color", Styles.GREEN if diff >= 0.3 else (Styles.AMBER if diff <= -0.3 else Styles.GRAY_TEXT))
+		note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		v.add_child(note)
+	var heat: Array = d.get("heat", [])
+	if not heat.is_empty():
+		var hl := Label.new()
+		hl.text = "MAPA DE CALOR  ·  atacas hacia la derecha  →"
+		hl.add_theme_font_size_override("font_size", Styles.SIZE_CAPTION)
+		hl.add_theme_color_override("font_color", Styles.GRAY_TEXT)
+		v.add_child(hl)
+		var hv := HeatmapView.new()
+		hv.custom_minimum_size = Vector2(0, 170)
+		hv.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		hv.setup(heat, 12, 8)
+		v.add_child(hv)
+	m.add_child(v)
+	panel.add_child(m)
+	detail_box.add_child(panel)
+
+
 func _render_rpg_gains() -> void:
 	var gs: Dictionary = MatchState.gesture_stats
 	var gestures: int = int(gs.get("perfecto", 0)) + int(gs.get("bueno", 0)) + int(gs.get("regular", 0)) + int(gs.get("flojo", 0))

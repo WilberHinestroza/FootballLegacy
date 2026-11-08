@@ -180,6 +180,18 @@ func _ready() -> void:
 	_check(IR.foul_chance(true, 0.2, false, false) > IR.foul_chance(false, 1.0, false, false), "plancha + cansancio no sube el riesgo")
 	_check(IR.foul_chance(false, 1.0, false, true) < IR.foul_chance(false, 1.0, false, false), "el vendaje no protege")
 	_check(m.result().has("injured") and not bool(m.result().injured), "el resultado no trae la lesión")
+	# Datos del partido (MatchData): xG creíble, km por puesto y mapa de calor.
+	var MD = m.MatchData
+	_check(MD.shot_xg(11.0, MD.goal_angle(Vector2(41.5, 0), 52.5), "open") > MD.shot_xg(28.0, MD.goal_angle(Vector2(24.5, 10), 52.5), "open"), "xG: el remate cercano no vale más que el lejano")
+	_check(absf(MD.shot_xg(11.0, 0.6, "penalty") - 0.76) < 0.001, "xG del penalti mal")
+	var km90: float = MD.km("MF", 90.0, 0.7, 0.3)
+	_check(km90 > 9.5 and km90 < 13.0, "km de un medio fuera de rango (%.1f)" % km90)
+	_check(m._match_data().is_empty() == not m.entered, "datos del partido con el usuario sin entrar")
+	var saved_entered: bool = m.entered
+	m.entered = true
+	var d: Dictionary = m.result().get("data", {})
+	m.entered = saved_entered
+	_check(d.has("heat") and (d.heat as Array).size() == MD.HEAT_COLS * MD.HEAT_ROWS and int(d.minutes) > 0, "el resultado no trae los datos del partido")
 	m._trait_ids = saved_ids
 	m._trait_mods = saved_mods
 	m.ball.last_touch = saved_touch

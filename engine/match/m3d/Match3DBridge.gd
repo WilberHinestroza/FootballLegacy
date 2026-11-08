@@ -561,6 +561,7 @@ static func to_match_result(res: Dictionary, cfg: Dictionary) -> Dictionary:
 		"user_goal_plays": _goal_plays(st.get("moment_log", [])),
 		"user_best_moment": String((res.get("best_moment", {}) as Dictionary).get("label", "")),
 		"halftime_order": res.get("halftime_order", {}),
+		"user_data": res.get("data", {}), # km, sprints, xG y mapa de calor (MatchData)
 		"m3d": true,
 	}
 
