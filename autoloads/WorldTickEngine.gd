@@ -59,6 +59,7 @@ var _fixtures_cache: Dictionary = {}       # league_id -> Array de fixtures (no 
 var _fixtures_cache_start: int = -1        # season_start_epoch_day con el que se llenó
 var _disc_cache: Dictionary = {}           # league_id -> dict de DisciplineEngine.simulate_league
 var _disc_cache_day: int = -1
+var _perf_cache: Dictionary = {}           # league_id -> {stamp, res} de TopPerformersEngine.compute_league
 
 ## Carga la temporada del slot activo y sincroniza el contador de día.
 ## Idempotente: llamar al entrar a la carrera (Continuar / elegir club /
@@ -85,6 +86,7 @@ func load_runtime() -> void:
 	_fixtures_cache_start = -1
 	_disc_cache.clear()
 	_disc_cache_day = -1
+	_perf_cache.clear()
 	_ballon_dor_cache = []
 	_ballon_dor_cache_day = -1
 	_user_cont_cache = {}
@@ -132,6 +134,7 @@ func load_runtime() -> void:
 			SaveManager.save_season(season)
 		_refresh_cup()
 		_sync_user_kit_tint()
+		_qualifying_v2_from() # fija desde qué ciclo rige el formato v2 de eliminatorias
 
 ## El avatar del usuario (Avatar.for_player) viste el kit de su club:
 ## camiseta = color primario (Avatar.user_kit_hex), short = secundario
@@ -1012,19 +1015,27 @@ func _fixtures_for_league(league_id: int, clubs: Array) -> Array:
 ## fusionarse con season["results"] como "override": los partidos REALES
 ## del usuario siempre pisan por encima de la simulación.
 func _discipline_for_league(league_id: int, clubs: Array) -> Dictionary:
-	if _disc_cache_day != current_epoch_day:
-		_disc_cache.clear()
-		_disc_cache_day = current_epoch_day
-	if _disc_cache.has(league_id):
-		return _disc_cache[league_id]
+	# La simulación solo depende de los partidos YA jugados (fixtures con día <
+	# hoy, en orden): se cachea por cuántos van, no por día. Antes se rehacía
+	# entera cada día nuevo (~150 ms por liga; el Balón de Oro recorre ~20
+	# ligas → 3,5 s en PC al abrir Premios/Perfil). Mismo resultado exacto.
+	var fixtures := _fixtures_for_league(league_id, clubs)
+	var played := 0
+	for fx in fixtures:
+		if int(fx["epoch_day"]) >= current_epoch_day:
+			break
+		played += 1
+	var stamp := "%d|%d|%d" % [int(season.get("season_start_epoch_day", 0)), fixtures.size(), played]
+	var hit: Dictionary = _disc_cache.get(league_id, {})
+	if String(hit.get("stamp", "")) == stamp:
+		return hit["sim"]
 	var clubs_by_id: Dictionary = {}
 	for c in clubs:
 		clubs_by_id[c.club_id] = c
-	var fixtures := _fixtures_for_league(league_id, clubs)
 	var sim: Dictionary = DisciplineEngine.simulate_league(
 		fixtures, world, clubs_by_id, _strength_by_club, world_seed, current_epoch_day, int(season.get("season_start_epoch_day", 0)),
 	)
-	_disc_cache[league_id] = sim
+	_disc_cache[league_id] = {"stamp": stamp, "sim": sim}
 	return sim
 
 ## Resultados de liga con tarjetas/lesiones ya aplicadas (ver
@@ -1193,10 +1204,19 @@ func top_performers_for_league(league_id: int) -> Dictionary:
 	for c in clubs:
 		clubs_by_id[c.club_id] = c
 	var results := _league_results_with_discipline(league_id, clubs)
-	var result: Dictionary = TopPerformersEngine.compute_league(
-		fixtures, world, clubs_by_id,
-		current_epoch_day, world_seed, int(season.get("season_start_epoch_day", 0)), results, _strength_by_club,
-	)
+	# Misma idea que _discipline_for_league: solo cambia con partidos nuevos
+	# (de la IA o tuyos), así que se cachea por esa marca y no por día.
+	var stamp := "%s|%d" % [String(_disc_cache.get(league_id, {}).get("stamp", "")), (season.get("results", {}) as Dictionary).size()]
+	var hit: Dictionary = _perf_cache.get(league_id, {})
+	var result: Dictionary
+	if String(hit.get("stamp", "")) == stamp:
+		result = (hit["res"] as Dictionary).duplicate(true)
+	else:
+		result = TopPerformersEngine.compute_league(
+			fixtures, world, clubs_by_id,
+			current_epoch_day, world_seed, int(season.get("season_start_epoch_day", 0)), results, _strength_by_club,
+		)
+		_perf_cache[league_id] = {"stamp": stamp, "res": result.duplicate(true)}
 	if user_club_id != "" and clubs_by_id.has(user_club_id):
 		var player := SaveManager.load_player()
 		if player != null:
@@ -1532,11 +1552,54 @@ func club_world_cup_this_cycle() -> Dictionary:
 func national_qualifying_for(confederation: String) -> Dictionary:
 	if world.is_empty():
 		return {}
-	var strength: Dictionary = NationalTeamFactory.strength_by_country(world, _strength_by_club, confederation)
-	var overrides: Dictionary = SaveManager.load_international().get("qualifying_results", {})
 	var cycle_start: int = _international_cycle_start()
-	var windows: Array = _qualifying_windows(cycle_start)
-	return QualifyingEngine.resolve(confederation, strength, world_seed, current_epoch_day, cycle_start, overrides, windows)
+	return _qualifying_resolve(confederation, cycle_start, current_epoch_day, SaveManager.load_international().get("qualifying_results", {}))
+
+## Eliminatoria de UN ciclo concreto: misma fuerza/ventanas de siempre, pero
+## con la semilla y el formato de ESE ciclo (_qualifying_seed/_qualifying_legacy).
+func _qualifying_resolve(confederation: String, cycle_start: int, day: int, overrides: Dictionary) -> Dictionary:
+	var strength: Dictionary = NationalTeamFactory.strength_by_country(world, _strength_by_club, confederation)
+	return QualifyingEngine.resolve(confederation, strength, _qualifying_seed(cycle_start), day, cycle_start, overrides,
+		_qualifying_windows(cycle_start), _qualifying_legacy(cycle_start))
+
+## Primer ciclo que usa el formato v2 de QualifyingEngine (cupos == plazas del
+## Mundial) y semilla propia por ciclo. Un ciclo que ya estaba en juego al
+## actualizar sigue con el formato y la semilla de antes, para no rebarajar
+## grupos con partidos jugados. Vive en el guardado "international" (un
+## diccionario libre, sin cambio de esquema).
+func _qualifying_v2_from() -> int:
+	var intl: Dictionary = SaveManager.load_international()
+	if intl.has("qual_v2_from_cycle"):
+		return int(intl["qual_v2_from_cycle"])
+	var year: int = WorldCupEngine.WC_BASE_YEAR
+	while current_epoch_day >= _wc_season_start_epoch_day(year):
+		year += 4
+	var cur: int = maxi(_wc_season_start_epoch_day(year) - QualifyingEngine.CYCLE_QUALIFYING_DAYS, 0)
+	var started: bool = current_epoch_day >= cur and not (intl.get("qualifying_results", {}) as Dictionary).is_empty()
+	var from: int = cur + 1 if started else cur
+	intl["qual_v2_from_cycle"] = from
+	SaveManager.save_international(intl)
+	return from
+
+func _qualifying_legacy(cycle_start: int) -> bool:
+	return cycle_start < _qualifying_v2_from()
+
+## Cada ciclo sortea y simula distinto (antes las mismas claves + la misma
+## semilla repetían marcadores ciclo tras ciclo).
+func _qualifying_seed(cycle_start: int) -> int:
+	if _qualifying_legacy(cycle_start):
+		return world_seed
+	return world_seed ^ hash("qual_cycle:%d" % cycle_start)
+
+## Campo de 48 del Mundial que cierra el ciclo que arrancó en `cycle_start`,
+## con la eliminatoria YA terminada. [] si no llega a 48.
+func _wc_field_from_cycle(cycle_start: int, overrides: Dictionary) -> Array:
+	var end_day: int = cycle_start + QualifyingEngine.CYCLE_QUALIFYING_DAYS + 1
+	var qualifying_by_conf: Dictionary = {}
+	for conf in Confederations.ALL:
+		qualifying_by_conf[conf] = _qualifying_resolve(conf, cycle_start, end_day, overrides)
+	var f: Array = WorldCupEngine.field(WorldCupEngine.pool_from_qualifying(qualifying_by_conf))
+	return f if f.size() >= WorldCupEngine.GROUPS * WorldCupEngine.PER_GROUP else []
 
 ## Ventanas FIFA reales que caen dentro del ciclo de eliminatorias que
 ## empieza en `cycle_start` — ver SeasonCalendar.international_windows_in_range
@@ -1580,6 +1643,7 @@ func world_cup_this_cycle() -> Dictionary:
 	if not WorldCupEngine.is_wc_year(year):
 		return {}
 	var strength: Dictionary = NationalTeamFactory.strength_by_country(world, _strength_by_club)
+	_international_cycle_start() # al cambiar de ciclo congela este campo (ver ahí)
 	var intl: Dictionary = SaveManager.load_international()
 	var freeze_key: String = "wc_field_%d" % year
 	var frozen_field: Array = (intl[freeze_key] as Array) if intl.has(freeze_key) else []
@@ -1589,14 +1653,14 @@ func world_cup_this_cycle() -> Dictionary:
 		intl[freeze_key] = frozen_field
 		SaveManager.save_international(intl)
 
+	# BUG corregido (auditoría nov-2026): antes se pedía national_qualifying_for(),
+	# que en la temporada del Mundial ya apunta al ciclo SIGUIENTE (sin jugar):
+	# el campo salía por siembra e ignoraba la eliminatoria jugada.
 	var pool_by_conf: Dictionary = {}
 	if frozen_field.is_empty():
-		var qualifying_by_conf: Dictionary = {}
-		for conf in Confederations.ALL:
-			qualifying_by_conf[conf] = national_qualifying_for(conf)
-		pool_by_conf = WorldCupEngine.pool_from_qualifying(qualifying_by_conf)
-		var computed_field: Array = WorldCupEngine.field(pool_by_conf)
-		if computed_field.size() >= WorldCupEngine.GROUPS * WorldCupEngine.PER_GROUP:
+		var ended_cycle: int = maxi(_wc_season_start_epoch_day(year) - QualifyingEngine.CYCLE_QUALIFYING_DAYS, 0)
+		var computed_field: Array = _wc_field_from_cycle(ended_cycle, intl.get("qualifying_results", {}))
+		if not computed_field.is_empty():
 			frozen_field = computed_field
 			intl[freeze_key] = frozen_field
 			SaveManager.save_international(intl)
@@ -2852,7 +2916,19 @@ func _international_cycle_start() -> int:
 	var start: int = maxi(_wc_season_start_epoch_day(year) - QualifyingEngine.CYCLE_QUALIFYING_DAYS, 0)
 
 	var intl: Dictionary = SaveManager.load_international()
-	if int(intl.get("cycle_start_epoch_day", -1)) != start:
+	var old_start: int = int(intl.get("cycle_start_epoch_day", -1))
+	if old_start != start:
+		if old_start >= 0 and start > old_start:
+			# El ciclo viejo terminó: su Mundial queda con los clasificados reales
+			# (antes de borrar tus resultados), y el ciclo nuevo arranca limpio —
+			# las claves de partido se repiten de un ciclo a otro.
+			var wc_year: int = CalendarUtils.season_start_year(old_start + QualifyingEngine.CYCLE_QUALIFYING_DAYS)
+			var key: String = "wc_field_%d" % wc_year
+			if wc_year != WorldCupEngine.WC_BASE_YEAR and not intl.has(key):
+				var f: Array = _wc_field_from_cycle(old_start, intl.get("qualifying_results", {}))
+				if not f.is_empty():
+					intl[key] = f
+			intl["qualifying_results"] = {}
 		intl["cycle_start_epoch_day"] = start
 		intl["user_callup_status"] = {}
 		SaveManager.save_international(intl)
@@ -2971,8 +3047,7 @@ func user_national_fixture_on(epoch_day: int) -> Dictionary:
 			return normalized_ncup
 
 	var cycle_start: int = _international_cycle_start()
-	var strength: Dictionary = NationalTeamFactory.strength_by_country(world, _strength_by_club, confederation)
-	var resolved: Dictionary = QualifyingEngine.resolve(confederation, strength, world_seed, epoch_day, cycle_start, intl.get("qualifying_results", {}), _qualifying_windows(cycle_start))
+	var resolved: Dictionary = _qualifying_resolve(confederation, cycle_start, epoch_day, SaveManager.load_international().get("qualifying_results", {}))
 	var fx: Dictionary = QualifyingEngine.user_fixture_today(resolved, player.country, epoch_day)
 	if fx.is_empty():
 		return {}

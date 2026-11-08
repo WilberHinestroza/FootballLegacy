@@ -138,6 +138,11 @@ static func pool_from_qualifying(qualifying_by_confederation: Dictionary) -> Dic
 		var pool: Array = []
 		pool.append_array(resolved.get("direct", []))
 		pool.append_array(resolved.get("playoff_pool", []))
+		# Reserva al final: si la eliminatoria no llena su cupo (formato viejo),
+		# lo completa el mejor no clasificado de la MISMA confederación.
+		for c in resolved.get("reserve", []):
+			if not pool.has(c):
+				pool.append(c)
 		out[conf] = pool
 	return out
 

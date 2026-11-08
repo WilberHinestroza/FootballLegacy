@@ -41,7 +41,12 @@ func _ready() -> void:
 	# ventana FIFA, y confirma que los días vecinos de la MISMA ventana
 	# (sin partido) ya NO se pintan.
 	var match_day: int = -1
-	for day in range(1, 400):
+	# El ciclo de eliminatorias arranca ~2 años antes del Mundial (Parte 93), no el día 0.
+	var cyc: int = WorldTickEngine._international_cycle_start()
+	# is_day_in_international_window solo mira la temporada cargada: se carga la del ciclo.
+	var cyc_year: int = CalendarUtils.season_start_year(cyc)
+	WorldTickEngine.season = {"start_year": cyc_year, "season_start_epoch_day": CalendarUtils.date_to_epoch_day(cyc_year, CalendarUtils.SEASON_START_MONTH, 1)}
+	for day in range(cyc, cyc + 400):
 		if not WorldTickEngine.is_day_in_international_window(day):
 			continue
 		var fx: Dictionary = QualifyingEngine.user_fixture_today(cal._nat_qualifying, "Argentina", day)
@@ -49,7 +54,7 @@ func _ready() -> void:
 			match_day = day
 			break
 	if match_day < 0:
-		print("PROBE FAIL (no se encontró ningún día de partido real de Argentina en 400 días — ¿cambió el reparto de ventanas?)")
+		print("PROBE FAIL (no se encontró ningún día de partido real de Argentina en los 400 primeros días del ciclo — ¿cambió el reparto de ventanas?)")
 		get_tree().quit(1)
 		return
 	print("día de partido real de Argentina: %d" % match_day)

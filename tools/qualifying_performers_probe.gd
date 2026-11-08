@@ -27,7 +27,9 @@ func _ready() -> void:
 	WorldTickEngine.world_seed = world_seed
 	WorldTickEngine._strength_by_club = strength_by_club
 	WorldTickEngine.season = {"start_year": 2026, "season_start_epoch_day": 0}
-	WorldTickEngine.current_epoch_day = 400 # bastante avanzado el ciclo de 700 días: hay partidos jugados de sobra
+	# Bastante avanzado el ciclo de 700 días (arranca ~2 años antes del Mundial, Parte 93).
+	WorldTickEngine.current_epoch_day = 100
+	WorldTickEngine.current_epoch_day = WorldTickEngine._international_cycle_start() + 400
 
 	var ok: bool = true
 

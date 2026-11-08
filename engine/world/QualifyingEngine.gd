@@ -53,6 +53,19 @@ const MAX_GROUPS := 14
 ## CONCACAF: cuántos de los más fuertes entran directo a la tabla final
 ## chica, y el tamaño total de esa tabla (el resto de cupos los llena el
 ## recorte por fuerza del resto del pool — ver nota de la cabecera).
+## Formato v2 (auditoría de competiciones, nov-2026): grupos + ganadores del
+## repechaje == cupos de la confederación (WorldCupEngine.SLOTS). Antes UEFA
+## daba 13+2=15 plazas para 16 cupos y CONCACAF 5 para 6 (Mundial de 46 →
+## resolve() vacío), y AFC/CAF 15 "clasificados directos" para 9/10 cupos.
+## El formato viejo (`legacy`) solo se usa para un ciclo que ya estaba en
+## juego al actualizar, para no rebarajar grupos con partidos jugados.
+const GROUP_FORMAT := {
+	Confederations.UEFA: {"groups": 12, "playoff_winners": 4},
+	Confederations.AFC: {"groups": 8, "playoff_winners": 1},
+	Confederations.CAF: {"groups": 9, "playoff_winners": 1},
+}
+const CONCACAF_DIRECT_V2 := 4
+
 const CONCACAF_DIRECT_TO_FINAL := 6
 const CONCACAF_FINAL_TABLE_SIZE := 8
 
@@ -74,7 +87,7 @@ static func _pool_for(confederation: String, strength_by_country: Dictionary) ->
 ## ESTÁN HOY — mundo vivo: antes de que se jueguen los partidos, todos
 ## están en 0 y el reparto es solo de siembra, exactamente igual que
 ## ContinentalEngine con las tablas de liga a mitad de temporada.
-static func resolve(confederation: String, strength_by_country: Dictionary, world_seed: int, current_epoch_day: int, cycle_start_epoch_day: int, user_overrides: Dictionary = {}, windows: Array = []) -> Dictionary:
+static func resolve(confederation: String, strength_by_country: Dictionary, world_seed: int, current_epoch_day: int, cycle_start_epoch_day: int, user_overrides: Dictionary = {}, windows: Array = [], legacy: bool = false) -> Dictionary:
 	var pool: Array = _pool_for(confederation, strength_by_country)
 	if pool.size() < 2:
 		return {}
@@ -82,9 +95,9 @@ static func resolve(confederation: String, strength_by_country: Dictionary, worl
 		Confederations.CONMEBOL:
 			return _resolve_table(pool, confederation, strength_by_country, world_seed, current_epoch_day, cycle_start_epoch_day, user_overrides, CYCLE_QUALIFYING_DAYS, "", windows)
 		Confederations.CONCACAF:
-			return _resolve_narrowing(pool, confederation, strength_by_country, world_seed, current_epoch_day, cycle_start_epoch_day, user_overrides, windows)
+			return _resolve_narrowing(pool, confederation, strength_by_country, world_seed, current_epoch_day, cycle_start_epoch_day, user_overrides, windows, legacy)
 		_:
-			return _resolve_groups(pool, confederation, strength_by_country, world_seed, current_epoch_day, cycle_start_epoch_day, user_overrides, windows)
+			return _resolve_groups(pool, confederation, strength_by_country, world_seed, current_epoch_day, cycle_start_epoch_day, user_overrides, windows, legacy)
 
 ## Ventanas de `windows` (lista completa del ciclo) cuyo inicio cae dentro
 ## de [anchor, anchor+span_days] — cada sub-tramo (CONCACAF tiene dos:
@@ -98,7 +111,7 @@ static func _windows_in_span(windows: Array, anchor: int, span_days: int) -> Arr
 	return out
 
 ## --- CONMEBOL: tabla única, todos contra todos ida y vuelta ---
-static func _resolve_table(pool: Array, confederation: String, strength_by_country: Dictionary, world_seed: int, current_epoch_day: int, anchor: int, user_overrides: Dictionary, span_days: int = CYCLE_QUALIFYING_DAYS, key_suffix: String = "", windows: Array = []) -> Dictionary:
+static func _resolve_table(pool: Array, confederation: String, strength_by_country: Dictionary, world_seed: int, current_epoch_day: int, anchor: int, user_overrides: Dictionary, span_days: int = CYCLE_QUALIFYING_DAYS, key_suffix: String = "", windows: Array = [], direct_override: int = -1) -> Dictionary:
 	var key_prefix: String = "Q:%s%s" % [confederation, key_suffix]
 	var matches_per_team: int = maxi(pool.size() - 1, 1) * 2 # ida y vuelta
 	# Fixtures con fecha LIBRE (swiss_fixtures reparte parejo por todo
@@ -111,7 +124,7 @@ static func _resolve_table(pool: Array, confederation: String, strength_by_count
 		fixtures = SeasonCalendar.remap_to_windows(fixtures, relevant_windows)
 	var table: Array = ContinentalEngine.score_fixtures_to_table(pool, fixtures, world_seed, strength_by_country, current_epoch_day, user_overrides)
 
-	var direct_n: int = int(DIRECT_SLOTS.get(confederation, 4))
+	var direct_n: int = direct_override if direct_override >= 0 else int(DIRECT_SLOTS.get(confederation, 4))
 	var playoff_n: int = int(PLAYOFF_SLOTS.get(confederation, 1))
 	var direct: Array = []
 	var playoff_pool: Array = []
@@ -128,7 +141,7 @@ static func _resolve_table(pool: Array, confederation: String, strength_by_count
 	return {
 		"confederation": confederation, "format": "table", "table": table,
 		"direct": direct, "playoff_pool": playoff_pool, "eliminated": eliminated,
-		"fixtures": fixtures,
+		"reserve": eliminated.duplicate(), "fixtures": fixtures,
 	}
 
 ## Día del repechaje de segundos (UEFA/AFC/CAF): cerca del final del ciclo,
@@ -179,8 +192,12 @@ static func _resolve_group_playoff(playoff_pool: Array, confederation: String, w
 	return {"winners": winners, "losers": losers, "decided": true, "round": semis}
 
 ## --- UEFA / AFC / CAF: grupos de 4, ganador directo + repechaje de segundos ---
-static func _resolve_groups(pool: Array, confederation: String, strength_by_country: Dictionary, world_seed: int, current_epoch_day: int, anchor: int, user_overrides: Dictionary, windows: Array = []) -> Dictionary:
+static func _resolve_groups(pool: Array, confederation: String, strength_by_country: Dictionary, world_seed: int, current_epoch_day: int, anchor: int, user_overrides: Dictionary, windows: Array = [], legacy: bool = false) -> Dictionary:
+	var fmt: Dictionary = GROUP_FORMAT.get(confederation, {})
 	var group_count: int = mini(pool.size() / 4, MAX_GROUPS)
+	if not legacy and not fmt.is_empty():
+		group_count = mini(pool.size() / 4, int(fmt["groups"]))
+	var slots: int = int(WorldCupEngine.SLOTS.get(confederation, 99))
 	if group_count < 2:
 		# Confederación/mundo demasiado chico para grupos reales — cae a
 		# tabla única, mismo criterio de respaldo que
@@ -192,21 +209,37 @@ static func _resolve_groups(pool: Array, confederation: String, strength_by_coun
 	var groups: Array = ContinentalEngine.build_groups(field, group_count, world_seed, strength_by_country, current_epoch_day, anchor, user_overrides, CYCLE_QUALIFYING_DAYS, relevant_windows)
 
 	var direct: Array = []
+	var winners: Array = []
 	var runnerups: Array = []
 	var eliminated: Array = []
 	for g in groups:
 		var standings: Array = g["standings"]
 		if standings.size() > 0:
-			direct.append(String(standings[0]["club_id"]))
+			winners.append(standings[0])
 		if standings.size() > 1:
 			runnerups.append(standings[1])
 		for row in standings.slice(2):
 			eliminated.append(String(row["club_id"]))
-	runnerups.sort_custom(func(a, b):
+	var by_pts := func(a, b):
 		if a["pts"] != b["pts"]:
 			return a["pts"] > b["pts"]
-		return a["dg"] > b["dg"])
+		return a["dg"] > b["dg"]
+	runnerups.sort_custom(by_pts)
+	# Más ganadores de grupo que cupos (solo el formato viejo): clasifican los
+	# mejores ganadores y el resto queda de reserva; no hay repechaje.
+	var overflow: Array = []
+	if winners.size() >= slots:
+		winners.sort_custom(by_pts)
+		for i in range(slots, winners.size()):
+			overflow.append(String(winners[i]["club_id"]))
+		winners = winners.slice(0, slots)
+	for w in winners:
+		direct.append(String(w["club_id"]))
 	var playoff_n: int = mini(GROUP_RUNNERUP_PLAYOFF_SLOTS, runnerups.size())
+	if not legacy and not fmt.is_empty():
+		playoff_n = mini(2 * int(fmt["playoff_winners"]), runnerups.size())
+	if not overflow.is_empty():
+		playoff_n = 0
 	var playoff_pool: Array = []
 	for i in range(playoff_n):
 		playoff_pool.append(String(runnerups[i]["club_id"]))
@@ -226,20 +259,31 @@ static func _resolve_groups(pool: Array, confederation: String, strength_by_coun
 	# siempre.
 	var playoff_day: int = anchor + int(CYCLE_QUALIFYING_DAYS * GROUP_PLAYOFF_OFFSET_FRAC)
 	var po: Dictionary = _resolve_group_playoff(playoff_pool, confederation, world_seed, strength_by_country, playoff_day, current_epoch_day, user_overrides)
+	var losers: Array = []
 	if bool(po.get("decided", false)):
 		direct.append_array(po.get("winners", []))
-		eliminated.append_array(po.get("losers", []))
+		losers = po.get("losers", [])
+		eliminated.append_array(losers)
 		playoff_pool = []
+	eliminated.append_array(overflow)
+	# Reserva (por si a un Mundial le faltara alguien): ganadores sobrantes,
+	# perdedores del repechaje, demás segundos y el resto por fuerza.
+	var reserve: Array = overflow + losers
+	for i in range(playoff_n, runnerups.size()):
+		reserve.append(String(runnerups[i]["club_id"]))
+	for c in pool:
+		if not reserve.has(c) and eliminated.has(c):
+			reserve.append(c)
 
 	return {
 		"confederation": confederation, "format": "groups", "groups": groups,
-		"direct": direct, "playoff_pool": playoff_pool, "eliminated": eliminated,
+		"direct": direct, "playoff_pool": playoff_pool, "eliminated": eliminated, "reserve": reserve,
 		"playoff_round": po.get("round", {}),
 	}
 
 ## --- CONCACAF: los más fuertes directo a una tabla final chica, el resto
 ## se recorta por fuerza (ver nota de simplificación en la cabecera) ---
-static func _resolve_narrowing(pool: Array, confederation: String, strength_by_country: Dictionary, world_seed: int, current_epoch_day: int, cycle_start_epoch_day: int, user_overrides: Dictionary, windows: Array = []) -> Dictionary:
+static func _resolve_narrowing(pool: Array, confederation: String, strength_by_country: Dictionary, world_seed: int, current_epoch_day: int, cycle_start_epoch_day: int, user_overrides: Dictionary, windows: Array = [], legacy: bool = false) -> Dictionary:
 	var direct_to_final: Array = pool.slice(0, mini(CONCACAF_DIRECT_TO_FINAL, pool.size()))
 	var rest: Array = pool.slice(direct_to_final.size())
 	var needed: int = maxi(CONCACAF_FINAL_TABLE_SIZE - direct_to_final.size(), 0)
@@ -250,8 +294,9 @@ static func _resolve_narrowing(pool: Array, confederation: String, strength_by_c
 	var pre_span: int = int(CYCLE_QUALIFYING_DAYS * 0.4)
 	var final_anchor: int = cycle_start_epoch_day + pre_span
 	var final_span: int = CYCLE_QUALIFYING_DAYS - pre_span
-	var resolved: Dictionary = _resolve_table(final_field, confederation, strength_by_country, world_seed, current_epoch_day, final_anchor, user_overrides, final_span, ":final", windows)
+	var resolved: Dictionary = _resolve_table(final_field, confederation, strength_by_country, world_seed, current_epoch_day, final_anchor, user_overrides, final_span, ":final", windows, -1 if legacy else CONCACAF_DIRECT_V2)
 	resolved["eliminated"].append_array(pre_eliminated)
+	resolved["reserve"].append_array(pre_eliminated)
 	resolved["pre_stage_pool"] = rest
 	return resolved
 
