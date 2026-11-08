@@ -71,6 +71,15 @@ func start_new_match(p_home: MatchTeam, p_away: MatchTeam, p_user_player: Player
 	engine = MatchEngine.new(p_home, p_away, p_user_player, p_is_knockout, p_instant)
 	match_result = {}
 	moment_map = []
+	# Lo de UN partido se limpia aquí (8-nov, Wilber: "el partido de exhibicion
+	# fue un partido de otro slot"): la prueba al crear personaje no pone
+	# fixture y heredaba el del último partido jugado (clubes, estadio, copa).
+	# Los lanzadores ponen el suyo DESPUÉS de esta llamada; la previa (PreMatch)
+	# elige camisetas y balón después también.
+	fixture = {}
+	kit_home_away = false
+	kit_away_away = true
+	ball_design = -1
 	gesture_stats = {"perfecto": 0, "bueno": 0, "regular": 0, "flojo": 0, "streak": 0, "best_streak": 0}
 
 ## Cómo ejecutaste los gestos de este partido (10-oct): lo llena Match.gd en

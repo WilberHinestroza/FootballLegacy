@@ -583,6 +583,7 @@ func _finish() -> void:
 	CharacterDraft.clear()
 
 	var trial := CareerSetup.build_trial_teams(p)
+	MatchState.user_suspended = false   # una sanción de otra carrera no cuenta aquí
 	MatchState.start_new_match(trial["home"], trial["away"], p)
 	MatchState.return_scene = "res://scenes/Offers/Offers.tscn"
 	get_tree().change_scene_to_file("res://scenes/PreMatch/PreMatch.tscn")

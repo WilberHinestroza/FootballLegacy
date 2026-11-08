@@ -207,6 +207,14 @@ static func build_config(on_finish: Callable) -> Dictionary:
 	var world: Dictionary = _world()
 	var us_club: ClubData = WorldFactory.find_club(world, us_id)
 	var them_club: ClubData = WorldFactory.find_club(world, them_id)
+	# Equipos que no son clubes del mundo (la prueba "Prueba A" vs "Prueba B"):
+	# el nombre sale del propio MatchTeam
+	if not national and us_club == null and us.team_name != "":
+		us_c[0] = us.team_name
+		us_c[1] = us.team_name.substr(0, 3).to_upper()
+	if not national and them_club == null and them.team_name != "":
+		them_c[0] = them.team_name
+		them_c[1] = them.team_name.substr(0, 3).to_upper()
 	var season_year: int = WorldTickEngine.get_season_start_year()
 
 	# --- xG real del MatchEngine (formación, capitanía, afición...)
